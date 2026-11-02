@@ -1,6 +1,4 @@
-This project is no longer actively developed or maintained.
-
-# Game Builder
+# Game Builder New Generation
 
 ![Game Builder](gb-hero.jpg)
 
