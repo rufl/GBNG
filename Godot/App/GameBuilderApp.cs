@@ -20,6 +20,7 @@ public partial class GameBuilderApp : Node3D
     private OptionButton _assetPicker = null!;
     private LineEdit _assetSearch = null!;
     private Label _assetCount = null!;
+    private LegacyAssetPreviewControl _assetPreview = null!;
     private OptionButton _samplePicker = null!;
     private SpinBox[] _positionFields = Array.Empty<SpinBox>();
     private SpinBox _yawField = null!;
@@ -84,6 +85,11 @@ public partial class GameBuilderApp : Node3D
         else
         {
             ShowWelcome();
+        }
+        if (commandLineArgs.Contains("--smoke-asset-preview", StringComparer.Ordinal))
+        {
+            RunAssetPreviewSmoke();
+            return;
         }
     }
 
@@ -357,6 +363,9 @@ public partial class GameBuilderApp : Node3D
         _assetPicker = new OptionButton { CustomMinimumSize = new Vector2(0f, 34f) };
         _assetPicker.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         left.AddChild(_assetPicker);
+        _assetPicker.ItemSelected += _ => ShowSelectedAssetPreview();
+        _assetPreview = new LegacyAssetPreviewControl();
+        left.AddChild(_assetPreview);
         _assetCount = CreateLabel("No assets loaded", 12);
         left.AddChild(_assetCount);
         var addActor = new Button { Text = "Add actor" };
@@ -923,6 +932,20 @@ public partial class GameBuilderApp : Node3D
             _assetCount.Text = "No matching assets";
         }
         _assetPicker.Disabled = _assetPicker.ItemCount == 0;
+        ShowSelectedAssetPreview();
+    }
+
+    private void ShowSelectedAssetPreview()
+    {
+        if (_assetPicker.Selected < 0)
+        {
+            _assetPreview.ShowAsset(null);
+            return;
+        }
+
+        string uri = _assetPicker.GetItemMetadata(_assetPicker.Selected).AsString();
+        _catalog.TryGet(uri, out RenderableEntry? entry);
+        _assetPreview.ShowAsset(entry);
     }
 
     private void AddActor()
