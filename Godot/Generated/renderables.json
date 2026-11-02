@@ -1,0 +1,2197 @@
+{
+  "formatVersion": 1,
+  "renderables": {
+    "builtin:BuiltinAssets/AvatarExplorer": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/AvatarExplorer.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Avatar/Avatar_Editor.fbx",
+        "res://Assets/GameAssets/Models/Avatar/Avatar_Explorer.fbx",
+        "res://Assets/GameAssets/Models/Avatar/DamagedStars.fbx",
+        "res://Assets/GameAssets/Models/Avatar/Emote_Hello.fbx",
+        "res://Assets/GameAssets/Models/Avatar/HologramMenus.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/AvatarEyes_EmissionMask_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/AvatarEyes_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/AvatarThrusters_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/Avatar_BodyMask_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/Avatar_DecalMask_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/Avatar_EmissionMask_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/Avatar_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/DamagedStars_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/DeathWarning_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/Emote_Hello.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/HologramMenus_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/BubblegumDreams/Arch": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/BubblegumDreams/Arch.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/BubblegumDreams/Arch.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/BubblegumDreams/Gradient_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/BubblegumDreams/Bat": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/BubblegumDreams/Bat.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/BubblegumDreams/Bat.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/BubblegumDreams/Gradient_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/BubblegumDreams/CloudLarge": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/BubblegumDreams/CloudLarge.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/BubblegumDreams/CloudLarge.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/BubblegumDreams/CloudMedium": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/BubblegumDreams/CloudMedium.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/BubblegumDreams/CloudMedium.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/BubblegumDreams/CloudSmall": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/BubblegumDreams/CloudSmall.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/BubblegumDreams/CloudSmall.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/BubblegumDreams/Crystal": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/BubblegumDreams/Crystal.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/BubblegumDreams/Crystal.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/BubblegumDreams/CrystalBall_TEX.png",
+        "res://Assets/GameAssets/Textures/BubblegumDreams/CrystalNoise_TEX.png",
+        "res://Assets/GameAssets/Textures/BubblegumDreams/RimMap_TEX.png",
+        "res://Assets/GameAssets/Textures/BubblegumDreams/SparkleNoise_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/BubblegumDreams/CrystalBall": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/BubblegumDreams/CrystalBall.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/BubblegumDreams/CrystalBall.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/BubblegumDreams/CrystalBall_Metal_TEX.png",
+        "res://Assets/GameAssets/Textures/BubblegumDreams/CrystalBall_TEX.png",
+        "res://Assets/GameAssets/Textures/BubblegumDreams/CrystalNoise_TEX.png",
+        "res://Assets/GameAssets/Textures/BubblegumDreams/SparkleNoise_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/BubblegumDreams/FinishLine": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/BubblegumDreams/FinishLine.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/BubblegumDreams/FinishLine.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/BubblegumDreams/CrystalBall_TEX.png",
+        "res://Assets/GameAssets/Textures/BubblegumDreams/CrystalNoise_TEX.png",
+        "res://Assets/GameAssets/Textures/BubblegumDreams/Gradient_TEX.png",
+        "res://Assets/GameAssets/Textures/BubblegumDreams/RimMap_TEX.png",
+        "res://Assets/GameAssets/Textures/BubblegumDreams/SparkleNoise_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/BubblegumDreams/Hoop": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/BubblegumDreams/Hoop.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/BubblegumDreams/Hoop.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/BubblegumDreams/Gradient_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/BubblegumDreams/MagicalTree": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/BubblegumDreams/MagicalTree.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/BubblegumDreams/MagicalTree.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/BubblegumDreams/Gradient_TEX.png",
+        "res://Assets/GameAssets/Textures/BubblegumDreams/MagicalTree_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/BubblegumDreams/Moon": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/BubblegumDreams/Moon.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/BubblegumDreams/Moon.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/BubblegumDreams/Gradient_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/BubblegumDreams/Pillar": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/BubblegumDreams/Pillar.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/BubblegumDreams/Pillar.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/BubblegumDreams/Gradient_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/BubblegumDreams/Potion": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/BubblegumDreams/Potion.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/BubblegumDreams/Potion.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/BubblegumDreams/Gradient_TEX.png",
+        "res://Assets/GameAssets/Textures/BubblegumDreams/SparkleNoise_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/BubblegumDreams/Projectile": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/BubblegumDreams/Projectile.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/BubblegumDreams/Projectile.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/BubblegumDreams/Gradient_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/BubblegumDreams/Tower": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/BubblegumDreams/Tower.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/BubblegumDreams/Tower.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/BubblegumDreams/Gradient_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/BubblegumDreams/Wand": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/BubblegumDreams/Wand.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/BubblegumDreams/Wand.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/BubblegumDreams/Gradient_TEX.png",
+        "res://Assets/GameAssets/Textures/BubblegumDreams/SparkleNoise_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/City/Barricade": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/City/Barricade.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/Barricade.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/City/StreetBarricade_Fences_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/StreetBarricade_Fences_Tint_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/TrafficLight_StreetLight_Cone_Emission_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/City/Fence_Closed": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/City/Fence_Closed.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/Fence_Closed.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/City/StreetBarricade_Fences_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/StreetBarricade_Fences_Tint_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/TrafficLight_StreetLight_Cone_Emission_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/City/Fence_Open": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/City/Fence_Open.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/Fence_Open.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/City/StreetBarricade_Fences_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/StreetBarricade_Fences_Tint_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/TrafficLight_StreetLight_Cone_Emission_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/City/Sign_GoLeft": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/City/Sign_GoLeft.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/Sign_GoLeft.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/City/Signs_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/Signs_Tint_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/TrafficLight_StreetLight_Cone_Emission_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/City/Sign_GoRight": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/City/Sign_GoRight.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/Sign_GoRight.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/City/Signs_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/Signs_Tint_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/TrafficLight_StreetLight_Cone_Emission_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/City/Sign_Hazard": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/City/Sign_Hazard.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/Sign_Hazard.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/City/Signs_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/Signs_Tint_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/TrafficLight_StreetLight_Cone_Emission_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/City/Sign_Stop": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/City/Sign_Stop.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/Sign_Stop.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/City/Signs_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/Signs_Tint_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/TrafficLight_StreetLight_Cone_Emission_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/City/SmartCar": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/City/SmartCar.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Vehicles/SmartCar.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Vehicles/SmartCar_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Vehicles/SmartCar_TEX.png",
+        "res://Assets/GameAssets/Textures/Vehicles/SmartCar_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/City/SportCar": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/City/SportCar.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Vehicles/SportCar.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Vehicles/SportCar_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Vehicles/SportCar_TEX.png",
+        "res://Assets/GameAssets/Textures/Vehicles/SportCar_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/City/StreetLight": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/City/StreetLight.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/StreetLight.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/City/TrafficLight_StreetLight_Cone_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/TrafficLight_StreetLight_Cone_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/TrafficLight_StreetLight_Cone_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/City/StreetSign_Double": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/City/StreetSign_Double.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/StreetSign_Double.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/City/Signs_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/Signs_Tint_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/TrafficLight_StreetLight_Cone_Emission_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/City/StreetSign_Single": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/City/StreetSign_Single.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/StreetSign_Single.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/City/Signs_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/Signs_Tint_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/TrafficLight_StreetLight_Cone_Emission_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/City/TrafficCone": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/City/TrafficCone.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/TrafficCone.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/City/TrafficLight_StreetLight_Cone_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/TrafficLight_StreetLight_Cone_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/TrafficLight_StreetLight_Cone_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/City/TrafficLight_Double": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/City/TrafficLight_Double.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/TrafficLight_Double.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/City/TrafficLight_StreetLight_Cone_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/TrafficLight_StreetLight_Cone_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/TrafficLight_StreetLight_Cone_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/City/TrafficLight_Quad": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/City/TrafficLight_Quad.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/TrafficLight_Quad.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/City/TrafficLight_StreetLight_Cone_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/TrafficLight_StreetLight_Cone_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/TrafficLight_StreetLight_Cone_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/City/TrafficLight_RightAngle": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/City/TrafficLight_RightAngle.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/TrafficLight_RightAngle.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/City/TrafficLight_StreetLight_Cone_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/TrafficLight_StreetLight_Cone_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/TrafficLight_StreetLight_Cone_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/City/TrafficLight_Single": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/City/TrafficLight_Single.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/TrafficLight_Single.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/City/TrafficLight_StreetLight_Cone_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/TrafficLight_StreetLight_Cone_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/City/TrafficLight_StreetLight_Cone_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/Apple": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/Apple.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/Food_Cmillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/Food1_Base_Color.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/Banana": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/Banana.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/Food_Cmillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/Food1_Base_Color.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/Bowl": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/Bowl.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/SodaPlate_Cmillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/SodaPlate_Cmillman_texture_SodaPlate_BaseColor.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/BreadLoaf": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/BreadLoaf.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/Bread_CMillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/Bread_CMillman_texture_Bread_BaseColor.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/BreadSlice": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/BreadSlice.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/Bread_CMillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/Bread_CMillman_texture_Bread_BaseColor.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/Cake": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/Cake.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/Cake_Cmillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/Cake_Cmillman_texture_Cake1_BaseColor.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/CakeSlice": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/CakeSlice.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/Cake_Cmillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/Cake_Cmillman_texture_Cake1_BaseColor.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/Carrot": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/Carrot.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/Food_Cmillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/Food1_Base_Color.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/Chair": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/Chair.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/ChairTable_Cmillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/ChairTable_Cmillman_texture_TableChair_BaseColor.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/Condiment": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/Condiment.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/SodaPlate_Cmillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/SodaPlate_Cmillman_texture_SodaPlate_BaseColor.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/CuttingBoard": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/CuttingBoard.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/CuttingBoard_CMillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/unnamed.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/Egg": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/Egg.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/Eggs_CMillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/Eggs_CMillman_texture_Eggs_BaseColor.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/Flour": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/Flour.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/Cake_Cmillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/Cake_Cmillman_texture_Cake1_BaseColor.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/FriedEgg": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/FriedEgg.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/Eggs_CMillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/Eggs_CMillman_texture_Eggs_BaseColor.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/FryingPan": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/FryingPan.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/FryingPan_Cmillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/FryingPan_Cmillman_Frying_BaseColor.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/Knife": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/Knife.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/CuttingBoard_CMillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/unnamed.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/Lettuce": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/Lettuce.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/Food_Cmillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/Food1_Base_Color.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/MilkCarton": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/MilkCarton.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/MilkCarton_Cmillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/MilkCarton_Cmillman_phong1_BaseColor.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/Onion": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/Onion.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/Food_Cmillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/Food1_Base_Color.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/Orange": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/Orange.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/Food_Cmillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/Food1_Base_Color.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/Oven": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/Oven.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/Oven_Cmillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/Oven_Cmillman_OvenTexture_BaseColor.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/Plate": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/Plate.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/SodaPlate_Cmillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/SodaPlate_Cmillman_texture_SodaPlate_BaseColor.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/Potato": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/Potato.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/Food_Cmillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/Food1_Base_Color.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/PotSoup": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/PotSoup.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/PotSoup_Cmillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/PotSoup_Cmillman_texture_Pot_BaseColor.png",
+        "res://Assets/GameAssets/Textures/Cooking/PotSoup_Cmillman_texture_Soup_BaseColor.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/Radish": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/Radish.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/Food_Cmillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/Food1_Base_Color.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/Slice": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/Slice.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/Food_Cmillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/Food1_Base_Color.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/Soda": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/Soda.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/SodaPlate_Cmillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/SodaPlate_Cmillman_texture_SodaPlate_BaseColor.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/Strawberry": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/Strawberry.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/Food_Cmillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/Food1_Base_Color.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/Table": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/Table.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/ChairTable_Cmillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/ChairTable_Cmillman_texture_TableChair_BaseColor.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/Tomato": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/Tomato.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/Food_Cmillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/Food1_Base_Color.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Cooking/Watermelon": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Cooking/Watermelon.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Cooking/Food_Cmillman.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Cooking/Food1_Base_Color.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/carrot": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/carrot.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/carrot.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/carrot.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/carrot_baby": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/carrot_baby.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/carrot_baby.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/carrot.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/carrot_dead": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/carrot_dead.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/carrot_dead.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/carrot.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/carrot_growing": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/carrot_growing.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/carrot_growing.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/carrot.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/carrot_grown": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/carrot_grown.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/carrot_grown.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/carrot.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/carrot_hurt": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/carrot_hurt.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/carrot_hurt.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/carrot.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/corn": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/corn.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/corn.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/corn.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/corn_baby": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/corn_baby.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/corn_baby.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/corn.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/corn_dead": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/corn_dead.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/corn_dead.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/corn.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/corn_growing": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/corn_growing.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/corn_growing.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/corn.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/corn_grown": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/corn_grown.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/corn_grown.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/corn.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/corn_hurt": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/corn_hurt.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/corn_hurt.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/corn.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/fertilizer": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/fertilizer.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/fertilizer.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/tools.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/hoe": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/hoe.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/hoe.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/tools.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/lettuce": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/lettuce.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/lettuce.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/lettuce.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/lettuce_baby": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/lettuce_baby.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/lettuce_baby.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/lettuce.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/lettuce_dead": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/lettuce_dead.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/lettuce_dead.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/lettuce.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/lettuce_growing": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/lettuce_growing.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/lettuce_growing.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/lettuce.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/lettuce_grown": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/lettuce_grown.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/lettuce_grown.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/lettuce.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/lettuce_hurt": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/lettuce_hurt.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/lettuce_hurt.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/lettuce.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/pumpkin": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/pumpkin.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/pumpkin.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/pumpkin.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/pumpkin_baby": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/pumpkin_baby.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/pumpkin_baby.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/pumpkin.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/pumpkin_dead": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/pumpkin_dead.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/pumpkin_dead.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/pumpkin.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/pumpkin_growing": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/pumpkin_growing.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/pumpkin_growing.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/pumpkin.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/pumpkin_grown": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/pumpkin_grown.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/pumpkin_grown.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/pumpkin.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/pumpkin_hurt": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/pumpkin_hurt.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/pumpkin_hurt.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/pumpkin.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/soil_tilled": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/soil_tilled.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/soil_tilled.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/terrain.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/soil_untilled": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/soil_untilled.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/soil_untilled.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/terrain.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/sprinkler": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/sprinkler.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/sprinkler.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/tools.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/wateringcan": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/wateringcan.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/wateringcan.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/tools.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Farming/wateringhole": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Farming/wateringhole.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Farming/wateringhole.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Farming/terrain.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/Axe": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/Axe.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/Axe.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/Axe_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/Bat": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/Bat.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/NPCs/Bat/Bat.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/NPCs/Bat/Bat_TEX.png",
+        "res://Assets/GameAssets/Textures/NPCs/Bat/Bat_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/Boulder": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/Boulder.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Environment/Forest/Boulder.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/Boulder_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/BouncyPlatform_1x1_Stone": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/BouncyPlatform_1x1_Stone.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/FloatingBouncyPlatforms/BouncyPlatform_1x1_Stone.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/BouncyPlatform_2x2_Stone": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/BouncyPlatform_2x2_Stone.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/FloatingBouncyPlatforms/BouncyPlatform_2x2_Stone.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/BouncyPlatform_2x4_Stone": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/BouncyPlatform_2x4_Stone.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/FloatingBouncyPlatforms/BouncyPlatform_2x4_Stone.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/Butterfly": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/Butterfly.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/NPCs/Butterfly/Butterfly.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/NPCs/Butterfly/Butterfly_TEX.png",
+        "res://Assets/GameAssets/Textures/NPCs/Butterfly/Butterfly_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/Chest": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/Chest.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/Chest.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/Chest_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/Chest_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/Collectable_Star": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/Collectable_Star.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Collectables/Collectable_Star.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Collectables/StarLights_TEX.png",
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/Fern_Large": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/Fern_Large.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Environment/Forest/Fern_Large.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/Fern_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/Fern_Small": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/Fern_Small.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Environment/Forest/Fern_Small.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/Fern_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/Flag": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/Flag.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/Flag.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/Forest/Flag_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/Flag_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/FloatingPlatform_1x1_Stone": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/FloatingPlatform_1x1_Stone.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/FloatingBouncyPlatforms/FloatingPlatform_1x1_Stone.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/FloatingPlatform_2x2_Stone": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/FloatingPlatform_2x2_Stone.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/FloatingBouncyPlatforms/FloatingPlatform_2x2_Stone.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/FloatingPlatform_2x4_Stone": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/FloatingPlatform_2x4_Stone.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/FloatingBouncyPlatforms/FloatingPlatform_2x4_Stone.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/ForestRock_Large01": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/ForestRock_Large01.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Environment/Forest/ForestRock_Large01.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/ForestRocks_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/ForestRock_Large02": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/ForestRock_Large02.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Environment/Forest/ForestRock_Large02.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/ForestRocks_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/ForestRock_Medium01": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/ForestRock_Medium01.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Environment/Forest/ForestRock_Medium01.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/ForestRocks_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/ForestRock_Medium02": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/ForestRock_Medium02.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Environment/Forest/ForestRock_Medium02.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/ForestRocks_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/ForestRock_Medium03": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/ForestRock_Medium03.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Environment/Forest/ForestRock_Medium03.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/ForestRocks_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/ForestRock_Small01": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/ForestRock_Small01.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Environment/Forest/ForestRock_Small01.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/ForestRocks_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/ForestRock_Small02": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/ForestRock_Small02.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Environment/Forest/ForestRock_Small02.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/ForestRocks_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/ForestRock_Small03": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/ForestRock_Small03.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Environment/Forest/ForestRock_Small03.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/ForestRocks_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/ForestRock_Tiny01": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/ForestRock_Tiny01.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Environment/Forest/ForestRock_Tiny01.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/ForestRocks_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/ForestRock_Tiny02": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/ForestRock_Tiny02.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Environment/Forest/ForestRock_Tiny02.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/ForestRocks_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/ForestRock_Tiny03": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/ForestRock_Tiny03.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Environment/Forest/ForestRock_Tiny03.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/ForestRocks_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/Fox": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/Fox.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/NPCs/Fox/FoxNPC.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/NPCs/Fox/Fox_Eyes_TEX.png",
+        "res://Assets/GameAssets/Textures/NPCs/Fox/Fox_TEX.png",
+        "res://Assets/GameAssets/Textures/NPCs/Fox/Fox_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/InteractiveButton_Stone": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/InteractiveButton_Stone.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/InteractiveButton_Stone.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/InteractiveButtons/InteractiveButtons_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/InteractiveButtons/InteractiveButtons_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/Lantern": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/Lantern.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/Lantern.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/Lantern_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/Lantern_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/LeavesTwigPile": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/LeavesTwigPile.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Environment/Forest/LeavesTwigPile.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/LeavesTwigPile_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/Mushroom_Large": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/Mushroom_Large.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Environment/Forest/Mushroom_Large.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/Mushrooms_MAT.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/Mushroom_Medium": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/Mushroom_Medium.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Environment/Forest/Mushroom_Medium.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/Mushrooms_MAT.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/Mushroom_Small": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/Mushroom_Small.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Environment/Forest/Mushroom_Small.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/Mushrooms_MAT.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/Robot_Porthole": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/Robot_Porthole.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Avatar/Avatar_CustomParts.fbx",
+        "res://Assets/GameAssets/Models/Avatar/Avatar_Explorer.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/AvatarEyes_EmissionMask_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/AvatarEyes_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/Avatar_BodyMask_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/Avatar_DecalMask_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/Avatar_EmissionMask_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/Avatar_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/Robot_Radar": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/Robot_Radar.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Avatar/Avatar_CustomParts.fbx",
+        "res://Assets/GameAssets/Models/Avatar/Avatar_Explorer.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/AvatarEyes_EmissionMask_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/AvatarEyes_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/Avatar_BodyMask_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/Avatar_DecalMask_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/Avatar_EmissionMask_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/Avatar_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/Slime": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/Slime.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/NPCs/Slime/Slime.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/NPCs/Slime/SlimeBubbles_TEX.png",
+        "res://Assets/GameAssets/Textures/NPCs/Slime/SlimeTrail_TEX.png",
+        "res://Assets/GameAssets/Textures/NPCs/Slime/Slime_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/NPCs/Slime/Slime_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/Snail": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/Snail.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/NPCs/Snail/Snail.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/NPCs/Snail/Snail_TEX.png",
+        "res://Assets/GameAssets/Textures/NPCs/Snail/Snail_Tint)TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/Snake": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/Snake.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/NPCs/Snake/Snake.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/NPCs/Snake/Snake_TEX.png",
+        "res://Assets/GameAssets/Textures/NPCs/Snake/Snake_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/StackingBlock_1x1_Thin_Stone": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/StackingBlock_1x1_Thin_Stone.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/StackingBlocks/StackingBlock_1x1_Thin.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Stone_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Stone_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/StackingBlock_1x1x1_Stone": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/StackingBlock_1x1x1_Stone.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/StackingBlocks/StackingBlock_1x1x1.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Stone_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Stone_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/StackingBlock_1x1x2_Stone": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/StackingBlock_1x1x2_Stone.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/StackingBlocks/StackingBlock_1x1x2.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Stone_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Stone_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/StackingBlock_1x1x3_Stone": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/StackingBlock_1x1x3_Stone.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/StackingBlocks/StackingBlock_1x1x3.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Stone_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Stone_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/StackingBlock_1x2_Thin_Stone": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/StackingBlock_1x2_Thin_Stone.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/StackingBlocks/StackingBlock_1x2_Thin.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Stone_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Stone_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/StackingBlock_1x3_Thin_Stone": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/StackingBlock_1x3_Thin_Stone.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/StackingBlocks/StackingBlock_1x3_Thin.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Stone_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Stone_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/StackingBlock_2x1x3_Stone": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/StackingBlock_2x1x3_Stone.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/StackingBlocks/StackingBlock_2x1x3.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Stone_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Stone_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/StackingBlock_2x2x3_Stone": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/StackingBlock_2x2x3_Stone.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/StackingBlocks/StackingBlock_3x3x4.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Stone_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Stone_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/StackingBlock_2x3_Thin_Stone": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/StackingBlock_2x3_Thin_Stone.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/StackingBlocks/StackingBlock_2x3_Thin.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Stone_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Stone_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/StoneWall": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/StoneWall.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Structures/Stone/Structures_Wall_Stone_01.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Structures/StoneWall_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/Stump_01": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/Stump_01.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Environment/Forest/Stump_01.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/Tree01_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/Stump_01_Variant": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/Stump_01_Variant.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Environment/Forest/Stump_01.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/Tree01_TEX_Variant.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/Tree_01": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/Tree_01.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Environment/Forest/Tree_01.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/Tree01_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/Tree_01_Variant": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/Tree_01_Variant.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Environment/Forest/Tree_01.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/Tree01_TEX_Variant.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/TutorialArrow": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/TutorialArrow.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Interface/TutorialArrow.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Miscellaneous/TutorialArrow_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/WoodenFence": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/WoodenFence.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/WoodenFence.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/WoodenFence_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/WoodenFence_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Forest/WoodenWall": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Forest/WoodenWall.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Structures/Wooden/Structure_Wall_Wooden.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Structures/WoodenWall_Mask_TEX.png",
+        "res://Assets/GameAssets/Textures/Structures/WoodenWall_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/LaserBolt": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/LaserBolt.prefab",
+      "models": [],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Primitives/FloatingPlatform_1x1": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Primitives/FloatingPlatform_1x1.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Primitives/FloatingPlatform_1x1.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/Primitives/FloatingPlatform_2x2": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Primitives/FloatingPlatform_2x2.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Primitives/FloatingPlatform_2x2.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/Primitives/FloatingPlatform_2x4": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Primitives/FloatingPlatform_2x4.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Primitives/FloatingPlatform_2x4.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/Primitives/PrimitiveCone": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Primitives/PrimitiveCone.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Primitives/PrimitiveCone.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/Primitives/PrimitiveCube": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Primitives/PrimitiveCube.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Primitives/PrimitiveCube.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/Primitives/PrimitiveCylinder": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Primitives/PrimitiveCylinder.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Primitives/PrimitiveCylinder.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/Primitives/PrimitiveDisc": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Primitives/PrimitiveDisc.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Primitives/PrimitiveDisc.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/Primitives/PrimitiveGear": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Primitives/PrimitiveGear.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Primitives/PrimitiveGear.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/Primitives/PrimitivePipe": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Primitives/PrimitivePipe.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Primitives/PrimitivePipe.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/Primitives/PrimitivePlane": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Primitives/PrimitivePlane.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Primitives/PrimitivePlane.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/Primitives/PrimitivePrism": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Primitives/PrimitivePrism.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Primitives/PrimitivePrism.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/Primitives/PrimitivePyramid": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Primitives/PrimitivePyramid.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Primitives/PrimitivePyramid.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/Primitives/PrimitiveSphere": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Primitives/PrimitiveSphere.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Primitives/PrimitiveSphere.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/Primitives/PrimitiveTorus": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Primitives/PrimitiveTorus.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Primitives/PrimitiveTorus.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/Primitives/SolidColorWall": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Primitives/SolidColorWall.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Structures/Metal/Structure_Wall_Metal_01.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Primitives/StackingBlock_1x1_Thin": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Primitives/StackingBlock_1x1_Thin.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Primitives/StackingBlock_1x1_Thin.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/Primitives/StackingBlock_1x1x1": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Primitives/StackingBlock_1x1x1.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Primitives/StackingBlock_1x1x1.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/Primitives/StackingBlock_1x1x2": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Primitives/StackingBlock_1x1x2.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Primitives/StackingBlock_1x1x2.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/Primitives/StackingBlock_1x1x3": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Primitives/StackingBlock_1x1x3.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Primitives/StackingBlock_1x1x3.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/Primitives/StackingBlock_1x2_Thin": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Primitives/StackingBlock_1x2_Thin.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Primitives/StackingBlock_1x2_Thin.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/Primitives/StackingBlock_1x3_Thin": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Primitives/StackingBlock_1x3_Thin.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Primitives/StackingBlock_1x3_Thin.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/Primitives/StackingBlock_2x1x3": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Primitives/StackingBlock_2x1x3.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Primitives/StackingBlock_2x1x3.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/Primitives/StackingBlock_2x2x3": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Primitives/StackingBlock_2x2x3.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Primitives/StackingBlock_3x3x4.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/Primitives/StackingBlock_2x3_Thin": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Primitives/StackingBlock_2x3_Thin.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Primitives/StackingBlock_2x3_Thin.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/Space/Alien": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/Alien.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/NPCs/Alien/Alien.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/NPCs/Alien/Alien_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/NPCs/Alien/Alien_Eyes_TEX.png",
+        "res://Assets/GameAssets/Textures/NPCs/Alien/Alien_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/AntennaTower": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/AntennaTower.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/AntennaTower.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/Space/Barrels_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/RadarsAntennas_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/RadarsAntennas_Mask_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/RadarsAntennas_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/AntennaTri": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/AntennaTri.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/AntennaTri.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/Space/Barrels_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/RadarsAntennas_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/RadarsAntennas_Mask_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/RadarsAntennas_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/Barrel_Assist": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/Barrel_Assist.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/Barrel_Assist.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/Space/Barrels_Emission2_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/Barrels_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/Barrels_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/Barrel_Hazard": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/Barrel_Hazard.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/Barrel_Hazard.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/Space/Barrels_Emission2_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/Barrels_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/Barrels_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/BaseTurret": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/BaseTurret.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/BaseTurret.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/Chest_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/Chest_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/BaseTurret_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/BaseTurret_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/BouncyPlatform_1x1_Metal": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/BouncyPlatform_1x1_Metal.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/FloatingBouncyPlatforms/BouncyPlatform_1x1_Metal.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/BouncyPlatform_2x2_Metal": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/BouncyPlatform_2x2_Metal.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/FloatingBouncyPlatforms/BouncyPlatform_2x2_Metal.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/BouncyPlatform_2x4_Metal": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/BouncyPlatform_2x4_Metal.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/FloatingBouncyPlatforms/BouncyPlatform_2x4_Metal.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/Checkpoint": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/Checkpoint.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/Checkpoint.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/Space/CheckpointStartFinishLine_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/CheckpointStartFinishLine_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/Collectable_HologramPrism": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/Collectable_HologramPrism.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Collectables/Collectable_HologramPrism.fbx",
+        "res://Assets/GameAssets/Models/Collectables/Collectable_Star.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Collectables/Collectable_HologramPrism_TEX.png",
+        "res://Assets/GameAssets/Textures/Collectables/StarLights_TEX.png",
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/Avatar_BodyMask_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/Avatar_DecalMask_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/Avatar_EmissionMask_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/CommandConsole_Large": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/CommandConsole_Large.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/CommandConsole_Large.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/CommandConsoles_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/CommandConsoles_Holograms_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/CommandConsoles_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/CommandConsoles_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/CommandConsole_Small": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/CommandConsole_Small.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/CommandConsole_Small.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/CommandConsoles_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/CommandConsoles_Holograms_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/CommandConsoles_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/CommandConsoles_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/EnemyDrone": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/EnemyDrone.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Vehicles/EnemyDrone.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Vehicles/EnemyDrone_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Vehicles/EnemyDrone_Texture_TEX.png",
+        "res://Assets/GameAssets/Textures/Vehicles/EnemyDrone_TintMask_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/FloatingPlatform_1x1_Metal": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/FloatingPlatform_1x1_Metal.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/FloatingBouncyPlatforms/FloatingPlatform_1x1_Metal.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/FloatingPlatform_2x2_Metal": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/FloatingPlatform_2x2_Metal.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/FloatingBouncyPlatforms/FloatingPlatform_2x2_Metal.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/FloatingPlatform_2x4_Metal": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/FloatingPlatform_2x4_Metal.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/FloatingBouncyPlatforms/FloatingPlatform_2x4_Metal.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/FloatingBouncyPlatforms/FloatingBouncyPlatforms_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/Frisbee": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/Frisbee.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/Frisbee.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/Space/FrisbeeGoal_Emission2_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/FrisbeeGoal_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/FrisbeeGoal_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/Goal": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/Goal.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/Goal.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/Space/FrisbeeGoal_Emission2_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/FrisbeeGoal_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/FrisbeeGoal_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/InteractiveButton_Metal": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/InteractiveButton_Metal.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/InteractiveButton_Metal.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/InteractiveButtons/InteractiveButtons_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/InteractiveButtons/InteractiveButtons_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/LaserBlaster": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/LaserBlaster.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/LaserBlaster.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/Chest_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Forest/Chest_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/LaserBlaster_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/LaserBlaster_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/LaserBlasterProjectile": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/LaserBlasterProjectile.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/LaserBlasterProjectile.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/LaserBlaster_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/LaserBlaster_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/MetalDoor": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/MetalDoor.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Structures/Metal/Structure_Door_Metal_01.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Structures/Door_Metal_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Structures/Door_Metal_TEX.png",
+        "res://Assets/GameAssets/Textures/Structures/Door_Metal_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/MetalWall": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/MetalWall.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Structures/Metal/Structure_Wall_Metal_01.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Structures/MetalWall_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Structures/MetalWall_TEX.png",
+        "res://Assets/GameAssets/Textures/Structures/MetalWall_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/RadarDish_Large": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/RadarDish_Large.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/RadarDish_Large.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/Space/Barrels_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/RadarsAntennas_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/RadarsAntennas_Mask_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/RadarsAntennas_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/RadarDish_Small": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/RadarDish_Small.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/RadarDish_Small.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/Space/Barrels_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/RadarsAntennas_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/RadarsAntennas_Mask_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/RadarsAntennas_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/Robot": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/Robot.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/NPCs/Robot/Robot.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/NPCs/Robot/RobotNPCTreads_TEX.png",
+        "res://Assets/GameAssets/Textures/NPCs/Robot/RobotNPC_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/NPCs/Robot/RobotNPC_Mask_TEX.png",
+        "res://Assets/GameAssets/Textures/NPCs/Robot/RobotNPC_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/Spaceship": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/Spaceship.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Vehicles/Spaceship.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Vehicles/Spaceship_Emission2_TEX.png",
+        "res://Assets/GameAssets/Textures/Vehicles/Spaceship_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Vehicles/Spaceship_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/StackingBlock_1x1_Thin_Metal": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/StackingBlock_1x1_Thin_Metal.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/StackingBlocks/StackingBlock_1x1_Thin.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Metal_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Metal_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/StackingBlock_1x1x1_Metal": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/StackingBlock_1x1x1_Metal.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/StackingBlocks/StackingBlock_1x1x1.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Metal_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Metal_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/StackingBlock_1x1x2_Metal": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/StackingBlock_1x1x2_Metal.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/StackingBlocks/StackingBlock_1x1x2.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Metal_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Metal_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/StackingBlock_1x1x3_Metal": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/StackingBlock_1x1x3_Metal.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/StackingBlocks/StackingBlock_1x1x3.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Metal_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Metal_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/StackingBlock_1x2_Thin_Metal": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/StackingBlock_1x2_Thin_Metal.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/StackingBlocks/StackingBlock_1x2_Thin.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Metal_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Metal_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/StackingBlock_1x3_Thin_Metal": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/StackingBlock_1x3_Thin_Metal.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/StackingBlocks/StackingBlock_1x3_Thin.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Metal_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Metal_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/StackingBlock_2x1x3_Metal": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/StackingBlock_2x1x3_Metal.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/StackingBlocks/StackingBlock_2x1x3.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Metal_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Metal_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/StackingBlock_2x2x3_Metal": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/StackingBlock_2x2x3_Metal.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/StackingBlocks/StackingBlock_3x3x4.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Metal_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Metal_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/StackingBlock_2x3_Thin_Metal": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/StackingBlock_2x3_Thin_Metal.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/StackingBlocks/StackingBlock_2x3_Thin.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Metal_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/StackingBlocks/StackableBlocks_Metal_Tint_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/Space/StartFinishLine": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/Space/StartFinishLine.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Props/StartFinishLine.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Props/Space/CheckpointStartFinishLine_Emission_TEX.png",
+        "res://Assets/GameAssets/Textures/Props/Space/CheckpointStartFinishLine_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/World/Gizmo_Audio": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/World/Gizmo_Audio.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Interface/Gizmo_Audio.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Miscellaneous/Gizmo_Audio_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/Avatar_BodyMask_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/Avatar_DecalMask_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/Avatar_EmissionMask_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/World/Gizmo_Camera": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/World/Gizmo_Camera.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Interface/Gizmo_Camera.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Miscellaneous/Gizmo_Camera_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/Avatar_BodyMask_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/Avatar_DecalMask_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/Avatar_EmissionMask_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/World/Gizmo_Light": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/World/Gizmo_Light.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Interface/GIzmo_Light.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Miscellaneous/Gizmo_Light_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/Avatar_BodyMask_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/Avatar_DecalMask_TEX.png",
+        "res://Assets/GameAssets/Textures/PlayerAvatar/Avatar_EmissionMask_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/World/PlayZoneBoundary": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/World/PlayZoneBoundary.prefab",
+      "models": [],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Terrain/PlayZoneBoundary_TEX.png",
+        "res://Assets/GameAssets/Textures/Environment/Terrain/Terrain_OffstageHighlight_TEX.png",
+        "res://Assets/GameAssets/Textures/Environment/Terrain/Terrain_OffstageMask_TEX.png",
+        "res://Assets/GameAssets/Textures/Environment/Terrain/Terrain_Offstage_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/World/WorldSettingsHologram": {
+      "prefab": "res://Assets/GameAssets/Resources/BuiltinAssets/World/WorldSettingsHologram.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Interface/WorldSettingsHologram.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Miscellaneous/WorldSettingsHologram_EmissionMask_TEX.png",
+        "res://Assets/GameAssets/Textures/Miscellaneous/WorldSettingsHologram_TEX.png"
+      ]
+    },
+    "builtin:BuiltinAssets/BillboardTextPanel": {
+      "prefab": "res://Assets/Resources/BuiltinAssets/BillboardTextPanel.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Internal/imagepanel.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/BrokenConnection": {
+      "prefab": "res://Assets/Resources/BuiltinAssets/BrokenConnection.prefab",
+      "models": [],
+      "images": []
+    },
+    "builtin:BuiltinAssets/CommentPanel": {
+      "prefab": "res://Assets/Resources/BuiltinAssets/CommentPanel.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Internal/imagepanel.fbx"
+      ],
+      "images": []
+    },
+    "builtin:BuiltinAssets/Empty": {
+      "prefab": "res://Assets/Resources/BuiltinAssets/Empty.prefab",
+      "models": [],
+      "images": []
+    },
+    "builtin:BuiltinAssets/LightSphere": {
+      "prefab": "res://Assets/Resources/BuiltinAssets/LightSphere.prefab",
+      "models": [],
+      "images": []
+    },
+    "builtin:BuiltinAssets/logo": {
+      "prefab": "res://Assets/Resources/BuiltinAssets/logo.prefab",
+      "models": [
+        "res://Assets/GameAssets/Models/Internal/logo.fbx"
+      ],
+      "images": [
+        "res://Assets/GameAssets/Textures/Environment/Miscellaneous/Emission_Black_TEX.png",
+        "res://Assets/GameAssets/Textures/Miscellaneous/gradient.png"
+      ]
+    }
+  }
+}

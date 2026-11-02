@@ -48,3 +48,8 @@ Assets/TextMesh Pro.meta
 /build_output
 
 unity-asset-deps.txt
+# Godot-generated import cache and build output
+/.godot/
+/Godot/.godot/
+!/GBNG.Godot.csproj
+!/GBNG.Godot.sln
