@@ -86,11 +86,6 @@ public partial class GameBuilderApp : Node3D
         {
             ShowWelcome();
         }
-        if (commandLineArgs.Contains("--smoke-asset-preview", StringComparer.Ordinal))
-        {
-            RunAssetPreviewSmoke();
-            return;
-        }
     }
 
     public override void _Process(double delta)
@@ -363,11 +358,11 @@ public partial class GameBuilderApp : Node3D
         _assetPicker = new OptionButton { CustomMinimumSize = new Vector2(0f, 34f) };
         _assetPicker.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         left.AddChild(_assetPicker);
-        _assetPicker.ItemSelected += _ => ShowSelectedAssetPreview();
-        _assetPreview = new LegacyAssetPreviewControl();
-        left.AddChild(_assetPreview);
         _assetCount = CreateLabel("No assets loaded", 12);
         left.AddChild(_assetCount);
+        _assetPreview = new LegacyAssetPreviewControl();
+        left.AddChild(_assetPreview);
+        _assetPicker.ItemSelected += _ => ShowSelectedAssetPreview();
         var addActor = new Button { Text = "Add actor" };
         addActor.Pressed += AddActor;
         left.AddChild(addActor);

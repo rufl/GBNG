@@ -28,7 +28,7 @@ public sealed partial class LegacyAssetPreviewControl : VBoxContainer
             Name = "AssetPreviewViewport",
             Size = new Vector2I(320, 180),
             OwnWorld3D = true,
-            RenderTargetUpdateMode = SubViewport.UpdateMode.Always
+            RenderTargetUpdateMode = SubViewport.UpdateMode.WhenVisible
         };
         _viewportContainer = new SubViewportContainer
         {
@@ -71,12 +71,19 @@ public sealed partial class LegacyAssetPreviewControl : VBoxContainer
         _assetName.Text = entry.Uri;
         string? modelPath = entry.SelectPrimaryModel();
         PackedScene? modelScene = modelPath is null ? null : ResourceLoader.Load<PackedScene>(modelPath);
-        if (modelScene?.Instantiate() is Node3D modelRoot && ShowModel(modelRoot))
+        Node? modelInstance = modelScene?.Instantiate();
+        if (modelInstance is Node3D modelRoot)
         {
-            _previewStatus.Text = $"3D model: {Path.GetFileName(modelPath)}";
-            return;
+            if (ShowModel(modelRoot))
+            {
+                _previewStatus.Text = $"3D model: {Path.GetFileName(modelPath)}";
+                return;
+            }
         }
-
+        else
+        {
+            modelInstance?.Free();
+        }
         if (TryShowImage(entry))
             return;
         _previewStatus.Text = "No converted model or image preview is available.";
@@ -91,20 +98,13 @@ public sealed partial class LegacyAssetPreviewControl : VBoxContainer
         modelRoot.ForceUpdateTransform();
 
         Aabb? bounds = null;
+        if (modelRoot is MeshInstance3D rootMesh && rootMesh.Mesh is not null)
+            ExpandMeshBounds(rootMesh, ref bounds);
         foreach (Node node in modelRoot.FindChildren("*", "MeshInstance3D", true, false))
         {
-            if (node is not MeshInstance3D meshInstance || meshInstance.Mesh is null)
+            if (node == modelRoot || node is not MeshInstance3D meshInstance || meshInstance.Mesh is null)
                 continue;
-            Aabb localBounds = meshInstance.GetAabb();
-            for (int corner = 0; corner < 8; corner++)
-            {
-                Vector3 localPoint = localBounds.Position + new Vector3(
-                    (corner & 1) == 0 ? 0f : localBounds.Size.X,
-                    (corner & 2) == 0 ? 0f : localBounds.Size.Y,
-                    (corner & 4) == 0 ? 0f : localBounds.Size.Z);
-                Vector3 worldPoint = meshInstance.ToGlobal(localPoint);
-                bounds = bounds is null ? new Aabb(worldPoint, Vector3.Zero) : bounds.Value.Expand(worldPoint);
-            }
+            ExpandMeshBounds(meshInstance, ref bounds);
         }
 
         if (bounds is null)
@@ -138,6 +138,21 @@ public sealed partial class LegacyAssetPreviewControl : VBoxContainer
         camera.LookAt(center, Vector3.Up);
         _viewportContainer.Visible = true;
         return true;
+    }
+
+    private static void ExpandMeshBounds(MeshInstance3D meshInstance, ref Aabb? bounds)
+    {
+        meshInstance.ForceUpdateTransform();
+        Aabb localBounds = meshInstance.GetAabb();
+        for (int corner = 0; corner < 8; corner++)
+        {
+            Vector3 localPoint = localBounds.Position + new Vector3(
+                (corner & 1) == 0 ? 0f : localBounds.Size.X,
+                (corner & 2) == 0 ? 0f : localBounds.Size.Y,
+                (corner & 4) == 0 ? 0f : localBounds.Size.Z);
+            Vector3 worldPoint = meshInstance.ToGlobal(localPoint);
+            bounds = bounds is null ? new Aabb(worldPoint, Vector3.Zero) : bounds.Value.Expand(worldPoint);
+        }
     }
 
     private bool TryShowImage(RenderableEntry entry)
