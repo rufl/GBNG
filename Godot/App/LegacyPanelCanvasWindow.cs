@@ -338,39 +338,63 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         bool oneCardOnly = LegacySaveDocument.ReadBool((definition["deckOptions"] as JsonObject)?["oneCardOnly"]);
         JsonArray? assignedCards = value as JsonArray;
         var assignedIds = new HashSet<string>(StringComparer.Ordinal);
+        var assignedEntries = new List<(string Id, int Index)>();
         var editor = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         if (assignedCards is not null)
         {
-            foreach (JsonNode? cardIdNode in assignedCards)
+            for (int index = 0; index < assignedCards.Count; index++)
             {
-                string cardId = LegacySaveDocument.ReadString(cardIdNode);
+                string cardId = LegacySaveDocument.ReadString(assignedCards[index]);
                 if (cardId.Length == 0)
                     continue;
                 assignedIds.Add(cardId);
-                string title = usesById.TryGetValue(cardId, out JsonObject? cardUse)
-                    ? GetCardDisplayName(LegacySaveDocument.ReadString(cardUse["behaviorUri"]))
-                    : $"Missing use · {cardId}";
-                var row = new HBoxContainer();
-                row.AddChild(new Label
-                {
-                    Text = title,
-                    SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                    AutowrapMode = TextServer.AutowrapMode.Word
-                });
-                if (usesById.TryGetValue(cardId, out JsonObject? customCardUse)
-                    && IsCustomPanelCard(LegacySaveDocument.ReadString(customCardUse["behaviorUri"])))
-                {
-                    var returnToCustom = new Button { Name = $"ReturnToCustom_{cardId}", Text = "Return to Custom" };
-                    returnToCustom.Pressed += () => ReturnCardToCustom(cardId);
-                    row.AddChild(returnToCustom);
-                }
-                var remove = new Button { Name = $"RemoveCard_{cardId}", Text = "Remove" };
-                remove.Pressed += () => RemoveCardFromDeck(LegacySaveDocument.ReadString(panelUse["id"]), propertyName, cardId);
-                row.AddChild(remove);
-                editor.AddChild(row);
+                assignedEntries.Add((cardId, index));
             }
         }
-        if (assignedIds.Count == 0)
+        string panelUseId = LegacySaveDocument.ReadString(panelUse["id"]);
+        foreach ((string cardId, int deckIndex) in assignedEntries)
+        {
+            string title = usesById.TryGetValue(cardId, out JsonObject? cardUse)
+                ? GetCardDisplayName(LegacySaveDocument.ReadString(cardUse["behaviorUri"]))
+                : $"Missing use · {cardId}";
+            var row = new HBoxContainer();
+            row.AddChild(new Label
+            {
+                Text = title,
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                AutowrapMode = TextServer.AutowrapMode.Word
+            });
+            var moveUp = new Button
+            {
+                Name = $"MoveCardUp_{panelUseId}_{propertyName}_{cardId}",
+                Text = "Up",
+                TooltipText = "Move this card earlier in the deck.",
+                Disabled = deckIndex == assignedEntries[0].Index
+            };
+            moveUp.Pressed += () => MoveCardInDeck(panelUseId, propertyName, cardId, -1);
+            row.AddChild(moveUp);
+            var moveDown = new Button
+            {
+                Name = $"MoveCardDown_{panelUseId}_{propertyName}_{cardId}",
+                Text = "Down",
+                TooltipText = "Move this card later in the deck.",
+                Disabled = deckIndex == assignedEntries[^1].Index
+            };
+            moveDown.Pressed += () => MoveCardInDeck(panelUseId, propertyName, cardId, 1);
+            row.AddChild(moveDown);
+            if (usesById.TryGetValue(cardId, out JsonObject? customCardUse)
+                && IsCustomPanelCard(LegacySaveDocument.ReadString(customCardUse["behaviorUri"])))
+            {
+                var returnToCustom = new Button { Name = $"ReturnToCustom_{cardId}", Text = "Return to Custom" };
+                returnToCustom.Pressed += () => ReturnCardToCustom(cardId);
+                row.AddChild(returnToCustom);
+            }
+            var remove = new Button { Name = $"RemoveCard_{cardId}", Text = "Remove" };
+            remove.Pressed += () => RemoveCardFromDeck(panelUseId, propertyName, cardId);
+            row.AddChild(remove);
+            editor.AddChild(row);
+        }
+        if (assignedEntries.Count == 0)
             editor.AddChild(CreateCanvasLabel("(empty)"));
 
         var picker = new OptionButton
@@ -498,6 +522,41 @@ public sealed partial class LegacyPanelCanvasWindow : Window
             currentCards = ReadAssignedValue(panelUse, propertyName) as JsonArray ?? new JsonArray();
             currentCards.Add(useId);
             WriteAssignedValue(panelUse, propertyName, currentCards);
+            ApplyCardDeckChange();
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidDataException or FormatException or OverflowException)
+        {
+            _status.Text = exception.Message;
+        }
+    }
+
+    private void MoveCardInDeck(string panelUseId, string propertyName, string cardUseId, int offset)
+    {
+        try
+        {
+            JsonObject brain = EnsureWritableBrain();
+            if (brain["behaviorUses"] is not JsonArray uses)
+                throw new InvalidDataException("This behavior brain has no assigned uses.");
+            JsonObject panelUse = FindUse(uses, panelUseId)
+                ?? throw new InvalidDataException("The selected panel no longer exists.");
+            JsonArray cardIds = ReadAssignedValue(panelUse, propertyName) as JsonArray
+                ?? throw new InvalidDataException($"Deck '{propertyName}' has no ordered card list.");
+            int sourceIndex = -1;
+            for (int index = 0; index < cardIds.Count; index++)
+            {
+                if (LegacySaveDocument.ReadString(cardIds[index]) == cardUseId)
+                {
+                    sourceIndex = index;
+                    break;
+                }
+            }
+            int targetIndex = sourceIndex + offset;
+            if (sourceIndex < 0 || targetIndex < 0 || targetIndex >= cardIds.Count)
+                return;
+            JsonNode? movingCardId = cardIds[sourceIndex]?.DeepClone();
+            cardIds.RemoveAt(sourceIndex);
+            cardIds.Insert(targetIndex, movingCardId);
+            WriteAssignedValue(panelUse, propertyName, cardIds);
             ApplyCardDeckChange();
         }
         catch (Exception exception) when (exception is JsonException or InvalidDataException or FormatException or OverflowException)

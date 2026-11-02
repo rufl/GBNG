@@ -33,6 +33,8 @@ The visual panel canvas also adds visible built-in panels with their legacy defa
 
 The canvas duplicates panels with fresh panel and card-use IDs, preserved property assignments, and an offset layout position.
 
+Assigned cards can move up or down within their deck; reordering persists in the .voos deck list without changing card-use IDs or properties.
+
 ## Prerequisites
 
 * [Unity Editor 6000.6.6f1](https://unity.com/releases/editor/whats-new/6000.6.6f1). This fork is pinned to that editor release.
