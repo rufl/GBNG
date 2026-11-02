@@ -20,6 +20,7 @@ public sealed partial class LegacyPanelCanvasWindow : Window
     private readonly Action _onChanged;
     private readonly Func<string, JsonArray?> _getPropertyDefinitions;
     private readonly Action _createCustomCard;
+    private readonly OptionButton _panelPicker = new();
     private readonly GraphEdit _canvas = new();
     private readonly Label _status = new();
     private readonly Dictionary<string, JsonObject?> _builtinMetadata = new(StringComparer.Ordinal);
@@ -51,6 +52,7 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         CloseRequested += CloseCanvas;
         LoadBuiltinMetadata();
         BuildInterface();
+        PopulatePanelChoices();
         PopulateCanvas();
     }
 
@@ -135,6 +137,16 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         center.Pressed += ResetCanvasView;
         toolbar.AddChild(center);
         layout.AddChild(toolbar);
+
+        var panelLibrary = new HBoxContainer();
+        panelLibrary.AddChild(new Label { Text = "Built-in panel:", SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter });
+        _panelPicker.Name = "BuiltinPanelPicker";
+        _panelPicker.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        panelLibrary.AddChild(_panelPicker);
+        var addPanel = new Button { Name = "AddBuiltinPanel", Text = "Add panel" };
+        addPanel.Pressed += AddSelectedPanel;
+        panelLibrary.AddChild(addPanel);
+        layout.AddChild(panelLibrary);
 
         _canvas.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         _canvas.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
@@ -630,6 +642,73 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         }
     }
 
+    private void AddSelectedPanel()
+    {
+        if (_panelPicker.Selected < 0)
+            return;
+
+        string uri = _panelPicker.GetItemMetadata(_panelPicker.Selected).AsString();
+        var addedUseIds = new List<string>();
+        JsonArray? targetUses = null;
+        try
+        {
+            JsonObject? panelData = GetBehaviorMetadata(uri)?["cardSystemPanelData"] as JsonObject;
+            if (!LegacySaveDocument.ReadBool(panelData?["isPanel"]) || LegacySaveDocument.ReadBool(panelData?["hidden"]))
+                throw new InvalidDataException("The selected behavior is not an available built-in panel.");
+
+            JsonObject brain = EnsureWritableBrain();
+            targetUses = brain["behaviorUses"] as JsonArray
+                ?? throw new InvalidDataException("This behavior brain has no assigned uses.");
+            JsonObject panelUse = CreateBehaviorUse(NewUseId(targetUses), uri);
+            targetUses.Add(panelUse);
+            addedUseIds.Add(LegacySaveDocument.ReadString(panelUse["id"]));
+            _layoutDirty = true;
+
+            _onChanged();
+            JsonArray definitions = _getPropertyDefinitions(uri)
+                ?? throw new InvalidDataException($"Property definitions for '{uri}' are unavailable.");
+            foreach (JsonNode? node in definitions)
+            {
+                if (node is not JsonObject definition
+                    || LegacySaveDocument.ReadString(definition["type"]) != "CardDeck")
+                    continue;
+                string propertyName = LegacySaveDocument.ReadString(definition["variableName"]);
+                if (propertyName.Length == 0
+                    || (definition["deckOptions"] as JsonObject)?["defaultCardURIs"] is not JsonArray defaultUris)
+                    continue;
+
+                var defaultUseIds = new JsonArray();
+                foreach (JsonNode? defaultUriNode in defaultUris)
+                {
+                    string defaultUri = LegacySaveDocument.ReadString(defaultUriNode);
+                    if (defaultUri.Length == 0)
+                        continue;
+                    string cardUseId = NewUseId(targetUses);
+                    targetUses.Add(CreateBehaviorUse(cardUseId, defaultUri));
+                    addedUseIds.Add(cardUseId);
+                    defaultUseIds.Add(cardUseId);
+                }
+                if (defaultUseIds.Count > 0)
+                    WriteAssignedValue(panelUse, propertyName, defaultUseIds);
+            }
+
+            _onChanged();
+            RebuildCanvas();
+            _status.Text = "Panel added with its default cards. Use Save in GBNG to persist the project.";
+        }
+        catch (Exception exception)
+        {
+            if (targetUses is not null)
+            {
+                for (int index = addedUseIds.Count - 1; index >= 0; index--)
+                    RemoveBehaviorUse(targetUses, addedUseIds[index]);
+                if (addedUseIds.Count > 0)
+                    _onChanged();
+            }
+            _status.Text = $"Could not add panel: {exception.Message}";
+        }
+    }
+
     private void CreateCustomCard()
     {
         try
@@ -801,6 +880,16 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         } while (FindUse(uses, id) is not null);
         return id;
     }
+
+    private static JsonObject CreateBehaviorUse(string useId, string behaviorUri)
+        => new()
+        {
+            ["id"] = useId,
+            ["behaviorUri"] = behaviorUri,
+            ["metadataJson"] = "",
+            ["propertyAssignments"] = new JsonArray()
+        };
+
 
     private bool IsCardInCategory(string uri, string category)
     {
@@ -1133,6 +1222,24 @@ public sealed partial class LegacyPanelCanvasWindow : Window
             if (!_builtinMetadata.TryAdd(uri, metadata))
                 _builtinMetadata[uri] = null;
         }
+    }
+
+    private void PopulatePanelChoices()
+    {
+        _panelPicker.Clear();
+        foreach (KeyValuePair<string, JsonObject?> entry in _builtinMetadata
+            .OrderBy(item => LegacySaveDocument.ReadString((item.Value?["cardSystemPanelData"] as JsonObject)?["title"], item.Key), StringComparer.OrdinalIgnoreCase))
+        {
+            JsonObject? panelData = entry.Value?["cardSystemPanelData"] as JsonObject;
+            if (!LegacySaveDocument.ReadBool(panelData?["isPanel"]) || LegacySaveDocument.ReadBool(panelData?["hidden"]))
+                continue;
+            string title = LegacySaveDocument.ReadString(panelData?["title"], entry.Key);
+            _panelPicker.AddItem(title);
+            _panelPicker.SetItemMetadata(_panelPicker.ItemCount - 1, entry.Key);
+        }
+        _panelPicker.Disabled = _panelPicker.ItemCount == 0;
+        if (_panelPicker.ItemCount > 0)
+            _panelPicker.Select(0);
     }
 
     private JsonObject? GetBehaviorMetadata(string uri)
