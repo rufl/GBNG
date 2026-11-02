@@ -33,7 +33,7 @@ The visual panel canvas also adds visible built-in panels with their legacy defa
 
 The canvas duplicates panels with fresh panel and card-use IDs, preserved property assignments, and an offset layout position.
 
-Assigned cards can move up or down within their deck; reordering persists in the .voos deck list without changing card-use IDs or properties.
+Assigned cards can move up or down within their deck; reordering persists in the .voos deck list without changing card-use IDs or properties. Card pickers exclude built-in and embedded definitions marked `hidden`; existing hidden uses remain visible and movable between compatible decks.
 
 ## Prerequisites
 

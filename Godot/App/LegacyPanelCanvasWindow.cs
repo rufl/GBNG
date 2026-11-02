@@ -439,7 +439,7 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         var seenUris = new HashSet<string>(StringComparer.Ordinal);
         foreach (string uri in _builtinMetadata.Keys.OrderBy(value => value, StringComparer.Ordinal))
         {
-            if (IsCardInCategory(uri, category) && seenUris.Add(uri))
+            if (IsAvailableCardInCategory(uri, category) && seenUris.Add(uri))
                 choices.Add(new CardChoice($"behavior:{uri}", GetCardDisplayName(uri)));
         }
 
@@ -451,7 +451,7 @@ public sealed partial class LegacyPanelCanvasWindow : Window
             {
                 string behaviorId = LegacySaveDocument.ReadString(behaviorIds[index]);
                 string uri = $"embedded:{behaviorId}";
-                if (behaviorId.Length > 0 && IsCardInCategory(uri, category) && seenUris.Add(uri))
+                if (behaviorId.Length > 0 && IsAvailableCardInCategory(uri, category) && seenUris.Add(uri))
                     choices.Add(new CardChoice($"behavior:{uri}", GetCardDisplayName(uri)));
             }
         }
@@ -490,8 +490,8 @@ public sealed partial class LegacyPanelCanvasWindow : Window
             else if (selected.StartsWith("behavior:", StringComparison.Ordinal))
             {
                 string uri = selected["behavior:".Length..];
-                if (!IsCardInCategory(uri, category))
-                    throw new InvalidDataException("The selected card is not valid for this deck.");
+                if (!IsAvailableCardInCategory(uri, category))
+                    throw new InvalidDataException("The selected card is not available in this deck.");
                 useId = NewUseId(uses);
                 uses.Add(new JsonObject
                 {
@@ -806,7 +806,7 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         try
         {
             JsonObject? panelData = GetBehaviorMetadata(uri)?["cardSystemPanelData"] as JsonObject;
-            if (!LegacySaveDocument.ReadBool(panelData?["isPanel"]) || IsHiddenPanel(panelData))
+            if (!LegacySaveDocument.ReadBool(panelData?["isPanel"]) || IsHiddenMetadata(panelData))
                 throw new InvalidDataException("The selected behavior is not an available built-in panel.");
 
             JsonObject brain = EnsureWritableBrain();
@@ -1068,12 +1068,19 @@ public sealed partial class LegacyPanelCanvasWindow : Window
 
 
     private bool IsCardInCategory(string uri, string category)
+        => IsCardInCategory(uri, category, excludeHidden: false);
+
+    private bool IsAvailableCardInCategory(string uri, string category)
+        => IsCardInCategory(uri, category, excludeHidden: true);
+
+    private bool IsCardInCategory(string uri, string category, bool excludeHidden)
     {
         JsonObject? metadata = GetBehaviorMetadata(uri);
         if (metadata is null)
             return uri.StartsWith("embedded:", StringComparison.Ordinal) && category == CustomCategory;
         if (metadata["cardSystemCardData"] is not JsonObject cardData
             || !LegacySaveDocument.ReadBool(cardData["isCard"])
+            || (excludeHidden && IsHiddenMetadata(cardData))
             || cardData["categories"] is not JsonArray categories)
             return false;
         return categories.Any(node => LegacySaveDocument.ReadString(node) == category);
@@ -1407,7 +1414,7 @@ public sealed partial class LegacyPanelCanvasWindow : Window
             .OrderBy(item => LegacySaveDocument.ReadString((item.Value?["cardSystemPanelData"] as JsonObject)?["title"], item.Key), StringComparer.OrdinalIgnoreCase))
         {
             JsonObject? panelData = entry.Value?["cardSystemPanelData"] as JsonObject;
-            if (!LegacySaveDocument.ReadBool(panelData?["isPanel"]) || IsHiddenPanel(panelData))
+            if (!LegacySaveDocument.ReadBool(panelData?["isPanel"]) || IsHiddenMetadata(panelData))
                 continue;
             string title = LegacySaveDocument.ReadString(panelData?["title"], entry.Key);
             _panelPicker.AddItem(title);
@@ -1418,16 +1425,16 @@ public sealed partial class LegacyPanelCanvasWindow : Window
             _panelPicker.Select(0);
     }
 
-    private static bool IsHiddenPanel(JsonObject? panelData)
+    private static bool IsHiddenMetadata(JsonObject? metadata)
     {
-        JsonNode? hiddenNode = panelData?["hidden"];
+        JsonNode? hiddenNode = metadata?["hidden"];
         if (hiddenNode is null)
             return false;
         if (hiddenNode is JsonValue value && value.TryGetValue(out bool hidden))
             return hidden;
         if (bool.TryParse(LegacySaveDocument.ReadString(hiddenNode), out bool legacyHidden))
             return legacyHidden;
-        throw new InvalidDataException("Panel hidden metadata must be a boolean.");
+        throw new InvalidDataException("Hidden metadata must be a boolean.");
     }
 
     private JsonObject? GetBehaviorMetadata(string uri)
