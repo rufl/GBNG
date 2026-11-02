@@ -43,27 +43,34 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
     private bool _propertyDefinitionsAvailable;
 
     private sealed record BehaviorChoice(string Uri, string Label);
+    private sealed record CardChoice(string UseId, string Label);
 
     private sealed partial class StringArrayEditor : VBoxContainer
     {
-        private readonly Func<string, OptionButton> _pickerFactory;
-        private readonly List<OptionButton> _pickers = new();
-        private readonly Button _addButton = new() { Text = "Add value" };
+        private sealed record ValueRow(OptionButton Picker, HBoxContainer Container, Button MoveUp, Button MoveDown);
 
-        public StringArrayEditor(Func<string, OptionButton> pickerFactory, IEnumerable<string> values)
+        private readonly Func<string, OptionButton> _pickerFactory;
+        private readonly List<ValueRow> _rows = new();
+        private readonly Button _addButton = new();
+        private readonly int? _maximumCount;
+
+        public StringArrayEditor(
+            Func<string, OptionButton> pickerFactory,
+            IEnumerable<string> values,
+            string addButtonText = "Add value",
+            int? maximumCount = null)
         {
             _pickerFactory = pickerFactory;
+            _maximumCount = maximumCount;
+            _addButton.Text = addButtonText;
             CustomMinimumSize = new Vector2(0f, 100f);
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             AddThemeConstantOverride("separation", 4);
             foreach (string value in values)
                 AddValueRow(value);
-            _addButton.Pressed += () =>
-            {
-                AddValueRow("");
-                Changed?.Invoke();
-            };
+            _addButton.Pressed += () => AddValueRow("");
             AddChild(_addButton);
+            RefreshRowButtons();
         }
 
         public event Action? Changed;
@@ -71,34 +78,72 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
         public JsonArray GetValues()
         {
             var values = new JsonArray();
-            foreach (OptionButton picker in _pickers)
-                values.Add(picker.GetItemMetadata(picker.Selected).AsString());
+            foreach (ValueRow row in _rows)
+                values.Add(row.Picker.GetItemMetadata(row.Picker.Selected).AsString());
             return values;
         }
 
         private void AddValueRow(string value)
         {
-            var row = new HBoxContainer();
+            var container = new HBoxContainer();
             var picker = _pickerFactory(value);
             picker.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             picker.ItemSelected += _ => Changed?.Invoke();
+            var moveUp = new Button { Text = "Up" };
+            moveUp.Pressed += () => MoveValueRow(picker, -1);
+            var moveDown = new Button { Text = "Down" };
+            moveDown.Pressed += () => MoveValueRow(picker, 1);
             var removeButton = new Button { Text = "Remove" };
-            removeButton.Pressed += () => RemoveValueRow(picker, row);
-            _pickers.Add(picker);
-            row.AddChild(picker);
-            row.AddChild(removeButton);
-            AddChild(row);
+            removeButton.Pressed += () => RemoveValueRow(picker);
+            container.AddChild(picker);
+            container.AddChild(moveUp);
+            container.AddChild(moveDown);
+            container.AddChild(removeButton);
+            _rows.Add(new ValueRow(picker, container, moveUp, moveDown));
+            AddChild(container);
             if (_addButton.GetParent() == this)
-                MoveChild(row, GetChildCount() - 2);
+                MoveChild(container, GetChildCount() - 2);
+            RefreshRowButtons();
+            Changed?.Invoke();
         }
 
-        private void RemoveValueRow(OptionButton picker, HBoxContainer row)
+        private void RemoveValueRow(OptionButton picker)
         {
-            if (!_pickers.Remove(picker))
+            int index = _rows.FindIndex(row => row.Picker == picker);
+            if (index < 0)
                 return;
-            RemoveChild(row);
-            row.QueueFree();
+            ValueRow row = _rows[index];
+            _rows.RemoveAt(index);
+            RemoveChild(row.Container);
+            row.Container.QueueFree();
+            RefreshRowButtons();
             Changed?.Invoke();
+        }
+
+        private void MoveValueRow(OptionButton picker, int offset)
+        {
+            int index = _rows.FindIndex(row => row.Picker == picker);
+            if (index < 0)
+                return;
+            int targetIndex = Math.Clamp(index + offset, 0, _rows.Count - 1);
+            if (targetIndex == index)
+                return;
+            ValueRow row = _rows[index];
+            _rows.RemoveAt(index);
+            _rows.Insert(targetIndex, row);
+            MoveChild(row.Container, targetIndex);
+            RefreshRowButtons();
+            Changed?.Invoke();
+        }
+
+        private void RefreshRowButtons()
+        {
+            for (int index = 0; index < _rows.Count; index++)
+            {
+                _rows[index].MoveUp.Disabled = index == 0;
+                _rows[index].MoveDown.Disabled = index == _rows.Count - 1;
+            }
+            _addButton.Disabled = _maximumCount.HasValue && _rows.Count >= _maximumCount.Value;
         }
     }
 
@@ -748,57 +793,43 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
     }
 
 
-    private ItemList CreateCardDeckEditor(JsonObject definition, JsonNode? value)
+    private StringArrayEditor CreateCardDeckEditor(JsonObject definition, JsonNode? value)
     {
-        string category = LegacySaveDocument.ReadString((definition["deckOptions"] as JsonObject)?["cardCategory"], "Custom");
+        JsonObject? deckOptions = definition["deckOptions"] as JsonObject;
+        string category = LegacySaveDocument.ReadString(deckOptions?["cardCategory"], "Custom");
         if (category.Length == 0)
             category = "Custom";
-        var selectedIds = new HashSet<string>(StringComparer.Ordinal);
-        if (value is JsonArray selectedValues)
-        {
-            foreach (JsonNode? selectedValue in selectedValues)
-            {
-                string id = LegacySaveDocument.ReadString(selectedValue);
-                if (id.Length > 0)
-                    selectedIds.Add(id);
-            }
-        }
 
-        var list = new ItemList
-        {
-            SelectMode = LegacySaveDocument.ReadBool((definition["deckOptions"] as JsonObject)?["oneCardOnly"])
-                ? ItemList.SelectModeEnum.Single
-                : ItemList.SelectModeEnum.Multi,
-            CustomMinimumSize = new Vector2(0f, 130f),
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
-        };
-        var displayedIds = new HashSet<string>(StringComparer.Ordinal);
+        var cards = new List<CardChoice>();
         if (GetCurrentBrain()?["behaviorUses"] is JsonArray uses)
         {
             foreach (JsonNode? node in uses)
             {
                 if (node is not JsonObject use)
                     continue;
-                string id = LegacySaveDocument.ReadString(use["id"]);
+                string useId = LegacySaveDocument.ReadString(use["id"]);
                 string uri = LegacySaveDocument.ReadString(use["behaviorUri"]);
-                if (id.Length == 0 || !IsCardInCategory(uri, category))
-                    continue;
-                list.AddItem(GetBehaviorLabel(uri));
-                list.SetItemMetadata(list.ItemCount - 1, id);
-                displayedIds.Add(id);
-                if (selectedIds.Contains(id))
-                    list.Select(list.ItemCount - 1, false);
+                if (useId.Length > 0 && IsCardInCategory(uri, category))
+                    cards.Add(new CardChoice(useId, GetBehaviorLabel(uri)));
             }
         }
-        foreach (string id in selectedIds)
-        {
-            if (displayedIds.Contains(id))
-                continue;
-            list.AddItem($"Missing card · {ShortId(id)}");
-            list.SetItemMetadata(list.ItemCount - 1, id);
-            list.Select(list.ItemCount - 1, false);
-        }
-        return list;
+
+        int? maximumCount = LegacySaveDocument.ReadBool(deckOptions?["oneCardOnly"]) ? 1 : null;
+        return new StringArrayEditor(
+            selectedId => CreateCardUsePicker(cards, selectedId),
+            ReadStringArray(value),
+            "Add card",
+            maximumCount);
+    }
+
+    private static OptionButton CreateCardUsePicker(IReadOnlyList<CardChoice> cards, string selectedId)
+    {
+        var picker = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        AddPickerOption(picker, "(choose a card)", "", selectedId);
+        foreach (CardChoice card in cards)
+            AddPickerOption(picker, card.Label, card.UseId, selectedId);
+        AddUnknownPickerOption(picker, selectedId);
+        return picker;
     }
 
     private bool IsCardInCategory(string uri, string category)
@@ -833,17 +864,6 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
         }
     }
 
-    private static JsonArray GetSelectedDeckIds(ItemList list)
-    {
-        var ids = new JsonArray();
-        for (int index = 0; index < list.ItemCount; index++)
-        {
-            if (list.IsSelected(index))
-                ids.Add(list.GetItemMetadata(index).AsString());
-        }
-        return ids;
-    }
-
 
     private void ConnectPropertyEditor(Control editor)
     {
@@ -869,9 +889,6 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
                 break;
             case LineEdit lineEdit:
                 lineEdit.TextChanged += _ => RefreshPropertyVisibility();
-                break;
-            case ItemList itemList:
-                itemList.MultiSelected += (_, _) => RefreshPropertyVisibility();
                 break;
         }
     }
@@ -931,8 +948,6 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
             return "#" + colorPicker.Color.ToHtml(false);
         if (editor is StringArrayEditor stringArrayEditor)
             return stringArrayEditor.GetValues().ToJsonString();
-        if (editor is ItemList itemList)
-            return GetSelectedDeckIds(itemList).ToJsonString();
         if (editor is TextEdit textEdit)
         {
             try
@@ -1039,8 +1054,6 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
             return JsonValue.Create("#" + colorPicker.Color.ToHtml(false));
         if (editor is StringArrayEditor stringValuesEditor)
             return stringValuesEditor.GetValues();
-        if (editor is ItemList itemList && type == "CardDeck")
-            return GetSelectedDeckIds(itemList);
         if (editor is TextEdit arrayEditor)
         {
             if (JsonNode.Parse(arrayEditor.Text) is not JsonArray values)
