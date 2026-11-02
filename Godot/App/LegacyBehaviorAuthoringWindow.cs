@@ -30,6 +30,8 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
     private readonly Button _applyScriptButton = new();
     private readonly Button _applyAssignmentsButton = new();
     private readonly Label _status = new();
+    private readonly Label _availableBehaviorDetails = new() { AutowrapMode = TextServer.AutowrapMode.Word };
+    private readonly Label _selectedBehaviorDetails = new() { AutowrapMode = TextServer.AutowrapMode.Word };
     private readonly Dictionary<string, string> _builtinSources = new(StringComparer.Ordinal);
     private bool _refreshing;
     private string _selectedUseId = "";
@@ -194,7 +196,10 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
         left.AddChild(_assignedUses);
 
         _availableBehaviors.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        _availableBehaviors.ItemSelected += _ => RefreshAvailableBehaviorDetails();
         left.AddChild(_availableBehaviors);
+        _availableBehaviorDetails.CustomMinimumSize = new Vector2(0f, 56f);
+        left.AddChild(_availableBehaviorDetails);
         var addSelected = new Button { Text = "Add selected behavior" };
         addSelected.Pressed += AddSelectedBehavior;
         left.AddChild(addSelected);
@@ -217,7 +222,8 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
         var right = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         columns.AddChild(right);
         var scriptToolbar = new HBoxContainer();
-        scriptToolbar.AddChild(new Label { Text = "JavaScript" , SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
+        right.AddChild(_selectedBehaviorDetails);
+        scriptToolbar.AddChild(new Label { Text = "JavaScript", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
         _copyBehaviorButton.Text = "Create editable copy";
         _copyBehaviorButton.Disabled = true;
         _copyBehaviorButton.Pressed += CopySelectedBehavior;
@@ -310,6 +316,13 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
         if (_availableBehaviors.ItemCount > 0 && _availableBehaviors.Selected < 0)
             _availableBehaviors.Select(0);
         _availableBehaviors.Disabled = _availableBehaviors.ItemCount == 0;
+        RefreshAvailableBehaviorDetails();
+    }
+    private void RefreshAvailableBehaviorDetails()
+    {
+        _availableBehaviorDetails.Text = _availableBehaviors.Selected < 0
+            ? "No behavior library entries are available."
+            : FormatBehaviorDetails(_availableBehaviors.GetItemMetadata(_availableBehaviors.Selected).AsString());
     }
 
     private void RefreshAssignedUses()
@@ -355,6 +368,9 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
     {
         JsonObject? use = GetSelectedUse();
         _selectedUri = use is null ? "" : LegacySaveDocument.ReadString(use["behaviorUri"]);
+        _selectedBehaviorDetails.Text = use is null
+            ? "Select an assigned behavior to inspect its card details."
+            : FormatBehaviorDetails(_selectedUri);
         bool hasSource = (_selectedUri.StartsWith("embedded:", StringComparison.Ordinal)
                           && FindEmbeddedBehavior(_selectedUri["embedded:".Length..]) is not null)
                          || (_selectedUri.StartsWith("builtin:", StringComparison.Ordinal)
@@ -1263,19 +1279,56 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
         return label.Length == 0 || label == "Custom" ? $"Custom · {ShortId(id)}" : label;
     }
 
-    private string GetSelectedMetadataJson()
+    private string GetBehaviorMetadataJson(string uri)
     {
-        if (_selectedUri.StartsWith("embedded:", StringComparison.Ordinal)
-            && FindEmbeddedBehavior(_selectedUri["embedded:".Length..]) is JsonObject embedded)
+        if (uri.StartsWith("embedded:", StringComparison.Ordinal)
+            && FindEmbeddedBehavior(uri["embedded:".Length..]) is JsonObject embedded)
             return LegacySaveDocument.ReadString(embedded["metadataJson"]);
-        if (_selectedUri.StartsWith("builtin:", StringComparison.Ordinal)
-            && _builtinSources.TryGetValue(_selectedUri, out string? path))
+        if (uri.StartsWith("builtin:", StringComparison.Ordinal)
+            && _builtinSources.TryGetValue(uri, out string? path))
         {
             string metadataPath = path + ".metaJson";
             if (Godot.FileAccess.FileExists(metadataPath))
                 return Godot.FileAccess.GetFileAsString(metadataPath);
         }
-        return CreateDefaultMetadata(GetBehaviorLabel(_selectedUri));
+        return CreateDefaultMetadata(GetBehaviorLabel(uri));
+    }
+
+    private string GetSelectedMetadataJson() => GetBehaviorMetadataJson(_selectedUri);
+
+    private string FormatBehaviorDetails(string uri)
+    {
+        try
+        {
+            JsonObject? metadata = JsonNode.Parse(GetBehaviorMetadataJson(uri)) as JsonObject;
+            bool hasBuiltinMetadata = !uri.StartsWith("builtin:", StringComparison.Ordinal)
+                || (_builtinSources.TryGetValue(uri, out string? sourcePath) && Godot.FileAccess.FileExists(sourcePath + ".metaJson"));
+            JsonObject? panel = metadata?["cardSystemPanelData"] as JsonObject;
+            JsonObject? card = metadata?["cardSystemCardData"] as JsonObject;
+            if (!hasBuiltinMetadata)
+            {
+                panel = null;
+                card = null;
+            }
+            string title = LegacySaveDocument.ReadString(card?["title"], LegacySaveDocument.ReadString(panel?["title"], GetBehaviorLabel(uri)));
+            string description = LegacySaveDocument.ReadString(card?["description"], LegacySaveDocument.ReadString(panel?["description"]));
+            bool isCard = card is not null && LegacySaveDocument.ReadBool(card["isCard"], true);
+            string kind = panel is not null && LegacySaveDocument.ReadBool(panel["isPanel"]) ? "Panel" : isCard ? "Card" : "Behavior";
+            var details = new List<string> { title, kind };
+            if (isCard && card?["categories"] is JsonArray categories && categories.Count > 0)
+            {
+                string categoryNames = string.Join(", ", categories.Select(category => LegacySaveDocument.ReadString(category)).Where(value => value.Length > 0));
+                if (categoryNames.Length > 0)
+                    details.Add($"Categories: {categoryNames}");
+            }
+            if (description.Length > 0)
+                details.Add(description);
+            return string.Join("\n", details);
+        }
+        catch (JsonException)
+        {
+            return GetBehaviorLabel(uri);
+        }
     }
 
     private JsonObject? GetSelectedUse()
