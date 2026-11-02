@@ -12,7 +12,7 @@ public sealed class LegacyRenderableCatalog
 
     public static LegacyRenderableCatalog Load(string path = "res://Godot/Generated/renderables.json")
     {
-        string json = FileAccess.GetFileAsString(path);
+        string json = Godot.FileAccess.GetFileAsString(path);
         if (string.IsNullOrWhiteSpace(json))
             throw new InvalidDataException($"The generated renderable catalog is missing or empty: {path}");
 

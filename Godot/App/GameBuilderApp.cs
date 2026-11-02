@@ -41,7 +41,11 @@ public partial class GameBuilderApp : Node3D
         BuildWorldServices();
         BuildInterface();
         PopulateSamples();
-        ShowWelcome();
+        string[] commandLineArgs = OS.GetCmdlineUserArgs();
+        if (commandLineArgs.Length > 0)
+            LoadProject(commandLineArgs[0]);
+        else
+            ShowWelcome();
     }
 
     public override void _Process(double delta)
@@ -77,7 +81,7 @@ public partial class GameBuilderApp : Node3D
         velocity.Z = move.Z * 8f;
         player.LinearVelocity = velocity;
 
-        if (Input.IsKeyPressed(Key.Space) && player.IsOnFloor)
+        if (Input.IsKeyPressed(Key.Space) && player.IsGrounded)
             player.ApplyCentralImpulse(Vector3.Up * player.Mass * 15f);
     }
 
@@ -341,13 +345,20 @@ public partial class GameBuilderApp : Node3D
             LegacySaveDocument document = LegacySaveDocument.Load(path);
             ClearWorld();
             _document = document;
-            _terrain = LegacyTerrainData.Decode(document.GridState);
-            if (_terrain is not null)
-                _world.AddChild(LegacyTerrainNode.Create(_terrain));
+            LegacyTerrainData? terrainData = LegacyTerrainData.Decode(document.GridState);
+            if (terrainData is not null)
+            {
+                _terrain = LegacyTerrainNode.Create(terrainData);
+                _world.AddChild(_terrain);
+            }
             else
+            {
+                _terrain = null;
                 AddStageGround(document.Stage);
+            }
 
             BuildActors(document);
+            GD.Print($"Loaded {document.Actors.Count} actors from {path} (save version {document.Version}).");
             PopulateAssetPicker();
             _welcome.Visible = false;
             _editor.Visible = true;

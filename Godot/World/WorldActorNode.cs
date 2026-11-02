@@ -6,12 +6,89 @@ namespace GBNG.World;
 
 public partial class WorldActorNode : RigidBody3D
 {
+    private Node3D? _renderableRoot;
     private RayCast3D? _groundProbe;
+    private bool _playMode;
 
     public LegacyActorData State { get; private set; } = null!;
     public string LegacyName => State.Name;
     public string RenderableUri => State.RenderableUri;
     public bool IsGrounded => _groundProbe?.IsColliding() ?? false;
+    public Vector3 DesiredVelocity { get; set; }
+    public Vector3 StickyDesiredVelocity { get; set; }
+    public Vector3 StickyForce { get; set; }
+    public bool UseDesiredVelocity { get; set; }
+    public bool IgnoreVerticalDesiredVelocity { get; set; }
+    public bool UseStickyDesiredVelocity { get; set; }
+
+    public void ApplyDesiredVelocity()
+    {
+        if (!UseDesiredVelocity || Freeze)
+            return;
+
+        Vector3 velocity = DesiredVelocity;
+        if (IgnoreVerticalDesiredVelocity)
+            velocity.Y = LinearVelocity.Y;
+        LinearVelocity = velocity;
+    }
+
+    public void SetTint(Color tint)
+    {
+        if (State is not null)
+            State.WriteColor(tint);
+        if (_renderableRoot is not null)
+            ApplyTint(_renderableRoot, tint);
+    }
+
+    public void SetRenderableOffset(Vector3 legacyOffset)
+    {
+        State.WriteLegacyVector("renderableOffset", legacyOffset);
+        if (_renderableRoot is not null)
+            _renderableRoot.Position = CoordinateSpace.ToGodot(legacyOffset);
+    }
+
+    public void SetRenderableRotation(Quaternion legacyRotation)
+    {
+        State.WriteLegacyQuaternion("renderableRotation", legacyRotation);
+        if (_renderableRoot is not null)
+            _renderableRoot.Quaternion = CoordinateSpace.ToGodot(legacyRotation);
+    }
+
+    public void SetLoopingAnimation(string animationName)
+    {
+        State.WriteString("loopingAnimation", animationName);
+        ApplyLoopingAnimation();
+    }
+
+
+    public void ApplyLegacyPhysicsSettings()
+    {
+        if (State is null)
+            return;
+
+        GravityScale = State.EnableGravity ? 1f : 0f;
+        Mass = State.Mass;
+        LinearDamp = State.Drag;
+        AngularDamp = State.AngularDrag;
+        LockRotation = State.FreezeRotations;
+        AxisLockLinearX = State.FreezeX;
+        AxisLockLinearY = State.FreezeY;
+        AxisLockLinearZ = State.FreezeZ;
+        CollisionLayer = State.IsSolid ? 1u : 0u;
+        CollisionMask = State.IsSolid ? 1u : 0u;
+        if (_renderableRoot is not null)
+            _renderableRoot.Visible = !(_playMode && State.HideInPlayMode);
+    }
+
+    public void SetPlayMode(bool enabled)
+    {
+        if (State is null)
+            return;
+
+        _playMode = enabled;
+        Freeze = !enabled || !State.EnablePhysics;
+        ApplyLegacyPhysicsSettings();
+    }
 
     public void Initialize(LegacyActorData state, RenderableEntry? renderable)
     {
@@ -31,6 +108,8 @@ public partial class WorldActorNode : RigidBody3D
         FreezeMode = FreezeModeEnum.Static;
         LinearVelocity = state.Velocity;
         AngularVelocity = state.AngularVelocity;
+        ApplyLegacyPhysicsSettings();
+
 
         if (renderable is null)
         {
@@ -61,8 +140,9 @@ public partial class WorldActorNode : RigidBody3D
         modelRoot.Name = "Renderable";
         modelRoot.Position = state.RenderableOffset;
         modelRoot.Quaternion = state.RenderableRotation;
+        _renderableRoot = modelRoot;
         AddChild(modelRoot);
-        ApplyTint(modelRoot, state.Tint);
+        SetTint(state.Tint);
     }
 
     public override void _Ready()
@@ -70,27 +150,28 @@ public partial class WorldActorNode : RigidBody3D
         CreateBodyCollider();
         if (_groundProbe is not null)
             _groundProbe.Enabled = true;
+        ApplyLoopingAnimation();
     }
-
-    public void SetPlayMode(bool enabled)
+    private void ApplyLoopingAnimation()
     {
-        if (State is null)
+        string animationName = State?.LoopingAnimation ?? "";
+        if (animationName.Length == 0 || _renderableRoot is null)
             return;
 
-        Freeze = !enabled || !State.EnablePhysics;
-        GravityScale = State.EnableGravity ? 1f : 0f;
-        Mass = State.Mass;
-        LinearDamp = State.Drag;
-        AngularDamp = State.AngularDrag;
-        LockRotation = State.FreezeRotations;
-        CollisionLayer = State.IsSolid ? 1u : 0u;
-        CollisionMask = State.IsSolid ? 1u : 0u;
-        foreach (Node3D child in FindChildren("*", "Node3D", true, false).OfType<Node3D>())
+        foreach (AnimationPlayer player in _renderableRoot.FindChildren("*", "AnimationPlayer", true, false).OfType<AnimationPlayer>())
         {
-            if (child.Name == "Renderable" && State.HideInPlayMode)
-                child.Visible = !enabled;
+            if (player.HasAnimation(animationName))
+            {
+                player.Play(animationName);
+                return;
+            }
         }
+
+        GD.PushWarning($"Actor '{LegacyName}' requests missing animation '{animationName}'.");
     }
+
+
+
 
     public void SaveTransform()
     {
@@ -166,9 +247,6 @@ public partial class WorldActorNode : RigidBody3D
 
     private static void ApplyTint(Node root, Color tint)
     {
-        if (tint == Colors.White)
-            return;
-
         foreach (Node child in root.FindChildren("*", "MeshInstance3D", true, false))
         {
             if (child is not MeshInstance3D meshInstance || meshInstance.Mesh is not Mesh mesh)
@@ -176,13 +254,22 @@ public partial class WorldActorNode : RigidBody3D
 
             for (int surface = 0; surface < mesh.GetSurfaceCount(); surface++)
             {
-                Material? activeMaterial = meshInstance.GetActiveMaterial(surface);
-                if (activeMaterial is not BaseMaterial3D baseMaterial)
-                    continue;
-
-                if (baseMaterial.Duplicate() is BaseMaterial3D tintedMaterial)
+                Material? sourceMaterial = mesh.SurfaceGetMaterial(surface);
+                if (sourceMaterial is not BaseMaterial3D sourceBase)
                 {
-                    tintedMaterial.AlbedoColor *= tint;
+                    meshInstance.SetSurfaceOverrideMaterial(surface, null);
+                    continue;
+                }
+
+                if (tint == Colors.White)
+                {
+                    meshInstance.SetSurfaceOverrideMaterial(surface, null);
+                    continue;
+                }
+
+                if (sourceBase.Duplicate() is BaseMaterial3D tintedMaterial)
+                {
+                    tintedMaterial.AlbedoColor = sourceBase.AlbedoColor * tint;
                     meshInstance.SetSurfaceOverrideMaterial(surface, tintedMaterial);
                 }
             }

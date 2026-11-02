@@ -51,5 +51,8 @@ unity-asset-deps.txt
 # Godot-generated import cache and build output
 /.godot/
 /Godot/.godot/
+# Godot creates per-resource sidecars while scanning the preserved Unity assets.
+*.import
+*.uid
 !/GBNG.Godot.csproj
 !/GBNG.Godot.sln

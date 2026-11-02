@@ -56,7 +56,7 @@ public sealed class LegacySaveDocument
         if (string.IsNullOrWhiteSpace(path))
             throw new ArgumentException("A .voos path is required.", nameof(path));
 
-        string json = FileAccess.GetFileAsString(path);
+        string json = Godot.FileAccess.GetFileAsString(path);
         if (string.IsNullOrWhiteSpace(json))
             throw new InvalidDataException($"The .voos file is missing or empty: {path}");
 
@@ -119,6 +119,8 @@ public sealed class LegacySaveDocument
         File.Move(temporaryPath, absolutePath, overwrite: true);
         SourcePath = path;
     }
+
+
 
     internal static JsonObject EnsureObject(JsonObject parent, string propertyName)
     {
@@ -240,6 +242,66 @@ public sealed class LegacyActorData
     }
 
     public void SetTransformParent(string parentName) => _data["transformParent"] = parentName;
+
+    public void SetVelocity(Vector3 velocity)
+    {
+        JsonObject target = LegacySaveDocument.EnsureObject(_data, "velocity");
+        WriteVector(target, CoordinateSpace.ToLegacy(velocity));
+    }
+
+    public void SetAngularVelocity(Vector3 angularVelocity)
+    {
+        JsonObject target = LegacySaveDocument.EnsureObject(_data, "angularVelocity");
+        WriteVector(target, CoordinateSpace.ToLegacy(angularVelocity));
+    }
+
+    public Vector3 SpawnPosition => CoordinateSpace.ToGodot(ReadVector(
+        _data["spawnPosition"],
+        CoordinateSpace.ToLegacy(GetWorldTransform().Origin)));
+    public Quaternion SpawnRotation => CoordinateSpace.ToGodot(ReadQuaternion(_data["spawnRotation"]));
+    public string LoopingAnimation => LegacySaveDocument.ReadString(_data["loopingAnimation"]);
+
+    public Vector3 ReadLegacyVector(string propertyName, Vector3 fallback)
+        => ReadVector(_data[propertyName], fallback);
+
+    public Quaternion ReadLegacyQuaternion(string propertyName)
+        => ReadQuaternion(_data[propertyName]);
+
+    public void WriteLegacyVector(string propertyName, Vector3 value)
+        => WriteVector(LegacySaveDocument.EnsureObject(_data, propertyName), value);
+
+    public void WriteLegacyQuaternion(string propertyName, Quaternion value)
+        => WriteQuaternion(LegacySaveDocument.EnsureObject(_data, propertyName), value);
+
+    public void WriteString(string propertyName, string value) => _data[propertyName] = value;
+    public void WriteBool(string propertyName, bool value) => _data[propertyName] = value;
+    public void WriteFloat(string propertyName, float value) => _data[propertyName] = value;
+    public void WriteColor(Color value)
+    {
+        var color = LegacySaveDocument.EnsureObject(_data, "tint");
+        color["r"] = value.R;
+        color["g"] = value.G;
+        color["b"] = value.B;
+        color["a"] = value.A;
+    }
+
+    internal void SetPosition(Vector3 worldPosition)
+    {
+        JsonObject target = LegacySaveDocument.EnsureObject(_data, "position");
+        WriteVector(target, CoordinateSpace.ToLegacy(worldPosition));
+    }
+
+    internal void SetRotation(Quaternion worldRotation)
+    {
+        JsonObject target = LegacySaveDocument.EnsureObject(_data, "rotation");
+        WriteQuaternion(target, CoordinateSpace.ToLegacy(worldRotation));
+    }
+
+    internal void SetScale(Vector3 scale)
+    {
+        JsonObject target = LegacySaveDocument.EnsureObject(_data, "localScale");
+        WriteVector(target, scale);
+    }
 
     private static Vector3 ReadVector(JsonNode? node, Vector3 fallback)
     {
