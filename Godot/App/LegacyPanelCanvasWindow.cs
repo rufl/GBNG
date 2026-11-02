@@ -284,6 +284,9 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         var deletePanel = new Button { Name = $"DeletePanel_{panelUseId}", Text = "Delete panel" };
         deletePanel.Pressed += () => DeletePanel(panelUseId);
         graphNode.AddChild(deletePanel);
+        var duplicatePanel = new Button { Name = $"DuplicatePanel_{panelUseId}", Text = "Duplicate panel" };
+        duplicatePanel.Pressed += () => DuplicatePanel(panelUseId);
+        graphNode.AddChild(duplicatePanel);
 
         JsonArray? definitions = _getPropertyDefinitions(uri);
         if (definitions is null)
@@ -595,6 +598,94 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         }
     }
 
+    private void DuplicatePanel(string panelUseId)
+    {
+        var addedUseIds = new List<string>();
+        JsonArray? targetUses = null;
+        string originalBrainId = _actor.BrainName;
+        JsonObject? originalBrain = _brain;
+        bool previousLayoutDirty = _layoutDirty;
+        try
+        {
+            JsonArray currentUses = _brain?["behaviorUses"] as JsonArray
+                ?? throw new InvalidDataException("This behavior brain has no assigned uses.");
+            JsonObject currentPanelUse = FindUse(currentUses, panelUseId)
+                ?? throw new InvalidDataException("The selected panel no longer exists.");
+            string uri = LegacySaveDocument.ReadString(currentPanelUse["behaviorUri"]);
+            JsonObject? panelData = GetBehaviorMetadata(uri)?["cardSystemPanelData"] as JsonObject;
+            if (!LegacySaveDocument.ReadBool(panelData?["isPanel"]))
+                throw new InvalidDataException("The selected behavior is not a panel.");
+            JsonArray definitions = _getPropertyDefinitions(uri)
+                ?? throw new InvalidDataException("This panel's card slot definitions are unavailable.");
+
+            JsonObject brain = EnsureWritableBrain();
+            targetUses = brain["behaviorUses"] as JsonArray
+                ?? throw new InvalidDataException("This behavior brain has no assigned uses.");
+            JsonObject sourceUse = FindUse(targetUses, panelUseId)
+                ?? throw new InvalidDataException("The selected panel no longer exists.");
+            JsonObject panelClone = sourceUse.DeepClone().AsObject();
+            string panelCloneId = NewUseId(targetUses);
+            panelClone["id"] = panelCloneId;
+            targetUses.Add(panelClone);
+            addedUseIds.Add(panelCloneId);
+
+            JsonObject panelUseMetadata = ParseObjectString(panelClone["metadataJson"], "duplicated panel-use metadata");
+            GraphNode? sourceNode = _panelNodes
+                .FirstOrDefault(entry => LegacySaveDocument.ReadString(entry.Use["id"]) == panelUseId).Node;
+            Vector2 sourcePosition = sourceNode?.PositionOffset
+                ?? ReadVector2(panelUseMetadata["position"], new Vector2(50 + _panelNodes.Count * 380, 60));
+            panelUseMetadata["version"] = 1;
+            panelUseMetadata["position"] = CreateVector2(sourcePosition + new Vector2(80, -80));
+            panelClone["metadataJson"] = panelUseMetadata.ToJsonString();
+
+            foreach (JsonNode? node in definitions)
+            {
+                if (node is not JsonObject definition
+                    || LegacySaveDocument.ReadString(definition["type"]) != "CardDeck")
+                    continue;
+                string propertyName = LegacySaveDocument.ReadString(definition["variableName"]);
+                if (propertyName.Length == 0
+                    || ReadAssignedValue(sourceUse, propertyName) is not JsonArray sourceCardIds)
+                    continue;
+
+                var clonedCardIds = new JsonArray();
+                foreach (JsonNode? cardIdNode in sourceCardIds)
+                {
+                    string sourceCardId = LegacySaveDocument.ReadString(cardIdNode);
+                    if (sourceCardId.Length == 0)
+                        continue;
+                    JsonObject sourceCardUse = FindUse(targetUses, sourceCardId)
+                        ?? throw new InvalidDataException($"Panel deck '{propertyName}' references missing card use '{sourceCardId}'.");
+                    JsonObject cardClone = sourceCardUse.DeepClone().AsObject();
+                    string cardCloneId = NewUseId(targetUses);
+                    cardClone["id"] = cardCloneId;
+                    targetUses.Add(cardClone);
+                    addedUseIds.Add(cardCloneId);
+                    clonedCardIds.Add(cardCloneId);
+                }
+                WriteAssignedValue(panelClone, propertyName, clonedCardIds);
+            }
+
+            _layoutDirty = true;
+            _onChanged();
+            RebuildCanvas();
+            _status.Text = "Panel duplicated with its card uses and properties. Use Save in GBNG to persist the project.";
+        }
+        catch (Exception exception)
+        {
+            if (targetUses is not null)
+            {
+                for (int index = addedUseIds.Count - 1; index >= 0; index--)
+                    RemoveBehaviorUse(targetUses, addedUseIds[index]);
+            }
+            bool brainWasCloned = RestoreBrainAfterFailedMutation(originalBrainId, originalBrain);
+            if (addedUseIds.Count > 0 || brainWasCloned)
+                _onChanged();
+            _layoutDirty = previousLayoutDirty;
+            _status.Text = $"Could not duplicate panel: {exception.Message}";
+        }
+    }
+
     private void DeletePanel(string panelUseId)
     {
         try
@@ -706,23 +797,7 @@ public sealed partial class LegacyPanelCanvasWindow : Window
                 for (int index = addedUseIds.Count - 1; index >= 0; index--)
                     RemoveBehaviorUse(targetUses, addedUseIds[index]);
             }
-            bool brainWasCloned = originalBrainId == DefaultBrainId && _actor.BrainName != originalBrainId;
-            if (brainWasCloned)
-            {
-                if (_document.BehaviorDatabase is JsonObject database
-                    && database["brainIds"] is JsonArray brainIds
-                    && database["brains"] is JsonArray brains)
-                {
-                    int cloneIndex = FindStringIndex(brainIds, _actor.BrainName);
-                    if (cloneIndex >= 0 && cloneIndex < brains.Count)
-                    {
-                        brainIds.RemoveAt(cloneIndex);
-                        brains.RemoveAt(cloneIndex);
-                    }
-                }
-                _actor.Data["brainName"] = originalBrainId;
-                _brain = originalBrain;
-            }
+            bool brainWasCloned = RestoreBrainAfterFailedMutation(originalBrainId, originalBrain);
             if (addedUseIds.Count > 0 || brainWasCloned)
                 _onChanged();
             _layoutDirty = previousLayoutDirty;
@@ -836,6 +911,27 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         _brain = clone;
         return clone;
     }
+
+    private bool RestoreBrainAfterFailedMutation(string originalBrainId, JsonObject? originalBrain)
+    {
+        if (originalBrainId != DefaultBrainId || _actor.BrainName == originalBrainId)
+            return false;
+        if (_document.BehaviorDatabase is JsonObject database
+            && database["brainIds"] is JsonArray brainIds
+            && database["brains"] is JsonArray brains)
+        {
+            int cloneIndex = FindStringIndex(brainIds, _actor.BrainName);
+            if (cloneIndex >= 0 && cloneIndex < brains.Count)
+            {
+                brainIds.RemoveAt(cloneIndex);
+                brains.RemoveAt(cloneIndex);
+            }
+        }
+        _actor.Data["brainName"] = originalBrainId;
+        _brain = originalBrain;
+        return true;
+    }
+
 
     private void RemoveUseFromDecks(JsonArray uses, string cardUseId)
     {
