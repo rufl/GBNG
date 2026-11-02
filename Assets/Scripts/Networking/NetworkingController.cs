@@ -20,7 +20,6 @@ using System.Collections;
 using System.Collections.Generic;
 using GameBuilder;
 using System.Text;
-using UNET = UnityEngine.Networking;
 
 // Based off of Photon's utility script.
 // TODO probably should rename this to just MainController...but also cordone off some of the networking-specific stuff into a new utility.
@@ -1041,7 +1040,7 @@ public class NetworkingController : Photon.PunBehaviour
   {
     var voosBuffer = VOOS_INIT_BYTES_REUSED;
     Array.Clear(voosBuffer, 0, voosBuffer.Length);
-    var writer = new UNET.NetworkWriter(voosBuffer);
+    var writer = new VoosBinaryWriter(voosBuffer);
     voosEngine.SerializePlayerInitPayloadV2(writer);
     return Util.GZip(writer.ToArray());
   }
@@ -1124,7 +1123,7 @@ public class NetworkingController : Photon.PunBehaviour
     }
 
     byte[] unzippedVoosBytes = Util.UnGZip(zippedVoosBytes);
-    var voosReader = new UNET.NetworkReader(unzippedVoosBytes);
+    var voosReader = new VoosBinaryReader(unzippedVoosBytes);
 
     behaviorSystem.LoadDatabaseForNetworkInit(payload.behaviorDatabase);
     voosEngine.DeserializePlayerInitV2(voosReader);

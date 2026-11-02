@@ -18,7 +18,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Networking;
 
 public partial class VoosActor : MonoBehaviour
 {
@@ -224,7 +223,7 @@ public partial class VoosActor : MonoBehaviour
       return rv;
     }
 
-    public void Serialize(NetworkWriter writer)
+    public void Serialize(VoosBinaryWriter writer)
     {
       writer.WriteVoosName(name);
       writer.WriteVoosName(brainName);
@@ -289,7 +288,7 @@ public partial class VoosActor : MonoBehaviour
       // END_GAME_BUILDER_CODE_GEN
     }
 
-    public void Deserialize(NetworkReader reader)
+    public void Deserialize(VoosBinaryReader reader)
     {
       this.name = reader.ReadVoosName();
       this.brainName = reader.ReadVoosName();
@@ -802,8 +801,8 @@ public partial class VoosActor : MonoBehaviour
     rb.isKinematic = kinematicForCatchup || !GetEnablePhysics() || GetIsOffstageEffective();
     rb.useGravity = GetEnableGravity();
     rb.mass = GetMass();
-    rb.drag = GetDrag();
-    rb.angularDrag = GetAngularDrag();
+    rb.linearDamping = GetDrag();
+    rb.angularDamping = GetAngularDrag();
 
     RigidbodyConstraints constraints = RigidbodyConstraints.None;
 
@@ -978,10 +977,10 @@ public partial class VoosActor : MonoBehaviour
       }
 
       // Enforce a speed limit..
-      float overSpeed = rb.velocity.magnitude - 100f;
+      float overSpeed = rb.linearVelocity.magnitude - 100f;
       if (overSpeed > 0f)
       {
-        Vector3 correction = rb.velocity * -1 * overSpeed;
+        Vector3 correction = rb.linearVelocity * -1 * overSpeed;
         // But for stability..limit the magnitude of the correction! Otherwise we're likely to explode.
         correction = Vector3.ClampMagnitude(correction, 100f);
         rb.AddForce(correction, ForceMode.VelocityChange);
@@ -1003,9 +1002,9 @@ public partial class VoosActor : MonoBehaviour
           // If we're grounded on a rigidbody, allow it to carry us. So add its velocity to our desired velocity.
           // Mostly for moving platforms.
           Rigidbody groundBody = GetPlayerBody()?.GetGroundRigidbody();
-          Vector3 groundVelocity = groundBody != null ? groundBody.velocity : Vector3.zero;
+          Vector3 groundVelocity = groundBody != null ? groundBody.linearVelocity : Vector3.zero;
 
-          Vector3 desiredAccel = ((netDesiredVelocity + groundVelocity) - rb.velocity).WithY(0f) / Time.fixedDeltaTime;
+          Vector3 desiredAccel = ((netDesiredVelocity + groundVelocity) - rb.linearVelocity).WithY(0f) / Time.fixedDeltaTime;
 
           Debug.DrawRay(transform.position + 1.6f * Vector3.up, desiredAccel, Color.red, 0f);
 
@@ -1172,9 +1171,9 @@ public partial class VoosActor : MonoBehaviour
   // "ClearVelocity" instead of setting it directly.
   public void SetVelocity(Vector3 newVelocity)
   {
-    if (GetRigidBody() != null && Vector3.Distance(GetRigidBody().velocity, newVelocity) > 1e-6)
+    if (GetRigidBody() != null && Vector3.Distance(GetRigidBody().linearVelocity, newVelocity) > 1e-6)
     {
-      GetRigidBody().velocity = newVelocity;
+      GetRigidBody().linearVelocity = newVelocity;
     }
   }
 
@@ -1186,7 +1185,7 @@ public partial class VoosActor : MonoBehaviour
     }
     else
     {
-      return GetRigidBody().velocity;
+      return GetRigidBody().linearVelocity;
     }
   }
 
@@ -1238,7 +1237,7 @@ public partial class VoosActor : MonoBehaviour
 
   // This is a superset of DeserializeNonGenerated. Some of this is scriptable,
   // some of it is just given to scripting as read-only info.
-  public void SerializeForScriptSync(NetworkWriter writer)
+  public void SerializeForScriptSync(VoosBinaryWriter writer)
   {
     // These values here are frequently accessed for every actor, so it's best
     // to NOT use cross-domain accessors for them.

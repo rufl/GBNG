@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+use FindBin;
+chdir "$FindBin::Bin/../.." or die "Failed to locate repository root: $!";
 
 $OUTPUT_FILE = "unity-asset-deps.txt";
 

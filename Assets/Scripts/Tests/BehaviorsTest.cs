@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#if UNITY_EDITOR
+
 using UnityEngine;
 using UnityEngine.TestTools;
 using NUnit.Framework;
@@ -218,3 +220,5 @@ public class BehaviorsTest
   }
 
 }
+
+#endif

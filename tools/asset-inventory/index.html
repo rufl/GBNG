@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Game Builder — Inventário de assets</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #14221e;
+      --muted: #65746d;
+      --line: #dce6df;
+      --paper: #f4f7f2;
+      --card: #fff;
+      --green: #176b4b;
+      --mint: #dff2e7;
+      --orange: #bc572e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    .hero {
+      padding: 46px max(24px, calc((100vw - 1220px) / 2)) 34px;
+      background: linear-gradient(120deg, #142e28, #236248);
+      color: #f5fff8;
+    }
+    .eyebrow { color: #b9e5c9; font-size: 11px; font-weight: 750; letter-spacing: .14em; text-transform: uppercase; }
+    h1 { margin: 10px 0; font-size: clamp(32px, 5vw, 53px); line-height: 1.06; }
+    .hero p { max-width: 720px; margin: 0; color: #d3e9db; }
+    .hero code { padding: 3px 7px; border-radius: 5px; background: #ffffff22; color: #fff; }
+    .wrap { max-width: 1220px; margin: auto; padding: 24px; }
+    .summary { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 22px; }
+    .stat { min-width: 150px; padding: 12px 17px; border: 1px solid var(--line); border-radius: 13px; background: var(--card); }
+    .stat b { display: block; font-size: 21px; }
+    .stat span { color: var(--muted); font-size: 12px; }
+    .controls { display: grid; grid-template-columns: minmax(200px, 1fr) repeat(2, minmax(170px, 220px)); gap: 10px; margin-bottom: 18px; }
+    .controls input, .controls select {
+      height: 44px;
+      padding: 0 12px;
+      border: 1px solid #cbd8cf;
+      border-radius: 10px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+    }
+    .controls input:focus, .controls select:focus, button:focus-visible, a:focus-visible { outline: 3px solid #62ad84; outline-offset: 2px; }
+    .meta { display: flex; justify-content: space-between; align-items: center; margin: 10px 2px 14px; color: var(--muted); font-size: 13px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(245px, 1fr)); gap: 15px; }
+    .card { min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--card); box-shadow: 0 3px 12px #203b2a0a; }
+    .thumb { display: grid; height: 145px; place-items: center; overflow: hidden; background: linear-gradient(135deg, #e5eee8, #f4f5eb); }
+    .thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .symbol { color: #527364; font-size: 32px; font-weight: 800; }
+    .body { padding: 14px; }
+    .title { overflow: hidden; font-weight: 720; text-overflow: ellipsis; white-space: nowrap; }
+    .path { overflow-wrap: anywhere; margin: 3px 0 9px; color: var(--muted); font-size: 12px; }
+    .details { display: flex; justify-content: space-between; margin-bottom: 9px; color: var(--muted); font-size: 11px; }
+    .pills { display: flex; flex-wrap: wrap; gap: 6px; }
+    .pill { padding: 3px 8px; border-radius: 99px; background: #edf2ee; color: #345448; font-size: 11px; }
+    .license { background: var(--mint); color: #155d40; }
+    .license.unknown { background: #fff0e9; color: #9d4427; }
+    .evidence { overflow-wrap: anywhere; margin-top: 11px; padding-top: 9px; border-top: 1px solid #edf0ed; color: #6a756f; font-size: 11px; }
+    .evidence strong { color: #46564e; }
+    .evidence a { color: var(--green); }
+    .empty, .error { padding: 28px; border: 1px dashed var(--line); border-radius: 14px; background: #fff; color: var(--muted); text-align: center; }
+    .error { border-style: solid; background: #fff0e9; color: #873d24; }
+    .pager { display: flex; justify-content: center; align-items: center; gap: 12px; margin: 20px 0; }
+    button { min-height: 40px; padding: 0 14px; border: 1px solid #cbd8cf; border-radius: 9px; background: #fff; color: var(--ink); font: inherit; cursor: pointer; }
+    button:disabled { cursor: not-allowed; opacity: .5; }
+    .footer { margin: 26px 0; color: var(--muted); font-size: 12px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+    @media (max-width: 700px) {
+      .controls { grid-template-columns: 1fr 1fr; }
+      .controls input { grid-column: 1 / -1; }
+      .wrap { padding: 17px; }
+      .hero { padding: 35px 22px 28px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="eyebrow">Game Builder · catálogo local</div>
+    <h1>Inventário de assets</h1>
+    <p>Explore arquivos do projeto, prévias locais e evidências de licença. Recrie o catálogo com <code>python3 tools/asset-inventory/generate.py</code>.</p>
+  </header>
+  <main class="wrap">
+    <section class="summary" id="summary" aria-label="Resumo do inventário"></section>
+    <section class="controls" aria-label="Filtros do inventário">
+      <label class="sr-only" for="search">Buscar por nome ou caminho</label>
+      <input id="search" type="search" placeholder="Buscar nome ou caminho…" autocomplete="off">
+      <label class="sr-only" for="type">Filtrar por categoria</label>
+      <select id="type"><option value="">Todas as categorias</option></select>
+      <label class="sr-only" for="license">Filtrar por licença</label>
+      <select id="license"><option value="">Todos os status de licença</option></select>
+    </section>
+    <div class="meta"><span id="count" aria-live="polite">Carregando inventário…</span><span>Ordenado por caminho</span></div>
+    <section class="grid" id="grid" aria-live="polite"></section>
+    <nav class="pager" aria-label="Paginação do inventário">
+      <button id="previous" type="button" disabled>Anterior</button>
+      <span id="page">Página 1</span>
+      <button id="next" type="button" disabled>Próxima</button>
+    </nav>
+    <p class="footer">Catálogo gerado a partir de <code>Assets/</code> e <code>third_party/</code>. “Não identificada” significa que o gerador não encontrou evidência de licença; não é uma conclusão jurídica.</p>
+  </main>
+  <script>
+    const byId = id => document.getElementById(id);
+    const pageSize = 72;
+    const icons = {
+      "Images": "▧",
+      "Audio & video": "♫",
+      "3D models": "◇",
+      "Fonts": "Aa",
+      "Unity assets": "◈",
+      "Code & data": "{ }",
+      "Text & web": "≡",
+      "Other files": "▤"
+    };
+    const typeLabels = {
+      "Images": "Imagens",
+      "Audio & video": "Áudio e vídeo",
+      "3D models": "Modelos 3D",
+      "Fonts": "Fontes",
+      "Unity assets": "Assets Unity",
+      "Code & data": "Código e dados",
+      "Text & web": "Texto e web",
+      "Other files": "Outros arquivos"
+    };
+    let assets = [];
+    let filtered = [];
+    let currentPage = 0;
+
+    function typeLabel(value) { return typeLabels[value] || value; }
+    function licenseLabel(value) { return value === "Unidentified" ? "Não identificada" : value; }
+    function formatNumber(value) { return value.toLocaleString("pt-BR"); }
+    function formatBytes(bytes) {
+      if (bytes < 1024) return `${bytes} B`;
+      const units = ["KB", "MB", "GB"];
+      let value = bytes / 1024;
+      let unit = units[0];
+      for (let i = 1; value >= 1024 && i < units.length; i++) {
+        value /= 1024;
+        unit = units[i];
+      }
+      return `${value.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ${unit}`;
+    }
+    function localPath(path) {
+      return "../../" + path.split("/").map(encodeURIComponent).join("/");
+    }
+    function scopeLabel(scope) {
+      if (scope === "Project-owned files outside third-party trees") return "Arquivo do projeto fora de dependências de terceiros";
+      if (scope === "Explicit license statement in source header") return "Declaração explícita no cabeçalho do arquivo";
+      if (scope === "No license evidence found") return "Nenhuma evidência localizada";
+      const match = scope.match(/^Files in (.+) and descendants$/);
+      return match ? `Arquivos em ${match[1]} e subpastas` : scope;
+    }
+    function addOption(select, value, label) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      select.append(option);
+    }
+    function addStat(label, value) {
+      const stat = document.createElement("div");
+      stat.className = "stat";
+      const number = document.createElement("b");
+      number.textContent = formatNumber(value);
+      const caption = document.createElement("span");
+      caption.textContent = label;
+      stat.append(number, caption);
+      return stat;
+    }
+    function addPill(parent, label, extraClass = "") {
+      const pill = document.createElement("span");
+      pill.className = `pill ${extraClass}`.trim();
+      pill.textContent = label;
+      parent.append(pill);
+    }
+    function makeCard(asset) {
+      const card = document.createElement("article");
+      card.className = "card";
+      const thumb = document.createElement("div");
+      thumb.className = "thumb";
+      if (asset.preview) {
+        const image = document.createElement("img");
+        image.loading = "lazy";
+        image.decoding = "async";
+        image.alt = `Prévia de ${asset.name}`;
+        image.src = localPath(asset.preview);
+        image.onerror = () => {
+          const symbol = document.createElement("span");
+          symbol.className = "symbol";
+          symbol.textContent = icons[asset.type] || "▤";
+          thumb.replaceChildren(symbol);
+        };
+        thumb.append(image);
+      } else {
+        const symbol = document.createElement("span");
+        symbol.className = "symbol";
+        symbol.textContent = icons[asset.type] || "▤";
+        thumb.append(symbol);
+      }
+      const body = document.createElement("div");
+      body.className = "body";
+      const title = document.createElement("div");
+      title.className = "title";
+      title.title = asset.name;
+      title.textContent = asset.name;
+      const path = document.createElement("div");
+      path.className = "path";
+      path.textContent = asset.path;
+      const details = document.createElement("div");
+      details.className = "details";
+      const extension = document.createElement("span");
+      extension.textContent = asset.extension;
+      const size = document.createElement("span");
+      size.textContent = formatBytes(asset.bytes);
+      details.append(extension, size);
+      const pills = document.createElement("div");
+      pills.className = "pills";
+      addPill(pills, typeLabel(asset.type));
+      addPill(pills, licenseLabel(asset.license), `license${asset.license === "Unidentified" ? " unknown" : ""}`);
+      const evidence = document.createElement("div");
+      evidence.className = "evidence";
+      const heading = document.createElement("strong");
+      heading.textContent = "Evidência: ";
+      evidence.append(heading);
+      if (asset.evidence) {
+        const link = document.createElement("a");
+        link.href = localPath(asset.evidence);
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = asset.evidence;
+        evidence.append(link);
+      } else {
+        evidence.append(document.createTextNode("Nenhuma encontrada"));
+      }
+      const scope = document.createElement("div");
+      scope.textContent = scopeLabel(asset.evidenceScope);
+      evidence.append(scope);
+      body.append(title, path, details, pills, evidence);
+      card.append(thumb, body);
+      return card;
+    }
+    function applyFilters() {
+      const query = byId("search").value.trim().toLocaleLowerCase("pt-BR");
+      const type = byId("type").value;
+      const license = byId("license").value;
+      filtered = assets.filter(asset =>
+        (!query || asset.name.toLocaleLowerCase("pt-BR").includes(query) || asset.path.toLocaleLowerCase("pt-BR").includes(query)) &&
+        (!type || asset.type === type) &&
+        (!license || asset.license === license)
+      );
+      currentPage = 0;
+      render();
+    }
+    function render() {
+      const pageCount = Math.ceil(filtered.length / pageSize);
+      const start = currentPage * pageSize;
+      const end = Math.min(start + pageSize, filtered.length);
+      byId("count").textContent = `${formatNumber(filtered.length)} de ${formatNumber(assets.length)} arquivos`;
+      byId("page").textContent = pageCount ? `Página ${currentPage + 1} de ${pageCount}` : "Nenhuma página";
+      byId("previous").disabled = currentPage === 0;
+      byId("next").disabled = currentPage + 1 >= pageCount;
+      const grid = byId("grid");
+      grid.replaceChildren();
+      if (!filtered.length) {
+        const empty = document.createElement("div");
+        empty.className = "empty";
+        empty.textContent = "Nenhum asset corresponde aos filtros.";
+        grid.append(empty);
+        return;
+      }
+      const cards = document.createDocumentFragment();
+      for (const asset of filtered.slice(start, end)) cards.append(makeCard(asset));
+      grid.append(cards);
+    }
+    function showError() {
+      byId("count").textContent = "Catálogo indisponível";
+      const error = document.createElement("div");
+      error.className = "error";
+      error.textContent = "Gere catalog.json e abra esta página por um servidor web local; veja as instruções no README.";
+      byId("grid").replaceChildren(error);
+      byId("previous").disabled = true;
+      byId("next").disabled = true;
+    }
+    async function loadCatalog() {
+      try {
+        const response = await fetch("./catalog.json");
+        if (!response.ok) throw new Error("catalog.json indisponível");
+        const data = await response.json();
+        assets = data.assets;
+        const types = [...new Set(assets.map(asset => asset.type))].sort((a, b) => typeLabel(a).localeCompare(typeLabel(b), "pt-BR"));
+        const licenses = [...new Set(assets.map(asset => asset.license))].sort((a, b) => licenseLabel(a).localeCompare(licenseLabel(b), "pt-BR"));
+        for (const type of types) addOption(byId("type"), type, typeLabel(type));
+        for (const license of licenses) addOption(byId("license"), license, licenseLabel(license));
+        const unknown = assets.filter(asset => asset.license === "Unidentified").length;
+        byId("summary").replaceChildren(
+          addStat("arquivos catalogados", assets.length),
+          addStat("categorias", types.length),
+          addStat("licenças não identificadas", unknown)
+        );
+        filtered = assets;
+        render();
+      } catch {
+        showError();
+      }
+    }
+    byId("search").addEventListener("input", applyFilters);
+    byId("type").addEventListener("change", applyFilters);
+    byId("license").addEventListener("change", applyFilters);
+    byId("previous").addEventListener("click", () => { currentPage--; render(); });
+    byId("next").addEventListener("click", () => { currentPage++; render(); });
+    loadCatalog();
+  </script>
+</body>
+</html>

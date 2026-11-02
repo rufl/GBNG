@@ -1,0 +1,2 @@
+# Keep project shell scripts runnable from Git Bash on Windows.
+tools/**/*.sh text eol=lf

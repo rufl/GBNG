@@ -13,8 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-if [[ "$OSTYPE" == "darwin"* ]]; then
-  perl -i -pe 's/\r//' Assets/LapinerTools/Steam/Workshop/Scripts/SteamWorkshopMain.cs
-fi
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$repo_root"
 
-patch -p0 < steamworks.patch
+find Assets/StreamingAssets/BehaviorLibrary -name '*.metaJson' | while read f; do
+  path=`grep ResourcePath "$f" | cut -d '"' -f4`
+  if [ -z "$path" ]; then
+    echo "** $f: missing imageResourcePath"
+  elif [ ! -f Assets/Resources/$path.png -a ! -f Assets/Resources/$path.psd ]; then
+    echo "** $f: image does not exist: $path"
+  fi
+done
+

@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+use FindBin;
+chdir "$FindBin::Bin/../.." or die "Failed to locate repository root: $!";
 $DEFS_FILE = "BrowserAssets/monaco-editor-0.14.3/min/vs/basic-languages/javascript/javascript.js";
 $JS_KEYWORDS = '"break","case","catch","class","continue","const","constructor","debugger","default","delete","do","else","export","extends","false","finally","for","from","function","get","if","import","in","instanceof","let","new","null","return","set","super","switch","symbol","this","throw","true","try","typeof","undefined","var","void","while","with","yield","async","await","of"';
 

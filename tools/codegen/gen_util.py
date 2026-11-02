@@ -234,13 +234,13 @@ this.SetVoosField(new Quaternion(
 def do_code_gen(path, regions_to_generators):
     lines = []
 
-    assert(os.path.exists(path))
-    with open(path, 'r') as srcf:
-        lines = [line for line in srcf]
+    assert os.path.exists(path)
+    with open(path, 'r', encoding='utf-8') as srcf:
+        lines = list(srcf)
 
     print(len(lines))
     # TODO uhhh write to a temp file, and only overwrite source if we're successful
-    with open(path, 'w') as srcf:
+    with open(path, 'w', encoding='utf-8') as srcf:
         curr_region = None
         for line in lines:
             if curr_region is None:

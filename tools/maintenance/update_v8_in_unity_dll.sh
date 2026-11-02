@@ -1,4 +1,3 @@
-#!/usr/bin/bash
 # Copyright 2019 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,10 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -e
-set -o pipefail
-
-python code_gen/gen_actor.py
-python code_gen/gen_stage.py
-python code_gen/gen_v8_native.py
-python code_gen/gen_js_remotes.py
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$repo_root"
+stat v8_in_unity/x64/Release/v8_in_unity.dll
+cp v8_in_unity/x64/Release/v8_in_unity.dll Assets/Plugins/V8InUnity/

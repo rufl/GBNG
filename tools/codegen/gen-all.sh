@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/bash
 # Copyright 2019 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,13 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+set -euo pipefail
 
-find Assets/StreamingAssets/BehaviorLibrary -name '*.metaJson' | while read f; do
-  path=`grep ResourcePath "$f" | cut -d '"' -f4`
-  if [ -z "$path" ]; then
-    echo "** $f: missing imageResourcePath"
-  elif [ ! -f Assets/Resources/$path.png -a ! -f Assets/Resources/$path.psd ]; then
-    echo "** $f: image does not exist: $path"
-  fi
-done
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$repo_root"
 
+python3 tools/codegen/gen_actor.py
+python3 tools/codegen/gen_stage.py
+python3 tools/codegen/gen_v8_native.py
+python3 tools/codegen/gen_js_remotes.py

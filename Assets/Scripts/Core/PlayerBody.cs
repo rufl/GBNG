@@ -174,7 +174,7 @@ public class PlayerBody : MonoBehaviour, IBipedDriver
     }
     else
     {
-      return rb.velocity;
+      return rb.linearVelocity;
     }
   }
 

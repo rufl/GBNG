@@ -34,21 +34,21 @@ public static partial class Util
   public static void RealizeTargetVelocity(GameObject target, Vector3 targetVelocity)
   {
     var rb = target.GetComponent<Rigidbody>();
-    Vector3 deltaVel = (targetVelocity - rb.velocity);
+    Vector3 deltaVel = (targetVelocity - rb.linearVelocity);
     rb.AddForce(deltaVel, ForceMode.VelocityChange);
   }
 
   // Call during FixedUpdate
   public static void RealizeTargetVelocityXYZ(Rigidbody rb, Vector3 targetVelocity)
   {
-    Vector3 deltaVel = (targetVelocity - rb.velocity);
+    Vector3 deltaVel = (targetVelocity - rb.linearVelocity);
     rb.AddForce(deltaVel, ForceMode.VelocityChange);
   }
 
   public static void RealizeTargetVelocityXZ(Rigidbody rb, Vector2 targetVelocityXZ)
   {
-    Vector3 targetVelocity = new Vector3(targetVelocityXZ.x, rb.velocity.y, targetVelocityXZ.y);
-    Vector3 deltaVel = (targetVelocity - rb.velocity);
+    Vector3 targetVelocity = new Vector3(targetVelocityXZ.x, rb.linearVelocity.y, targetVelocityXZ.y);
+    Vector3 deltaVel = (targetVelocity - rb.linearVelocity);
     Debug.Assert(Mathf.Abs(deltaVel.y) < 1e-4);
     rb.AddForce(deltaVel, ForceMode.VelocityChange);
   }

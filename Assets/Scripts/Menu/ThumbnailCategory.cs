@@ -52,7 +52,7 @@ public class ThumbnailCategory : MonoBehaviour
   {
     this.name = name;
     this.nameText.text = name;
-    this.nameText.gameObject.active = name != null && name != "";
+    this.nameText.gameObject.SetActive(name != null && name != "");
   }
 
   public void SetPlaceholderText(string placeholderString)
@@ -62,7 +62,7 @@ public class ThumbnailCategory : MonoBehaviour
 
   public void SetEnabled(bool enabled)
   {
-    thumbnailContainerParent.gameObject.active = enabled;
+    thumbnailContainerParent.gameObject.SetActive(enabled);
   }
 
   public void SetLoading(bool loading)
@@ -70,12 +70,12 @@ public class ThumbnailCategory : MonoBehaviour
     if (loading)
     {
       placeholderText.text = LOADING_STRING;
-      placeholderText.gameObject.active = true;
+      placeholderText.gameObject.SetActive(true);
     }
     else if (!loading)
     {
       placeholderText.text = placeholderString;
-      placeholderText.gameObject.active = GetVisibleCount() == 0;
+      placeholderText.gameObject.SetActive(GetVisibleCount() == 0);
     }
   }
 
@@ -111,7 +111,7 @@ public class ThumbnailCategory : MonoBehaviour
     {
       thumbnail.SetVisibility(filter(thumbnail));
     }
-    placeholderText.gameObject.active = GetVisibleCount() == 0;
+    placeholderText.gameObject.SetActive(GetVisibleCount() == 0);
     thumbnail.transform.SetParent(thumbnailContainerTop, false);
     Refresh();
   }
@@ -149,7 +149,7 @@ public class ThumbnailCategory : MonoBehaviour
           CloseSelectedThumbnail();
         }
       }
-      placeholderText.gameObject.active = GetVisibleCount() == 0;
+      placeholderText.gameObject.SetActive(GetVisibleCount() == 0);
       UpdateThumbnailsForSelection();
     }
   }
@@ -162,7 +162,7 @@ public class ThumbnailCategory : MonoBehaviour
       thumbnailItems[i].Destruct();
     }
     thumbnailItems.Clear();
-    placeholderText.gameObject.active = true;
+    placeholderText.gameObject.SetActive(true);
   }
 
   private void Refresh()

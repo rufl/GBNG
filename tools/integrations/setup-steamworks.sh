@@ -1,3 +1,4 @@
+#!/bin/bash
 # Copyright 2019 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,5 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-stat v8_in_unity/x64/Release/v8_in_unity.dll
-cp v8_in_unity/x64/Release/v8_in_unity.dll Assets/Plugins/V8InUnity/
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$repo_root"
+if [[ "$OSTYPE" == "darwin"* ]]; then
+  perl -i -pe 's/\r//' Assets/LapinerTools/Steam/Workshop/Scripts/SteamWorkshopMain.cs
+fi
+
+patch -p0 < tools/integrations/steamworks.patch

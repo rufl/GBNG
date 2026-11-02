@@ -218,7 +218,7 @@ public class TerrainDatabase
     return blockMap.Count;
   }
 
-  void SerializeSideMap(SortedDictionary<Cell, SideInfo> map, UnityEngine.Networking.NetworkWriter writer)
+  void SerializeSideMap(SortedDictionary<Cell, SideInfo> map, VoosBinaryWriter writer)
   {
     writer.Write(map.Count);
     foreach (var pair in map)
@@ -243,10 +243,9 @@ public class TerrainDatabase
       + 4 // west count
       + westSideMap.Count * 4
       + 1 // ending sanity check number
-      + 1 // extra byte cuz NetworkWriter is buggy:
-          // https://bitbucket.org/Unity-Technologies/networking/src/78ca8544bbf4e87c310ce2a9a3fc33cdad2f9bb1/Runtime/NetworkBuffer.cs?at=5.3&fileviewer=file-view-default#NetworkBuffer.cs-160
+      + 1 // Preserve the legacy trailing padding byte in terrain payloads.
     ];
-    var writer = new UnityEngine.Networking.NetworkWriter(buffer);
+    var writer = new VoosBinaryWriter(buffer);
     writer.Write(CurrentVersion);
 
     // Write dummy block count
@@ -259,7 +258,7 @@ public class TerrainDatabase
     writer.Write((byte)42);
 
     // Util.Log($"Wrote {blockMap.Count} blocks, {southSideMap.Count} south walls, and {westSideMap.Count} west walls to {buffer.Length} bytes");
-    return buffer;
+    return writer.Buffer;
   }
 
   public void Clear()
@@ -269,7 +268,7 @@ public class TerrainDatabase
     westSideMap.Clear();
   }
 
-  void LoadLegacy(UnityEngine.Networking.NetworkReader reader)
+  void LoadLegacy(VoosBinaryReader reader)
   {
     int count = reader.ReadInt32();
     Util.Log($"loading {count} legacy cells");
@@ -288,7 +287,7 @@ public class TerrainDatabase
     }
   }
 
-  Cell ReadCell(UnityEngine.Networking.NetworkReader reader)
+  Cell ReadCell(VoosBinaryReader reader)
   {
     int x = reader.ReadByte() - cellArrayOffsetX;
     int y = reader.ReadByte() - cellArrayOffsetY;
@@ -302,7 +301,7 @@ public class TerrainDatabase
     Clear();
 
     // Util.Log($"loading terrain data of {cellBytes.Length} bytes");
-    var reader = new UnityEngine.Networking.NetworkReader(cellBytes);
+    var reader = new VoosBinaryReader(cellBytes);
     // Again - kinda awkward to have the deserialize code here.
     int version = reader.ReadInt32();
 

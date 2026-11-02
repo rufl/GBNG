@@ -13,6 +13,8 @@
 # limitations under the License.
 
 set -euxo pipefail
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$repo_root"
 
 OUTDIR="$1"
 stat $OUTDIR
@@ -29,7 +31,7 @@ TEMPLATE_PATH=$(npm root)/tui-jsdoc-template
 
 JS_SRC=Assets/Scripts/Behaviors/JavaScript/moduleBehaviors.js.txt
 cp $JS_SRC temp.js
-jsdoc -c code_gen/jsdoc-config.json temp.js -d $OUTDIR -t $TEMPLATE_PATH
+jsdoc -c tools/codegen/jsdoc-config.json temp.js -d $OUTDIR -t $TEMPLATE_PATH
 rm temp.js
 
 echo All good!

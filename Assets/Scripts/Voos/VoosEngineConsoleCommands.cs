@@ -116,7 +116,7 @@ public partial class VoosEngine
     System.Action doBinTest = () =>
     {
       byte[] buffer = new byte[10 * 1024 * 1024];
-      var writer = new UnityEngine.Networking.NetworkWriter(buffer);
+      var writer = new VoosBinaryWriter(buffer);
       engine.SerializePlayerInitPayloadV2(writer);
 
       byte[] bytesUsed = writer.ToArray();

@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gen_util import *
 
 stage_fields = [
@@ -125,10 +127,9 @@ regions_to_generators = {
 }
 
 this_file_dir = os.path.dirname(os.path.realpath(__file__))
+repo_root = os.path.abspath(os.path.join(this_file_dir, '..', '..'))
 paths_to_process = [
-    os.path.join(this_file_dir, '..', 'Assets',
-                 'Scripts', 'Core', 'GameBuilderStage.cs')
+    os.path.join(repo_root, 'Assets', 'Scripts', 'Core', 'GameBuilderStage.cs')
 ]
-
 for path in paths_to_process:
     do_code_gen(path, regions_to_generators)

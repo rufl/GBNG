@@ -18,9 +18,7 @@ using System;
 using System.Linq;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Networking;
 using SD = System.Diagnostics;
-using NET = UnityEngine.Networking;
 
 /**
  * The engine takes some input JavaScript and a Unity scene, serializes it, runs the JS on the serialized version, then deserializes the result to the Unity scene. This should be ran every frame.
@@ -1235,7 +1233,7 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
     latestActorsInSerializedOrder[actorId].SetQuaternionField(fieldId, new Quaternion(newX, newY, newZ, newW));
   }
 
-  void PumpQueuedCollisions(NetworkWriter writer)
+  void PumpQueuedCollisions(VoosBinaryWriter writer)
   {
     writer.Write((int)queuedCollisions.Count);
     foreach (var msg in queuedCollisions)
@@ -1274,7 +1272,7 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
       }
     }
 
-    var writer = new NetworkWriter(updateAgentByteBuffer);
+    var writer = new VoosBinaryWriter(updateAgentByteBuffer);
     SerializeOrderedActors(writer);
     SerializeActorStateSync(writer);
 
@@ -1282,6 +1280,7 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
     {
       PumpQueuedCollisions(writer);
     }
+    updateAgentByteBuffer = writer.Buffer;
 
     var callbacks = GetNativeUpdateCallbacks();
     Util.Maybe<TickResponse> maybeResponse = V8InUnity.Native.UpdateAgent<TickRequest, TickResponse>(
@@ -1302,7 +1301,7 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
       try
       {
         playerToolTips = response.playerToolTips;
-        var reader = new NetworkReader(updateAgentByteBuffer);
+        var reader = new VoosBinaryReader(updateAgentByteBuffer);
         DeserializeChangedMemoryActors(reader);
         ApplyVelocityChanges(response.velocityChanges, response.torqueRequests);
         ReplicateActors();
@@ -1360,7 +1359,7 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
     actorsNeedScriptSync.Add(actor);
   }
 
-  private void SerializeOrderedActors(NetworkWriter writer)
+  private void SerializeOrderedActors(VoosBinaryWriter writer)
   {
     using (InGameProfiler.Section("OrderActorsAndSerialize"))
     {
@@ -1384,7 +1383,7 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
     }
   }
 
-  private void SerializeActorStateSync(NetworkWriter writer)
+  private void SerializeActorStateSync(VoosBinaryWriter writer)
   {
     using (InGameProfiler.Section("SerializeActorStateSync"))
     {
@@ -1462,7 +1461,7 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
     }
   }
 
-  void DeserializeChangedMemoryActors(NetworkReader reader)
+  void DeserializeChangedMemoryActors(VoosBinaryReader reader)
   {
     using (InGameProfiler.Section("DeserializeChangedMemoryActors"))
     {
@@ -2705,7 +2704,7 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
 
   byte PINIT_END_SENTINEL = 79;
 
-  public void SerializePlayerInitPayloadV2(NET.NetworkWriter writer)
+  public void SerializePlayerInitPayloadV2(VoosBinaryWriter writer)
   {
     writer.Write(GetNumActors());
 
@@ -2720,7 +2719,7 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
     writer.Write(PINIT_END_SENTINEL);
   }
 
-  public void DeserializePlayerInitV2(NET.NetworkReader reader)
+  public void DeserializePlayerInitV2(VoosBinaryReader reader)
   {
 #if USE_PUN
     Debug.Assert(state == State.Uninit, "DeserializePlayerInitV2 called before init'd?");

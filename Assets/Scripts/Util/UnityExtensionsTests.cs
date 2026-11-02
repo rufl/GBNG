@@ -15,10 +15,7 @@
  */
 
 using UnityEngine;
-using UnityEngine.TestTools;
 using NUnit.Framework;
-using System.Collections;
-using System.Collections.Generic;
 
 public class UnityExtensionsTests
 {
@@ -26,44 +23,52 @@ public class UnityExtensionsTests
   public void TestUtf16Serialize()
   {
     byte[] buffer = new byte[100];
-    var writer = new UnityEngine.Networking.NetworkWriter(buffer);
+    var writer = new VoosBinaryWriter(buffer);
 
     string sample = "japanese いろはに";
     writer.WriteUtf16(sample);
 
-    var reader = new UnityEngine.Networking.NetworkReader(buffer);
+    var reader = new VoosBinaryReader(buffer);
     string actual = reader.ReadUtf16();
 
     Assert.AreEqual(sample, actual);
   }
 
   [Test]
-  public void TestNetworkWriterSize()
+  public void TestBinaryWriterUsesLegacyLittleEndianLayout()
   {
-    var writer = new UnityEngine.Networking.NetworkWriter();
-    writer.Write((byte)42);
+    byte[] buffer = new byte[27];
+    var writer = new VoosBinaryWriter(buffer);
+    writer.Write(0x12345678);
+    writer.Write((ushort)0x9abc);
+    writer.Write(true);
+    writer.Write(1f);
+    writer.Write(new Quaternion(2f, -1f, 0.5f, 0f));
+
     byte[] bytes = writer.ToArray();
-    Assert.AreEqual(1, bytes.Length);
-  }
+    CollectionAssert.AreEqual(
+      new byte[]
+      {
+        0x78, 0x56, 0x34, 0x12, 0xbc, 0x9a, 0x01,
+        0x00, 0x00, 0x80, 0x3f,
+        0x00, 0x00, 0x00, 0x40,
+        0x00, 0x00, 0x80, 0xbf,
+        0x00, 0x00, 0x00, 0x3f,
+        0x00, 0x00, 0x00, 0x00
+      },
+      bytes);
+    Assert.AreEqual(27, writer.Position);
 
-  [Test]
-  public void TestNetworkWriterBug()
-  {
-    byte[] buffer = new byte[1];
-    var writer = new UnityEngine.Networking.NetworkWriter(buffer);
-    writer.Write((byte)42);
-    // You'd expect this to be 42...but actually it's 0 cuz NetworkWriter wrongly resized into a new buffer...
-    Assert.AreEqual((byte)0, buffer[0]);
-  }
-
-  [Test]
-  public void TestNetworkWriterWorkaround()
-  {
-    // Work around is to add 1 more byte to the end to avoid the resize...
-    byte[] buffer = new byte[2];
-    var writer = new UnityEngine.Networking.NetworkWriter(buffer);
-    writer.Write((byte)42);
-    Assert.AreEqual((byte)42, buffer[0]);
+    var reader = new VoosBinaryReader(bytes);
+    Assert.AreEqual(0x12345678, reader.ReadInt32());
+    Assert.AreEqual((ushort)0x9abc, reader.ReadUInt16());
+    Assert.AreEqual(1, reader.ReadByte());
+    Assert.AreEqual(1f, reader.ReadSingle());
+    Quaternion rotation = reader.ReadQuaternion();
+    Assert.AreEqual(2f, rotation.x);
+    Assert.AreEqual(-1f, rotation.y);
+    Assert.AreEqual(0.5f, rotation.z);
+    Assert.AreEqual(0f, rotation.w);
   }
 
   [Test]

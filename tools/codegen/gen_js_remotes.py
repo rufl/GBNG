@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gen_util import *
 
 remote_api_functions = [
@@ -98,13 +100,11 @@ regions_to_generators = {
 }
 
 this_file_dir = os.path.dirname(os.path.realpath(__file__))
+repo_root = os.path.abspath(os.path.join(this_file_dir, '..', '..'))
 paths_to_process = [
-    os.path.join(this_file_dir, '..', 'Assets',
-                 'Scripts', 'Behaviors', 'JavaScript', 'apiv2', 'remote', 'remote.js.txt'),
-    os.path.join(this_file_dir, '..', 'Assets',
-                 'StreamingAssets', 'BehaviorLibrary', 'LegacyBehaviors', 'Default Behavior.js.txt'),
+    os.path.join(repo_root, 'Assets', 'Scripts', 'Behaviors', 'JavaScript', 'apiv2', 'remote', 'remote.js.txt'),
+    os.path.join(repo_root, 'Assets', 'StreamingAssets', 'BehaviorLibrary', 'LegacyBehaviors', 'Default Behavior.js.txt'),
 ]
-
 def gen_jsdoc_for_params(args):
     ret = ""
     for arg in args.split(','):

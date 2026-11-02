@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$repo_root"
 echo Make sure Unity is closed!
 echo --
 
@@ -33,11 +35,11 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
   perl -i -pe 's/\r//' Assets/Photon\ Unity\ Networking/Plugins/PhotonNetwork/PhotonNetwork.cs
   perl -i -pe 's/\r//' Assets/Photon\ Unity\ Networking/Plugins/PhotonNetwork/Views/PhotonAnimatorView.cs
   perl -i -pe 's/\r//' Assets/Photon\ Unity\ Networking/Plugins/PhotonNetwork/Views/PhotonTransformView.cs
-  patch -p0 < photon.osx.patch
-  patch -p0 < photon_transform_view.osx.patch
+  patch -p0 < tools/integrations/photon.osx.patch
+  patch -p0 < tools/integrations/photon_transform_view.osx.patch
 else
-  patch -p0 < photon.patch
-  patch -p0 < photon_transform_view.patch
+  patch -p0 < tools/integrations/photon.patch
+  patch -p0 < tools/integrations/photon_transform_view.patch
 fi
 
 # Force Unity to reimport. Otherwise, Unity tends to cache incorrect versions of PhotonView prefabs, such as Actor and UserBody.

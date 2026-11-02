@@ -13,25 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-find Assets -name '*.cs' \
-  -o -name '*.js' \
-  -o -name '*.js.txt' \
-  -o -name '*.js' \
-  -o -name '*.c' \
-  -o -name '*.cpp' \
-  -o -name '*.h' \
-  -o -name '*.css' \
-  -o -name '*.sh' \
-  -o -name '*.pl' \
-  -o -name '*.py' \
-  -o -name '*.html' \
-  | grep -v '/third_party/' \
-  | grep -v '/Rewired/' \
-  | grep -v '/three.js' \
-  | grep -v '/TextMesh Pro/' \
-  | while read f; do
-
-  perl add-license.pl "$f"
-
-done
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$repo_root"
+mkdir -p BrowserAssets/gamebuilder
+cp -afv third_party/codemirror-5.38.0 third_party/jshint-2.9.5 third_party/monaco-editor-0.14.3 BrowserAssets
+cp -afv third_party/es5/es5.d.ts.js third_party/js-editor/js-editor.html BrowserAssets/gamebuilder
 

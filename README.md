@@ -12,28 +12,39 @@ what you will create!
 
 This is not an officially supported Google product.
 
-## Pre-requisites
+## Prerequisites
 
-* Unity 2018.4.12f1
+* [Unity Editor 6000.6.6f1](https://unity.com/releases/editor/whats-new/6000.6.6f1). This fork is pinned to that editor release.
+* Unity's C# compiler (C# 9.0 language level). Unity controls the language version; use only the features supported by its compiler.
+* [Python 3.15.2](https://www.python.org/downloads/release/python-3152/) for code generation. `.python-version` records the selected version.
+* Unity packages: Test Framework 1.8.0, UGUI 2.6.0, and Post Processing 3.5.4. TextMesh Pro functionality is supplied by UGUI in this editor.
+* Unity 6 no longer supplies the legacy UNet serializer. `VoosBinaryWriter` and `VoosBinaryReader` now own the existing little-endian game-state format instead of depending on the unsupported HLAPI package.
+* The embedded V8 runtime remains a prebuilt native plugin. Its engine source and external build dependencies are not in this repository, so updating that binary requires those upstream inputs and native ABI validation.
+* On Windows, Git Bash (included with [Git for Windows](https://gitforwindows.org/)) to run shell tools. On macOS, use Terminal.
 
-    It will probably work with later 2018.4.* versions, but this is the one we
-    tested with. Unity 2019 is known to *not* work. If in doubt, use this exact
-    version.
+## Project layout
 
-* [Python 2](http://python.org) to run code_gen scripts.
+* `Assets/` — Unity scenes, scripts, prefabs, art, audio, and runtime resources. Keep Unity asset paths and `.meta` GUIDs intact.
+* `Packages/` — Unity Package Manager dependencies.
+* `ProjectSettings/` — pinned Unity editor version and project settings.
+* `tools/codegen/` — Python generators and the `gen-all.sh` entry point.
+* `tools/integrations/` — optional Photon, Steamworks, and embedded-browser setup and patches.
+* `tools/licensing/`, `tools/documentation/`, and `tools/maintenance/` — license, documentation, and maintenance utilities.
+* `tools/asset-inventory/` — generated visual asset and license catalog.
+* `third_party/` and `Assets/third_party/` — vendored dependencies with their individual notices.
+* `docs/` and `builds/` — generated scripting docs and historical build archives.
 
-* If you are using a Windows machine, you also need Git Bash
-  (part of [Git for Windows](https://gitforwindows.org/))
-  to run shell scripts. If you are using a Mac, you don't need it:
-  the built-in Terminal app is enough.
+## Running code generation
+
+Run `bash tools/codegen/gen-all.sh` from the repository root with Python 3.15.2. The generators update marked regions in Unity C# and JavaScript source files.
 
 ## Running in Unity Editor
 
-1. Open the project (just the root of the repo).
+1. Open the repository root with Unity Editor 6000.6.6f1.
 1. Open the splash screen scene: `Assets/splash.unity`.
-1. When the "TMP Importer" shows, click "Import TMP Essentials".
-1. Restart Unity.
-1. Click on the Play button.
+1. If Unity prompts for TextMesh Pro essential resources, import them and restart the editor.
+1. Click Play.
+
 
 ## Building the standalone EXE
 
@@ -49,6 +60,12 @@ without enabling any extra plugins.
 
 For documentation about how the in-game scripting works, open the `docs.html`
 file in a browser (after downloading/cloning this repository).
+
+## Asset and license inventory
+
+Regenerate the catalog with `python3 tools/asset-inventory/generate.py`. Serve the repository root with `python3 -m http.server 8000`, then open `http://localhost:8000/tools/asset-inventory/`.
+
+The catalog lists license evidence and marks files without a located notice as unidentified; third-party terms remain separate from the project license.
 
 # Optional features
 
@@ -83,7 +100,7 @@ Instructions for individual features are below.
     - Import the plugin from the Asset Store link above.
     - Define the directive `USE_PUN`
     - *Close* Unity before the next step
-    - Run the shell script `setup-photon.sh`
+    - Run `bash tools/integrations/setup-photon.sh` from the repository root.
     - Sign up for a PUN account (https://www.photonengine.com/)
     - In the PUN website, create a new application (type: *Photon PUN*)
     - Copy your new application's *AppId*.
@@ -162,7 +179,7 @@ Instructions for individual features are below.
     
 * [Steam Workshop](https://assetstore.unity.com/packages/tools/integration/steam-workshop-easy-steamworks-integration-86189) - If you are releasing on Steam and want to enable functionality like project sharing.
     - Import the plugin from the Asset Store link above.
-    - Run the shell script "setup-steamworks.sh".
+    - Run `bash tools/integrations/setup-steamworks.sh` from the repository root.
     - Define the directive USE_STEAMWORKS.
     - Find the file "steam_appid.txt" in the repo root (NOT the one in "redist"). Put your AppID in there (instead of 480).
     
@@ -176,7 +193,7 @@ Instructions for individual features are below.
     which enables you to use the Monaco-based code editor IDE.
     - Import the plugin from the Asset Store link above.
     - Define the directive `USE_ZFBROWSER`
-    - Run the shell script `setup-browser-assets.sh`
+    - Run `bash tools/integrations/setup-browser-assets.sh` from the repository root.
 
 ## Archival Build
 
@@ -187,7 +204,7 @@ etc.
 
 ## License
 
-See the LICENSE file for more details.
+See the LICENSE file for the project license. Third-party notices remain applicable; the asset inventory links to the evidence found for each file.
 
 ## Contributing
 

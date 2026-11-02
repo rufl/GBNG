@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gen_util import *
 
 # TODO: we can probably get rid of need_update and put that info in the 'downstreams' list.
@@ -166,8 +168,7 @@ downstreams = [
 
 for field in actor_fields:
     if 'networking' not in field:
-        print 'NOTE: no networking spec set for ' + field['name']
-
+        print('NOTE: no networking spec set for ' + field['name'])
 bool_actor_fields = [
     field for field in actor_fields if field['cs_type'] == 'bool']
 float_actor_fields = [
@@ -646,17 +647,13 @@ regions_to_generators = {
 }
 
 this_file_dir = os.path.dirname(os.path.realpath(__file__))
+repo_root = os.path.abspath(os.path.join(this_file_dir, '..', '..'))
 paths_to_process = [
-    os.path.join(this_file_dir, '..', 'Assets',
-                 'Scripts', 'Voos', 'VoosActor.cs'),
-    os.path.join(this_file_dir, '..', 'Assets',
-                 'Scripts', 'Voos', 'VoosActorAccessors.cs'),
-    os.path.join(this_file_dir, '..', 'Assets',
-                'Scripts', 'Voos', 'ActorNetworking.cs'),
-    os.path.join(this_file_dir, '..', 'Assets',
-                 'Scripts', 'Behaviors', 'JavaScript', 'ModuleBehaviorsActor.js.txt'),
-    os.path.join(this_file_dir, '..', 'Assets',
-                 'Scripts', 'Behaviors', 'JavaScript', 'HandlingActor.js.txt'),
+    os.path.join(repo_root, 'Assets', 'Scripts', 'Voos', 'VoosActor.cs'),
+    os.path.join(repo_root, 'Assets', 'Scripts', 'Voos', 'VoosActorAccessors.cs'),
+    os.path.join(repo_root, 'Assets', 'Scripts', 'Voos', 'ActorNetworking.cs'),
+    os.path.join(repo_root, 'Assets', 'Scripts', 'Behaviors', 'JavaScript', 'ModuleBehaviorsActor.js.txt'),
+    os.path.join(repo_root, 'Assets', 'Scripts', 'Behaviors', 'JavaScript', 'HandlingActor.js.txt'),
 ]
 
 for path in paths_to_process:
