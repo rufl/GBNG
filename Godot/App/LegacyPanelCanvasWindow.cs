@@ -251,6 +251,25 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         graphNode.AddThemeFontSizeOverride("title_font_size", 24);
         graphNode.AddChild(CreateCanvasLabel(LegacySaveDocument.ReadString(panelData["description"])));
 
+        string panelUseId = LegacySaveDocument.ReadString(use["id"]);
+        var panelTitle = new LineEdit
+        {
+            Name = $"PanelTitle_{panelUseId}",
+            Text = customLabel,
+            PlaceholderText = title,
+            TooltipText = "Custom panel title. Leave blank to restore the behavior title.",
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+        };
+        var titleRow = new HBoxContainer();
+        titleRow.AddChild(panelTitle);
+        var applyTitle = new Button { Name = $"ApplyPanelTitle_{panelUseId}", Text = "Apply title" };
+        applyTitle.Pressed += () => SavePanelTitle(panelUseId, graphNode, panelTitle, title);
+        titleRow.AddChild(applyTitle);
+        graphNode.AddChild(titleRow);
+        var deletePanel = new Button { Name = $"DeletePanel_{panelUseId}", Text = "Delete panel" };
+        deletePanel.Pressed += () => DeletePanel(panelUseId);
+        graphNode.AddChild(deletePanel);
+
         JsonArray? definitions = _getPropertyDefinitions(uri);
         if (definitions is null)
         {
@@ -490,6 +509,117 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         _status.Text = "Card assignment updated in memory. Use Save in GBNG to persist the project.";
     }
 
+    private void SavePanelTitle(string panelUseId, GraphNode panelNode, LineEdit editor, string defaultTitle)
+    {
+        try
+        {
+            string customLabel = editor.Text.Trim();
+            if (_brain?["behaviorUses"] is JsonArray currentUses
+                && FindUse(currentUses, panelUseId) is JsonObject currentUse
+                && LegacySaveDocument.ReadString(ParseObjectString(currentUse["metadataJson"], "panel-use metadata")["customLabel"]) == customLabel)
+                return;
+            JsonObject brain = EnsureWritableBrain();
+            if (brain["behaviorUses"] is not JsonArray uses)
+                throw new InvalidDataException("This behavior brain has no assigned uses.");
+            JsonObject panelUse = FindUse(uses, panelUseId)
+                ?? throw new InvalidDataException("The selected panel no longer exists.");
+            JsonObject metadata = ParseObjectString(panelUse["metadataJson"], "panel-use metadata");
+            metadata["version"] = 1;
+            metadata["customLabel"] = customLabel;
+            panelUse["metadataJson"] = metadata.ToJsonString();
+            editor.Text = customLabel;
+            panelNode.Title = customLabel.Length > 0 ? customLabel : defaultTitle;
+            _layoutDirty = true;
+            _onChanged();
+            RebuildCanvas();
+            _status.Text = "Panel title updated in memory. Use Save in GBNG to persist the project.";
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidDataException)
+        {
+            _status.Text = exception.Message;
+        }
+    }
+
+    private void SaveCustomPanelTitle(GraphNode panelNode, LineEdit editor)
+    {
+        try
+        {
+            string customLabel = editor.Text.Trim();
+            if (_brain is not null)
+            {
+                JsonObject currentMetadata = ParseObjectString(_brain["metadataJson"], "behavior brain metadata");
+                string currentLabel = LegacySaveDocument.ReadString(
+                    (currentMetadata["miscPanelUseMetadata"] as JsonObject)?["customLabel"]);
+                if (currentLabel == customLabel)
+                    return;
+            }
+            JsonObject brain = EnsureWritableBrain();
+            JsonObject metadata = ParseObjectString(brain["metadataJson"], "behavior brain metadata");
+            JsonObject miscMetadata = metadata["miscPanelUseMetadata"] as JsonObject ?? new JsonObject();
+            miscMetadata["version"] = 1;
+            miscMetadata["customLabel"] = customLabel;
+            metadata["miscPanelUseMetadata"] = miscMetadata;
+            brain["metadataJson"] = metadata.ToJsonString();
+            editor.Text = customLabel;
+            panelNode.Title = customLabel.Length > 0 ? customLabel : "Custom";
+            _layoutDirty = true;
+            _onChanged();
+            RebuildCanvas();
+            _status.Text = "Custom panel title updated in memory. Use Save in GBNG to persist the project.";
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidDataException)
+        {
+            _status.Text = exception.Message;
+        }
+    }
+
+    private void DeletePanel(string panelUseId)
+    {
+        try
+        {
+            JsonObject brain = EnsureWritableBrain();
+            if (brain["behaviorUses"] is not JsonArray uses)
+                throw new InvalidDataException("This behavior brain has no assigned uses.");
+            JsonObject panelUse = FindUse(uses, panelUseId)
+                ?? throw new InvalidDataException("The selected panel no longer exists.");
+            string uri = LegacySaveDocument.ReadString(panelUse["behaviorUri"]);
+            JsonObject? panelData = GetBehaviorMetadata(uri)?["cardSystemPanelData"] as JsonObject;
+            if (panelData is null || !LegacySaveDocument.ReadBool(panelData["isPanel"]))
+                throw new InvalidDataException("The selected behavior is not a panel.");
+            JsonArray? definitions = _getPropertyDefinitions(uri);
+            if (definitions is null)
+                throw new InvalidDataException("This panel's card slot definitions are unavailable.");
+
+            var cardUseIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (JsonNode? node in definitions)
+            {
+                if (node is not JsonObject definition
+                    || LegacySaveDocument.ReadString(definition["type"]) != "CardDeck")
+                    continue;
+                string propertyName = LegacySaveDocument.ReadString(definition["variableName"]);
+                if (propertyName.Length == 0 || ReadAssignedValue(panelUse, propertyName) is not JsonArray assigned)
+                    continue;
+                foreach (JsonNode? cardId in assigned)
+                {
+                    string id = LegacySaveDocument.ReadString(cardId);
+                    if (id.Length > 0 && id != panelUseId)
+                        cardUseIds.Add(id);
+                }
+            }
+            foreach (string cardUseId in cardUseIds)
+            {
+                RemoveUseFromDecks(uses, cardUseId);
+                RemoveBehaviorUse(uses, cardUseId);
+            }
+            RemoveBehaviorUse(uses, panelUseId);
+            ApplyCardDeckChange();
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidDataException or FormatException or OverflowException)
+        {
+            _status.Text = exception.Message;
+        }
+    }
+
     private void RebuildCanvas()
     {
         _building = true;
@@ -664,6 +794,21 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         graphNode.AddThemeColorOverride("title_color", new Color("#aeb8c2"));
         graphNode.AddThemeFontSizeOverride("title_font_size", 24);
         graphNode.AddChild(CreateCanvasLabel("Custom-category cards not assigned to another panel."));
+
+        var customTitle = new LineEdit
+        {
+            Name = "CustomPanelTitle",
+            Text = LegacySaveDocument.ReadString(miscMetadata["customLabel"]),
+            PlaceholderText = "Custom",
+            TooltipText = "Custom panel title. Leave blank to restore Custom.",
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+        };
+        var titleRow = new HBoxContainer();
+        titleRow.AddChild(customTitle);
+        var applyTitle = new Button { Name = "ApplyCustomPanelTitle", Text = "Apply title" };
+        applyTitle.Pressed += () => SaveCustomPanelTitle(graphNode, customTitle);
+        titleRow.AddChild(applyTitle);
+        graphNode.AddChild(titleRow);
         int count = 0;
         foreach (JsonNode? node in uses)
         {
