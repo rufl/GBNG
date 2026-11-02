@@ -12,9 +12,16 @@ what you will create!
 
 This is not an officially supported Google product.
 
+## Fork branches
+
+This fork keeps the implementations separate:
+
+* [`unity`](https://github.com/rufl/GBNG/tree/unity) preserves the original Unity project, pinned to Unity 6000.6.7f1; keep changes limited to compatibility, quality-of-life, and stability work.
+* [`godot`](https://github.com/rufl/GBNG/tree/godot) is the GBNG — New Gen rewrite, targeting Godot 4.7.2 .NET, .NET 10, and ClearScript/V8 7.5.1.1 while reusing the original `.voos` projects and assets.
+
 ## Prerequisites
 
-* [Unity Editor 6000.6.6f1](https://unity.com/releases/editor/whats-new/6000.6.6f1). This fork is pinned to that editor release.
+* [Unity Editor 6000.6.7f1](https://unity.com/releases/editor/whats-new/6000.6.7f1). This fork is pinned to that editor release.
 * Unity's C# compiler (C# 9.0 language level). Unity controls the language version; use only the features supported by its compiler.
 * [Python 3.15.2](https://www.python.org/downloads/release/python-3152/) for code generation. `.python-version` records the selected version.
 * Unity packages: Test Framework 1.8.0, UGUI 2.6.0, and Post Processing 3.5.4. TextMesh Pro functionality is supplied by UGUI in this editor.
