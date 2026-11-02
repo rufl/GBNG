@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -33,14 +34,26 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
     private bool _refreshing;
     private string _selectedUseId = "";
     private string _selectedUri = "";
+    private readonly Func<string, JsonArray?> _getPropertyDefinitions;
+    private readonly ScrollContainer _propertiesScroll = new();
+    private readonly VBoxContainer _propertiesContainer = new();
+    private readonly CheckBox _rawAssignmentsMode = new();
+    private readonly Dictionary<string, (string Type, Control Editor)> _propertyEditors = new(StringComparer.Ordinal);
+    private JsonArray _propertyDefinitions = new();
+    private bool _propertyDefinitionsAvailable;
 
     private sealed record BehaviorChoice(string Uri, string Label);
 
-    public LegacyBehaviorAuthoringWindow(LegacySaveDocument document, LegacyActorData actor, Action onChanged)
+    public LegacyBehaviorAuthoringWindow(
+        LegacySaveDocument document,
+        LegacyActorData actor,
+        Action onChanged,
+        Func<string, JsonArray?> getPropertyDefinitions)
     {
         _document = document;
         _actor = actor;
         _onChanged = onChanged;
+        _getPropertyDefinitions = getPropertyDefinitions;
         Title = $"Behavior editor — {actor.DisplayName}";
         Size = new Vector2I(1000, 700);
         CloseRequested += () => QueueFree();
@@ -108,19 +121,26 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
         _scriptEditor.Editable = false;
         right.AddChild(_scriptEditor);
 
-        var assignmentsToolbar = new HBoxContainer();
-        assignmentsToolbar.AddChild(new Label
-        {
-            Text = "Property assignments (legacy JSON)",
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
-        });
-        _applyAssignmentsButton.Text = "Apply assignments";
+        var propertiesToolbar = new HBoxContainer();
+        propertiesToolbar.AddChild(new Label { Text = "Structured properties", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
+        _rawAssignmentsMode.Text = "Edit raw JSON";
+        _rawAssignmentsMode.Toggled += SetRawAssignmentsMode;
+        propertiesToolbar.AddChild(_rawAssignmentsMode);
+        _applyAssignmentsButton.Text = "Apply properties";
         _applyAssignmentsButton.Disabled = true;
         _applyAssignmentsButton.Pressed += ApplyAssignments;
-        assignmentsToolbar.AddChild(_applyAssignmentsButton);
-        right.AddChild(assignmentsToolbar);
-        _assignmentsEditor.CustomMinimumSize = new Vector2(0f, 130f);
+        propertiesToolbar.AddChild(_applyAssignmentsButton);
+        right.AddChild(propertiesToolbar);
+
+        _propertiesScroll.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        _propertiesScroll.CustomMinimumSize = new Vector2(0f, 130f);
+        _propertiesContainer.AddThemeConstantOverride("separation", 8);
+        _propertiesScroll.AddChild(_propertiesContainer);
+        right.AddChild(_propertiesScroll);
+
+        _assignmentsEditor.CustomMinimumSize = new Vector2(0f, 180f);
         _assignmentsEditor.Editable = false;
+        _assignmentsEditor.Visible = false;
         right.AddChild(_assignmentsEditor);
 
         _status.AutowrapMode = TextServer.AutowrapMode.Word;
@@ -224,17 +244,22 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
     {
         JsonObject? use = GetSelectedUse();
         _selectedUri = use is null ? "" : LegacySaveDocument.ReadString(use["behaviorUri"]);
-        _removeUseButton.Disabled = use is null;
         bool hasSource = (_selectedUri.StartsWith("embedded:", StringComparison.Ordinal)
                           && FindEmbeddedBehavior(_selectedUri["embedded:".Length..]) is not null)
                          || (_selectedUri.StartsWith("builtin:", StringComparison.Ordinal)
                              && _builtinSources.ContainsKey(_selectedUri));
         _copyBehaviorButton.Disabled = use is null || !hasSource;
         _applyAssignmentsButton.Disabled = use is null;
+        _rawAssignmentsMode.Disabled = use is null;
         _assignmentsEditor.Editable = use is not null;
         _assignmentsEditor.Text = use?["propertyAssignments"] is JsonArray assignments
             ? assignments.ToJsonString(new JsonSerializerOptions { WriteIndented = true })
             : "[]";
+        _assignmentsEditor.Visible = _rawAssignmentsMode.ButtonPressed;
+        _propertiesScroll.Visible = !_rawAssignmentsMode.ButtonPressed;
+        _applyAssignmentsButton.Text = _rawAssignmentsMode.ButtonPressed ? "Apply raw JSON" : "Apply properties";
+        BuildPropertyEditors(use);
+        _applyAssignmentsButton.Disabled = use is null || (!_rawAssignmentsMode.ButtonPressed && !_propertyDefinitionsAvailable);
 
         string source = "";
         bool editable = false;
@@ -346,6 +371,392 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
         RefreshAssignedUses();
     }
 
+    private void SetRawAssignmentsMode(bool raw)
+    {
+        _assignmentsEditor.Visible = raw;
+        _propertiesScroll.Visible = !raw;
+        _applyAssignmentsButton.Text = raw ? "Apply raw JSON" : "Apply properties";
+        _applyAssignmentsButton.Disabled = GetSelectedUse() is null || (!raw && !_propertyDefinitionsAvailable);
+    }
+
+    private void BuildPropertyEditors(JsonObject? use)
+    {
+        foreach (Node child in _propertiesContainer.GetChildren())
+        {
+            _propertiesContainer.RemoveChild(child);
+            child.QueueFree();
+        }
+        _propertyEditors.Clear();
+        _propertyDefinitions = new JsonArray();
+        _propertyDefinitionsAvailable = false;
+        if (use is null)
+        {
+            _propertiesContainer.AddChild(new Label { Text = "Select an assigned behavior to edit its properties." });
+            return;
+        }
+
+        try
+        {
+            JsonArray? definitions = _getPropertyDefinitions(_selectedUri);
+            if (definitions is null)
+            {
+                _propertiesContainer.AddChild(new Label { Text = "Property definitions are unavailable. Use raw JSON to inspect or repair assignments." });
+                return;
+            }
+            _propertyDefinitions = definitions;
+            _propertyDefinitionsAvailable = true;
+            Dictionary<string, JsonNode?> assignedValues = ReadAssignedValues(use);
+            foreach (JsonNode? node in definitions)
+            {
+                if (node is not JsonObject definition)
+                    continue;
+                string propertyName = LegacySaveDocument.ReadString(definition["variableName"]);
+                string type = LegacySaveDocument.ReadString(definition["type"]);
+                if (propertyName.Length == 0 || type.Length == 0)
+                    continue;
+                JsonNode? value = assignedValues.TryGetValue(propertyName, out JsonNode? assignedValue)
+                    ? assignedValue?.DeepClone()
+                    : GetDefaultValue(definition, type);
+                Control editor = CreatePropertyEditor(definition, type, value);
+                _propertyEditors[propertyName] = (type, editor);
+                ConnectPropertyEditor(editor);
+                string label = LegacySaveDocument.ReadString(definition["label"], propertyName);
+                string comment = LegacySaveDocument.ReadString(definition["comment"]);
+                if (editor is CheckBox checkBox)
+                {
+                    checkBox.Text = label;
+                    checkBox.TooltipText = comment;
+                    _propertiesContainer.AddChild(checkBox);
+                }
+                else
+                {
+                    var row = new VBoxContainer();
+                    row.AddChild(new Label { Text = label, TooltipText = comment });
+                    row.AddChild(editor);
+                    _propertiesContainer.AddChild(row);
+                }
+            }
+            RefreshPropertyVisibility();
+            if (definitions.Count == 0)
+                _propertiesContainer.AddChild(new Label { Text = "This behavior has no editable properties." });
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidDataException or FormatException or OverflowException)
+        {
+            _propertyDefinitionsAvailable = false;
+            _propertiesContainer.AddChild(new Label { Text = $"Could not load behavior properties: {exception.Message}", AutowrapMode = TextServer.AutowrapMode.Word });
+        }
+    }
+
+    private static Dictionary<string, JsonNode?> ReadAssignedValues(JsonObject use)
+    {
+        var values = new Dictionary<string, JsonNode?>(StringComparer.Ordinal);
+        if (use["propertyAssignments"] is not JsonArray assignments)
+            return values;
+        foreach (JsonNode? node in assignments)
+        {
+            if (node is not JsonObject assignment)
+                continue;
+            string name = LegacySaveDocument.ReadString(assignment["propertyName"]);
+            string encoded = LegacySaveDocument.ReadString(assignment["valueJson"]);
+            if (name.Length == 0 || encoded.Length == 0)
+                continue;
+            JsonNode? parsed = JsonNode.Parse(encoded);
+            JsonNode? value = parsed is JsonObject envelope && envelope.ContainsKey("value")
+                ? envelope["value"]?.DeepClone()
+                : parsed?.DeepClone();
+            values[name] = value;
+        }
+        return values;
+    }
+
+    private static JsonNode? GetDefaultValue(JsonObject definition, string type)
+    {
+        string raw = LegacySaveDocument.ReadString(definition["defaultValueString"]);
+        switch (type)
+        {
+            case "Number":
+                return JsonValue.Create(int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int number) ? number : 0);
+            case "Decimal":
+                return JsonValue.Create(double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out double decimalValue) ? decimalValue : 1d);
+            case "Boolean":
+                return JsonValue.Create(bool.TryParse(raw, out bool boolean) && boolean);
+            case "NumberArray":
+            case "StringArray":
+            case "EnumArray":
+            case "ActorArray":
+                return raw.Length == 0 ? new JsonArray() : JsonNode.Parse(raw) as JsonArray ?? new JsonArray();
+            case "CardDeck":
+                return new JsonArray();
+            case "Color":
+                return JsonValue.Create(raw.Length == 0 ? "#ffffff" : raw);
+            default:
+                return JsonValue.Create(raw);
+        }
+    }
+
+    private Control CreatePropertyEditor(JsonObject definition, string type, JsonNode? value)
+    {
+        string stringValue = ReadPropertyString(value);
+        switch (type)
+        {
+            case "Boolean":
+                return new CheckBox { ButtonPressed = ReadPropertyBoolean(value) };
+            case "Number":
+            case "Decimal":
+                return new SpinBox
+                {
+                    MinValue = type == "Number" ? int.MinValue : -1_000_000_000d,
+                    MaxValue = type == "Number" ? int.MaxValue : 1_000_000_000d,
+                    Step = type == "Number" ? 1d : 0.01d,
+                    Value = ReadPropertyNumber(value)
+                };
+            case "Enum":
+                if (definition["allowedValues"] is JsonArray allowedValues && allowedValues.Count > 0)
+                {
+                    var choices = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+                    bool found = false;
+                    foreach (JsonNode? allowedValue in allowedValues)
+                    {
+                        if (allowedValue is not JsonObject option)
+                            continue;
+                        string optionValue = LegacySaveDocument.ReadString(option["value"]);
+                        string optionLabel = LegacySaveDocument.ReadString(option["label"], optionValue);
+                        choices.AddItem(optionLabel);
+                        choices.SetItemMetadata(choices.ItemCount - 1, optionValue);
+                        if (optionValue == stringValue)
+                        {
+                            choices.Select(choices.ItemCount - 1);
+                            found = true;
+                        }
+                    }
+                    if (!found && stringValue.Length > 0)
+                    {
+                        choices.AddItem($"Unknown · {stringValue}");
+                        choices.SetItemMetadata(choices.ItemCount - 1, stringValue);
+                        choices.Select(choices.ItemCount - 1);
+                    }
+                    return choices;
+                }
+                return new LineEdit { Text = stringValue, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            case "Color":
+                var picker = new ColorPickerButton { EditAlpha = false, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+                try
+                {
+                    picker.Color = Color.FromHtml(stringValue);
+                }
+                catch (ArgumentException)
+                {
+                    picker.Color = Colors.White;
+                }
+                return picker;
+            case "CardDeck":
+                return CreateCardDeckEditor(definition, value);
+            case "NumberArray":
+            case "StringArray":
+            case "EnumArray":
+            case "ActorArray":
+                return new TextEdit
+                {
+                    Text = value is JsonArray array ? array.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) : "[]",
+                    CustomMinimumSize = new Vector2(0f, 70f),
+                    SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+                };
+            default:
+                return new LineEdit { Text = stringValue, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        }
+    }
+    private ItemList CreateCardDeckEditor(JsonObject definition, JsonNode? value)
+    {
+        string category = LegacySaveDocument.ReadString((definition["deckOptions"] as JsonObject)?["cardCategory"], "Custom");
+        if (category.Length == 0)
+            category = "Custom";
+        var selectedIds = new HashSet<string>(StringComparer.Ordinal);
+        if (value is JsonArray selectedValues)
+        {
+            foreach (JsonNode? selectedValue in selectedValues)
+            {
+                string id = LegacySaveDocument.ReadString(selectedValue);
+                if (id.Length > 0)
+                    selectedIds.Add(id);
+            }
+        }
+
+        var list = new ItemList
+        {
+            SelectMode = ItemList.SelectModeEnum.Multi,
+            CustomMinimumSize = new Vector2(0f, 130f),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+        };
+        var displayedIds = new HashSet<string>(StringComparer.Ordinal);
+        if (GetCurrentBrain()?["behaviorUses"] is JsonArray uses)
+        {
+            foreach (JsonNode? node in uses)
+            {
+                if (node is not JsonObject use)
+                    continue;
+                string id = LegacySaveDocument.ReadString(use["id"]);
+                string uri = LegacySaveDocument.ReadString(use["behaviorUri"]);
+                if (id.Length == 0 || !IsCardInCategory(uri, category))
+                    continue;
+                list.AddItem(GetBehaviorLabel(uri));
+                list.SetItemMetadata(list.ItemCount - 1, id);
+                displayedIds.Add(id);
+                if (selectedIds.Contains(id))
+                    list.Select(list.ItemCount - 1, false);
+            }
+        }
+        foreach (string id in selectedIds)
+        {
+            if (displayedIds.Contains(id))
+                continue;
+            list.AddItem($"Missing card · {ShortId(id)}");
+            list.SetItemMetadata(list.ItemCount - 1, id);
+            list.Select(list.ItemCount - 1, false);
+        }
+        return list;
+    }
+
+    private bool IsCardInCategory(string uri, string category)
+    {
+        string metadataJson = "";
+        if (uri.StartsWith("embedded:", StringComparison.Ordinal))
+        {
+            string id = uri["embedded:".Length..];
+            metadataJson = LegacySaveDocument.ReadString(FindEmbeddedBehavior(id)?["metadataJson"]);
+        }
+        else if (uri.StartsWith("builtin:", StringComparison.Ordinal)
+                 && _builtinSources.TryGetValue(uri, out string? path))
+        {
+            string metadataPath = path + ".metaJson";
+            if (Godot.FileAccess.FileExists(metadataPath))
+                metadataJson = Godot.FileAccess.GetFileAsString(metadataPath);
+        }
+        if (metadataJson.Length == 0)
+            return uri.StartsWith("embedded:", StringComparison.Ordinal) && category == "Custom";
+        try
+        {
+            if (JsonNode.Parse(metadataJson) is not JsonObject metadata
+                || metadata["cardSystemCardData"] is not JsonObject cardData
+                || !LegacySaveDocument.ReadBool(cardData["isCard"])
+                || cardData["categories"] is not JsonArray categories)
+                return false;
+            return categories.Any(node => LegacySaveDocument.ReadString(node) == category);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static JsonArray GetSelectedDeckIds(ItemList list)
+    {
+        var ids = new JsonArray();
+        for (int index = 0; index < list.ItemCount; index++)
+        {
+            if (list.IsSelected(index))
+                ids.Add(list.GetItemMetadata(index).AsString());
+        }
+        return ids;
+    }
+
+
+    private void ConnectPropertyEditor(Control editor)
+    {
+        switch (editor)
+        {
+            case CheckBox checkBox:
+                checkBox.Toggled += _ => RefreshPropertyVisibility();
+                break;
+            case SpinBox spinBox:
+                spinBox.ValueChanged += _ => RefreshPropertyVisibility();
+                break;
+            case OptionButton optionButton:
+                optionButton.ItemSelected += _ => RefreshPropertyVisibility();
+                break;
+            case ColorPickerButton colorPicker:
+                colorPicker.ColorChanged += _ => RefreshPropertyVisibility();
+                break;
+            case TextEdit textEdit:
+                textEdit.TextChanged += RefreshPropertyVisibility;
+                break;
+            case LineEdit lineEdit:
+                lineEdit.TextChanged += _ => RefreshPropertyVisibility();
+                break;
+            case ItemList itemList:
+                itemList.MultiSelected += (_, _) => RefreshPropertyVisibility();
+                break;
+        }
+    }
+
+    private void RefreshPropertyVisibility()
+    {
+        foreach (JsonNode? node in _propertyDefinitions)
+        {
+            if (node is not JsonObject definition)
+                continue;
+            string propertyName = LegacySaveDocument.ReadString(definition["variableName"]);
+            if (!_propertyEditors.TryGetValue(propertyName, out (string Type, Control Editor) field))
+                continue;
+            bool visible = true;
+            if (definition["requires"] is JsonArray requirements)
+            {
+                foreach (JsonNode? requirement in requirements)
+                {
+                    if (requirement is not JsonObject requirementObject || !IsRequirementFulfilled(requirementObject))
+                    {
+                        visible = false;
+                        break;
+                    }
+                }
+            }
+            Control row = field.Editor is CheckBox ? field.Editor : field.Editor.GetParent() as Control ?? field.Editor;
+            row.Visible = visible;
+        }
+    }
+
+    private bool IsRequirementFulfilled(JsonObject requirement)
+    {
+        string key = LegacySaveDocument.ReadString(requirement["key"]);
+        if (!_propertyEditors.TryGetValue(key, out (string Type, Control Editor) field))
+            return false;
+        string actual = GetEditorValueString(field.Type, field.Editor);
+        string expected = LegacySaveDocument.ReadString(requirement["value"]);
+        return LegacySaveDocument.ReadString(requirement["op"]) switch
+        {
+            "=" => actual == expected,
+            "!=" => actual != expected,
+            _ => false
+        };
+    }
+
+    private static string GetEditorValueString(string type, Control editor)
+    {
+        if (editor is CheckBox checkBox)
+            return checkBox.ButtonPressed ? "true" : "false";
+        if (editor is SpinBox spinBox)
+            return type == "Number"
+                ? ((int)Math.Round(spinBox.Value)).ToString(CultureInfo.InvariantCulture)
+                : spinBox.Value.ToString(CultureInfo.InvariantCulture);
+        if (editor is OptionButton choices)
+            return choices.Selected >= 0 ? choices.GetItemMetadata(choices.Selected).AsString() : "";
+        if (editor is ColorPickerButton colorPicker)
+            return "#" + colorPicker.Color.ToHtml(false);
+        if (editor is ItemList itemList)
+            return GetSelectedDeckIds(itemList).ToJsonString();
+        if (editor is TextEdit textEdit)
+        {
+            try
+            {
+                return JsonNode.Parse(textEdit.Text)?.ToJsonString() ?? "";
+            }
+            catch (JsonException)
+            {
+                return "";
+            }
+        }
+        return editor is LineEdit lineEdit ? lineEdit.Text : "";
+    }
+
     private void ApplyAssignments()
     {
         JsonObject? use = GetSelectedUse();
@@ -353,28 +764,136 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
             return;
         try
         {
-            if (JsonNode.Parse(_assignmentsEditor.Text) is not JsonArray assignments)
-                throw new InvalidDataException("Property assignments must be a JSON array.");
-            foreach (JsonNode? node in assignments)
-            {
-                if (node is not JsonObject assignment
-                    || LegacySaveDocument.ReadString(assignment["propertyName"]).Length == 0
-                    || assignment["valueJson"] is not JsonValue valueNode
-                    || !valueNode.TryGetValue(out string? valueJson)
-                    || valueJson is null)
-                    throw new InvalidDataException("Each assignment needs a propertyName and a JSON-encoded valueJson string.");
-                using JsonDocument _ = JsonDocument.Parse(valueJson);
-            }
+            JsonArray assignments = _rawAssignmentsMode.ButtonPressed
+                ? ParseRawAssignments()
+                : CreateStructuredAssignments(use);
             JsonObject writableUse = FindSelectedUse(EnsureWritableBrain())
                 ?? throw new InvalidDataException("The selected behavior use no longer exists.");
             writableUse["propertyAssignments"] = assignments;
-            NotifyChanged("Applied property assignments. Save the project to persist them.");
+            NotifyChanged(_rawAssignmentsMode.ButtonPressed
+                ? "Applied raw property assignments. Save the project to persist them."
+                : "Applied structured properties. Save the project to persist them.");
             RefreshAssignedUses();
         }
-        catch (Exception exception) when (exception is JsonException or InvalidDataException)
+        catch (Exception exception) when (exception is JsonException or InvalidDataException or FormatException or OverflowException)
         {
             _status.Text = exception.Message;
         }
+    }
+
+    private JsonArray ParseRawAssignments()
+    {
+        if (JsonNode.Parse(_assignmentsEditor.Text) is not JsonArray assignments)
+            throw new InvalidDataException("Property assignments must be a JSON array.");
+        foreach (JsonNode? node in assignments)
+        {
+            if (node is not JsonObject assignment
+                || LegacySaveDocument.ReadString(assignment["propertyName"]).Length == 0
+                || assignment["valueJson"] is not JsonValue valueNode
+                || !valueNode.TryGetValue(out string? valueJson)
+                || valueJson is null)
+                throw new InvalidDataException("Each assignment needs a propertyName and a JSON-encoded valueJson string.");
+            using JsonDocument _ = JsonDocument.Parse(valueJson);
+        }
+        return assignments;
+    }
+
+    private JsonArray CreateStructuredAssignments(JsonObject use)
+    {
+        if (!_propertyDefinitionsAvailable)
+            throw new InvalidDataException("Structured property definitions are unavailable. Switch to raw JSON mode to edit assignments.");
+        var assignments = new JsonArray();
+        var definedNames = new HashSet<string>(StringComparer.Ordinal);
+        foreach (JsonNode? node in _propertyDefinitions)
+        {
+            if (node is not JsonObject definition)
+                continue;
+            string name = LegacySaveDocument.ReadString(definition["variableName"]);
+            if (name.Length == 0 || !_propertyEditors.TryGetValue(name, out (string Type, Control Editor) editor))
+                continue;
+            JsonNode? value = ReadEditorValue(name, editor.Type, editor.Editor);
+            var encodedValue = new JsonObject { ["value"] = value };
+            assignments.Add(new JsonObject { ["propertyName"] = name, ["valueJson"] = encodedValue.ToJsonString() });
+            definedNames.Add(name);
+        }
+        if (use["propertyAssignments"] is JsonArray existing)
+        {
+            foreach (JsonNode? node in existing)
+            {
+                if (node is JsonObject assignment)
+                {
+                    string name = LegacySaveDocument.ReadString(assignment["propertyName"]);
+                    if (!definedNames.Contains(name))
+                        assignments.Add(assignment.DeepClone());
+                }
+                else
+                {
+                    assignments.Add(node?.DeepClone());
+                }
+            }
+        }
+        return assignments;
+    }
+
+    private static JsonNode? ReadEditorValue(string propertyName, string type, Control editor)
+    {
+        if (editor is CheckBox checkBox)
+            return JsonValue.Create(checkBox.ButtonPressed);
+        if (editor is SpinBox spinBox)
+            return type == "Number"
+                ? JsonValue.Create(checked((int)Math.Round(spinBox.Value)))
+                : JsonValue.Create(spinBox.Value);
+        if (editor is OptionButton choices)
+            return JsonValue.Create(choices.Selected >= 0 ? choices.GetItemMetadata(choices.Selected).AsString() : "");
+        if (editor is ColorPickerButton colorPicker)
+            return JsonValue.Create("#" + colorPicker.Color.ToHtml(false));
+        if (editor is ItemList itemList && type == "CardDeck")
+            return GetSelectedDeckIds(itemList);
+        if (editor is TextEdit arrayEditor)
+        {
+            if (JsonNode.Parse(arrayEditor.Text) is not JsonArray values)
+                throw new InvalidDataException($"Property '{propertyName}' must be a JSON array.");
+            bool numbers = type == "NumberArray";
+            foreach (JsonNode? value in values)
+            {
+                if (numbers)
+                {
+                    if (value is not JsonValue number || !number.TryGetValue(out int _))
+                        throw new InvalidDataException($"Every value for '{propertyName}' must be an integer.");
+                }
+                else if (value is not JsonValue text || !text.TryGetValue(out string? _))
+                {
+                    throw new InvalidDataException($"Every value for '{propertyName}' must be a string.");
+                }
+            }
+            return values;
+        }
+        return JsonValue.Create(editor is LineEdit lineEdit ? lineEdit.Text : "");
+    }
+
+    private static string ReadPropertyString(JsonNode? value)
+    {
+        if (value is null)
+            return "";
+        if (value is JsonValue jsonValue && jsonValue.TryGetValue(out string? text))
+            return text ?? "";
+        return value.ToJsonString();
+    }
+
+    private static bool ReadPropertyBoolean(JsonNode? value)
+        => value is JsonValue jsonValue && jsonValue.TryGetValue(out bool boolean) && boolean;
+
+    private static double ReadPropertyNumber(JsonNode? value)
+    {
+        if (value is not JsonValue jsonValue)
+            return 0d;
+        if (jsonValue.TryGetValue(out double number))
+            return number;
+        if (jsonValue.TryGetValue(out int integer))
+            return integer;
+        if (jsonValue.TryGetValue(out long longInteger))
+            return longInteger;
+        return 0d;
     }
 
     private void NotifyChanged(string message)

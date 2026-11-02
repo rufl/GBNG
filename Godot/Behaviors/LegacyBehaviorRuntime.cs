@@ -147,6 +147,14 @@ public sealed partial class LegacyBehaviorRuntime : IDisposable
         SetScriptValue("__gbUiArgumentJson", argumentJson.Length == 0 ? "{}" : argumentJson);
         ExecuteScript("__gbSendUiMessage(__gbUiActor, __gbUiMessageName, __gbUiArgumentJson);");
     }
+    public JsonArray GetBehaviorPropertyDefinitions(string behaviorUri)
+    {
+        SetScriptValue("__gbPropertyDefinitionsUri", behaviorUri);
+        ExecuteScript("globalThis.__gbPropertyDefinitionsJson = JSON.stringify(getBehaviorProperties(__gbPropertyDefinitionsUri) || []);");
+        return JsonNode.Parse(GetScriptString("__gbPropertyDefinitionsJson")) as JsonArray
+            ?? throw new InvalidDataException($"Behavior property definitions for '{behaviorUri}' were not an array.");
+    }
+
     public void Dispose() => _engine.Dispose();
 
     private bool ShouldContinueScript()

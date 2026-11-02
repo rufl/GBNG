@@ -565,7 +565,11 @@ public partial class GameBuilderApp : Node3D
     {
         if (_document is null || _selectedActor is null || _playMode)
             return;
-        var window = new LegacyBehaviorAuthoringWindow(_document, _selectedActor.State, OnBehaviorDataChanged);
+        var window = new LegacyBehaviorAuthoringWindow(
+            _document,
+            _selectedActor.State,
+            OnBehaviorDataChanged,
+            uri => _behaviorRuntimeError is null ? _behaviorRuntime?.GetBehaviorPropertyDefinitions(uri) : null);
         AddChild(window);
         window.PopupCentered();
     }

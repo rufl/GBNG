@@ -25,7 +25,7 @@ For the Godot branch, install the Godot 4.7.2 .NET build and .NET 10 SDK, then r
 godot --path . -- res://Assets/StreamingAssets/ExampleGames/Public/sample-platformer.voos --play
 ```
 
-Bundled examples are read-only project resources; use **Save as…** to create a writable `.voos` copy. The Godot branch currently loads and saves projects, supports actor selection and inspector editing (including behavior-brain assignment), and provides a behavior-authoring window to add/remove uses, edit embedded JavaScript, copy built-in modules into embedded scripts, and edit property assignments in the legacy JSON format. The editor also provides bounded 50-step Undo/Redo for actor property changes, creation/deletion, and reset. It instantiates converted assets, and runs legacy behaviors with keyboard/mouse state and message events alongside Godot solid/trigger physics, editable terrain, audio, particles, behavior UI, and single-player host services for physics queries, player-control transfer, actor cloning/destruction, projection/screen info, and scene settings. Profiling markers do not collect timings yet. This is not feature-complete: the original visual card/panel graph editor and its structured property forms, multiplayer/Photon synchronization and room discovery, Steam Workshop publishing/assets, optional third-party integrations, and several Unity editor workflows remain unmigrated. Keep `unity` as the complete reference until those contracts have Godot replacements.
+Bundled examples are read-only project resources; use **Save as…** to create a writable `.voos` copy. The Godot branch currently loads and saves projects, supports actor selection and inspector editing (including behavior-brain assignment), and provides a behavior-authoring window to add/remove uses, edit embedded JavaScript, copy built-in modules into embedded scripts, and edit typed properties using the original behavior definitions, including conditional field visibility and category-aware card-deck assignment. Raw legacy JSON remains available for advanced property-assignment edits. The editor also provides bounded 50-step Undo/Redo for actor property changes, creation/deletion, and reset. It instantiates converted assets and runs legacy behaviors with keyboard/mouse state and message events alongside Godot solid/trigger physics, editable terrain, audio, particles, behavior UI, and single-player host services for physics queries, player-control transfer, actor cloning/destruction, projection/screen info, and scene settings. Profiling markers do not collect timings yet. This is not feature-complete: the original visual card/panel graph editor and its specialized asset pickers, multiplayer/Photon synchronization and room discovery, Steam Workshop publishing/assets, optional third-party integrations, and several Unity editor workflows remain unmigrated. Keep `unity` as the complete reference until those contracts have Godot replacements.
 
 ## Prerequisites
 
@@ -39,11 +39,12 @@ Bundled examples are read-only project resources; use **Save as…** to create a
 
 ## Project layout
 
-* `Assets/` — Unity scenes, scripts, prefabs, art, audio, and runtime resources. Keep Unity asset paths and `.meta` GUIDs intact.
-* `Packages/` — Unity Package Manager dependencies.
-* `ProjectSettings/` — pinned Unity editor version and project settings.
+* `Godot/` — Godot-native application, behavior runtime, project persistence, world simulation, and converted-asset support.
+* `project.godot`, `GBNG.Godot.sln`, and `GBNG.Godot.csproj` — Godot project entry point and .NET build.
+* `Assets/` — shared legacy Unity assets, behavior library, and `.voos` examples. Preserve Unity asset paths and `.meta` GUIDs on the `unity` branch; Godot reads converted resources and the legacy project formats on `godot`.
+* `Packages/` and `ProjectSettings/` — Unity Package Manager dependencies and pinned Unity editor settings for `unity`.
 * `tools/codegen/` — Python generators and the `gen-all.sh` entry point.
-* `tools/integrations/` — optional Photon, Steamworks, and embedded-browser setup and patches.
+* `tools/integrations/` — optional Photon, Steamworks, and embedded-browser setup and patches for the Unity reference.
 * `tools/licensing/`, `tools/documentation/`, and `tools/maintenance/` — license, documentation, and maintenance utilities.
 * `tools/asset-inventory/` — generated visual asset and license catalog.
 * `third_party/` and `Assets/third_party/` — vendored dependencies with their individual notices.
