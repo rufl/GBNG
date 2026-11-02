@@ -32,6 +32,11 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
     private readonly Label _status = new();
     private readonly Label _availableBehaviorDetails = new() { AutowrapMode = TextServer.AutowrapMode.Word };
     private readonly Label _selectedBehaviorDetails = new() { AutowrapMode = TextServer.AutowrapMode.Word };
+    private readonly VBoxContainer _metadataEditor = new();
+    private readonly LineEdit _metadataTitle = new();
+    private readonly LineEdit _metadataCategories = new();
+    private readonly TextEdit _metadataDescription = new();
+    private readonly Button _applyCardMetadataButton = new();
     private readonly Dictionary<string, string> _builtinSources = new(StringComparer.Ordinal);
     private bool _refreshing;
     private string _selectedUseId = "";
@@ -223,6 +228,28 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
         columns.AddChild(right);
         var scriptToolbar = new HBoxContainer();
         right.AddChild(_selectedBehaviorDetails);
+        _metadataEditor.Name = "CardMetadataEditor";
+        _metadataEditor.Visible = false;
+        _metadataEditor.AddChild(new Label { Text = "Embedded card metadata" });
+        _metadataEditor.AddChild(new Label { Text = "Title" });
+        _metadataTitle.Name = "CardMetadataTitle";
+        _metadataTitle.PlaceholderText = "Card title";
+        _metadataEditor.AddChild(_metadataTitle);
+        _metadataEditor.AddChild(new Label { Text = "Categories (comma-separated)" });
+        _metadataCategories.Name = "CardMetadataCategories";
+        _metadataCategories.PlaceholderText = "Custom";
+        _metadataEditor.AddChild(_metadataCategories);
+        _metadataEditor.AddChild(new Label { Text = "Description" });
+        _metadataDescription.Name = "CardMetadataDescription";
+        _metadataDescription.CustomMinimumSize = new Vector2(0f, 56f);
+        _metadataDescription.PlaceholderText = "Describe what this card does.";
+        _metadataEditor.AddChild(_metadataDescription);
+        _applyCardMetadataButton.Name = "ApplyCardMetadata";
+        _applyCardMetadataButton.Text = "Apply card metadata";
+        _applyCardMetadataButton.Disabled = true;
+        _applyCardMetadataButton.Pressed += ApplyCardMetadata;
+        _metadataEditor.AddChild(_applyCardMetadataButton);
+        right.AddChild(_metadataEditor);
         scriptToolbar.AddChild(new Label { Text = "JavaScript", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
         _copyBehaviorButton.Text = "Create editable copy";
         _copyBehaviorButton.Disabled = true;
@@ -368,13 +395,24 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
     {
         JsonObject? use = GetSelectedUse();
         _selectedUri = use is null ? "" : LegacySaveDocument.ReadString(use["behaviorUri"]);
+        JsonObject? embeddedBehavior = _selectedUri.StartsWith("embedded:", StringComparison.Ordinal)
+            ? FindEmbeddedBehavior(_selectedUri["embedded:".Length..])
+            : null;
         _selectedBehaviorDetails.Text = use is null
             ? "Select an assigned behavior to inspect its card details."
             : FormatBehaviorDetails(_selectedUri);
-        bool hasSource = (_selectedUri.StartsWith("embedded:", StringComparison.Ordinal)
-                          && FindEmbeddedBehavior(_selectedUri["embedded:".Length..]) is not null)
-                         || (_selectedUri.StartsWith("builtin:", StringComparison.Ordinal)
-                             && _builtinSources.ContainsKey(_selectedUri));
+        bool canEditCardMetadata = embeddedBehavior is not null && RefreshCardMetadataEditor(embeddedBehavior);
+        _metadataEditor.Visible = canEditCardMetadata;
+        _applyCardMetadataButton.Disabled = !canEditCardMetadata;
+        if (!canEditCardMetadata)
+        {
+            _metadataTitle.Text = "";
+            _metadataCategories.Text = "";
+            _metadataCategories.Visible = true;
+            _metadataDescription.Text = "";
+        }
+        bool hasSource = embeddedBehavior is not null
+            || (_selectedUri.StartsWith("builtin:", StringComparison.Ordinal) && _builtinSources.ContainsKey(_selectedUri));
         _copyBehaviorButton.Disabled = use is null || !hasSource;
         _applyAssignmentsButton.Disabled = use is null;
         _rawAssignmentsMode.Disabled = use is null;
@@ -390,10 +428,9 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
 
         string source = "";
         bool editable = false;
-        if (_selectedUri.StartsWith("embedded:", StringComparison.Ordinal)
-            && FindEmbeddedBehavior(_selectedUri["embedded:".Length..]) is JsonObject behavior)
+        if (embeddedBehavior is not null)
         {
-            source = LegacySaveDocument.ReadString(behavior["javascript"]);
+            source = LegacySaveDocument.ReadString(embeddedBehavior["javascript"]);
             editable = true;
         }
         else if (_selectedUri.StartsWith("builtin:", StringComparison.Ordinal)
@@ -438,6 +475,101 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
         uses.Add(CreateBehaviorUse(useId, $"embedded:{behaviorId}"));
         _selectedUseId = useId;
         NotifyChanged("Created and assigned a custom behavior.");
+        RefreshAvailableBehaviors();
+        RefreshAssignedUses();
+    }
+
+    private bool RefreshCardMetadataEditor(JsonObject behavior)
+    {
+        string metadataJson = LegacySaveDocument.ReadString(behavior["metadataJson"]);
+        JsonObject? metadata;
+        if (metadataJson.Length == 0)
+        {
+            metadata = new JsonObject();
+        }
+        else
+        {
+            try
+            {
+                metadata = JsonNode.Parse(metadataJson) as JsonObject;
+            }
+            catch (JsonException)
+            {
+                return false;
+            }
+        }
+        if (metadata is null)
+            return false;
+        if (metadata["cardSystemPanelData"] is JsonObject panelData && LegacySaveDocument.ReadBool(panelData["isPanel"]))
+            return false;
+
+        JsonObject? cardData = metadata["cardSystemCardData"] as JsonObject;
+        _metadataTitle.Text = LegacySaveDocument.ReadString(cardData?["title"], LegacySaveDocument.ReadString(behavior["label"]));
+        _metadataCategories.Text = cardData?["categories"] is JsonArray categories
+            ? string.Join(", ", categories.Select(node => LegacySaveDocument.ReadString(node)).Where(value => value.Length > 0))
+            : "";
+        _metadataCategories.Visible = cardData is null || LegacySaveDocument.ReadBool(cardData["isCard"], true);
+        _metadataDescription.Text = LegacySaveDocument.ReadString(cardData?["description"]);
+        return true;
+    }
+
+    private void ApplyCardMetadata()
+    {
+        if (!_selectedUri.StartsWith("embedded:", StringComparison.Ordinal)
+            || FindEmbeddedBehavior(_selectedUri["embedded:".Length..]) is not JsonObject behavior)
+            return;
+
+        string metadataJson = LegacySaveDocument.ReadString(behavior["metadataJson"]);
+        JsonObject metadata;
+        if (metadataJson.Length == 0)
+        {
+            metadata = new JsonObject();
+        }
+        else
+        {
+            JsonNode? parsed;
+            try
+            {
+                parsed = JsonNode.Parse(metadataJson);
+            }
+            catch (JsonException)
+            {
+                _status.Text = "Card metadata is invalid JSON and was not changed.";
+                return;
+            }
+            if (parsed is not JsonObject parsedMetadata)
+            {
+                _status.Text = "Card metadata must be a JSON object and was not changed.";
+                return;
+            }
+            metadata = parsedMetadata;
+        }
+
+        if (metadata["cardSystemPanelData"] is JsonObject panelData && LegacySaveDocument.ReadBool(panelData["isPanel"]))
+        {
+            _status.Text = "Panel metadata cannot be changed in the card metadata editor.";
+            return;
+        }
+        if (metadata["cardSystemCardData"] is not JsonObject cardData)
+        {
+            cardData = new JsonObject { ["isCard"] = true };
+            metadata["cardSystemCardData"] = cardData;
+        }
+        cardData["title"] = _metadataTitle.Text;
+        cardData["description"] = _metadataDescription.Text;
+        if (LegacySaveDocument.ReadBool(cardData["isCard"], true))
+        {
+            var categories = new JsonArray();
+            var seenCategories = new HashSet<string>(StringComparer.Ordinal);
+            foreach (string category in _metadataCategories.Text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (seenCategories.Add(category))
+                    categories.Add(category);
+            }
+            cardData["categories"] = categories;
+        }
+        behavior["metadataJson"] = metadata.ToJsonString();
+        NotifyChanged("Updated custom card metadata. Save the project to persist it.");
         RefreshAvailableBehaviors();
         RefreshAssignedUses();
     }
