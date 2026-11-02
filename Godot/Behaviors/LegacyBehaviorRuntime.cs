@@ -1209,7 +1209,7 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
     private WorldActorNode? FindActor(string name)
         => _actorsByName.TryGetValue(name, out WorldActorNode? actor) ? actor : null;
 
-    private static string[] EnumerateFiles(string root, string suffix)
+    internal static string[] EnumerateFiles(string root, string suffix)
     {
         if (!DirAccess.DirExistsAbsolute(ProjectSettings.GlobalizePath(root)))
             return Array.Empty<string>();

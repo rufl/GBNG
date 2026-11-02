@@ -51,6 +51,8 @@ public partial class GameBuilderApp : Node3D
     private CheckBox _gravityField = null!;
     private CheckBox _playerField = null!;
     private OptionButton _brainField = null!;
+    private Button _behaviorEditorButton = null!;
+    private string? _behaviorRuntimeError;
     private const int MaxHistoryItems = 50;
     private readonly List<HistoryEntry> _history = new();
     private int _historyPosition;
@@ -384,6 +386,9 @@ public partial class GameBuilderApp : Node3D
         _brainField.ItemSelected += UpdateSelectedBrain;
         inspector.AddChild(_brainField);
         _inspectorInputs.Add(_brainField);
+        _behaviorEditorButton = new Button { Text = "Edit behaviors…" };
+        _behaviorEditorButton.Pressed += OpenBehaviorEditor;
+        inspector.AddChild(_behaviorEditorButton);
         inspector.AddChild(CreateLabel("Display name", 14));
         _displayNameField = new LineEdit();
         _displayNameField.TextChanged += UpdateSelectedDisplayName;
@@ -556,6 +561,50 @@ public partial class GameBuilderApp : Node3D
             () => SetActorStringProperty(actorName, "brainName", oldBrain),
             () => SetActorStringProperty(actorName, "brainName", brainName));
     }
+    private void OpenBehaviorEditor()
+    {
+        if (_document is null || _selectedActor is null || _playMode)
+            return;
+        var window = new LegacyBehaviorAuthoringWindow(_document, _selectedActor.State, OnBehaviorDataChanged);
+        AddChild(window);
+        window.PopupCentered();
+    }
+
+    private void OnBehaviorDataChanged()
+    {
+        if (_document is null)
+            return;
+        try
+        {
+            LegacyBehaviorRuntime updatedRuntime = CreateBehaviorRuntime(_document);
+            _behaviorRuntime?.Dispose();
+            _behaviorRuntime = updatedRuntime;
+            _behaviorRuntimeError = null;
+            _behaviorUi.SetCommands(new JsonArray());
+            if (_selectedActor is not null)
+                SelectActor(_selectedActor);
+            _status.Text = "Behavior changes applied. Save the project to persist them.";
+        }
+        catch (Exception exception)
+        {
+            _behaviorRuntimeError = exception.Message;
+            GD.PushError($"Could not reload edited behavior database: {exception}");
+            ShowError($"Behavior data changed, but the runtime rejected it:\n{exception.Message}");
+        }
+    }
+
+    private LegacyBehaviorRuntime CreateBehaviorRuntime(LegacySaveDocument document)
+        => new(
+            _actors,
+            document,
+            _catalog,
+            _world,
+            _terrain,
+            _camera,
+            _behaviorUi.SetCommands,
+            RefreshRuntimeActors,
+            SetTemporaryCameraOffset);
+
 
     private void BeginTextEdit(string property)
     {
@@ -736,16 +785,8 @@ public partial class GameBuilderApp : Node3D
             }
 
             BuildActors(document);
-            _behaviorRuntime = new LegacyBehaviorRuntime(
-                _actors,
-                document,
-                _catalog,
-                _world,
-                _terrain,
-                _camera,
-                _behaviorUi.SetCommands,
-                RefreshRuntimeActors,
-                SetTemporaryCameraOffset);
+            _behaviorRuntime = CreateBehaviorRuntime(document);
+            _behaviorRuntimeError = null;
             GD.Print($"Loaded {document.Actors.Count} actors from {path} (save version {document.Version}).");
 
             PopulateAssetPicker();
@@ -758,6 +799,7 @@ public partial class GameBuilderApp : Node3D
         }
         catch (Exception exception)
         {
+            _behaviorRuntimeError = exception.Message;
             GD.PushError($"Could not load project: {exception}");
             ShowError($"Could not load project:\n{exception.Message}");
         }
@@ -1069,6 +1111,7 @@ public partial class GameBuilderApp : Node3D
         _gravityField.ButtonPressed = hasActor && actor!.State.EnableGravity;
         _playerField.ButtonPressed = hasActor && actor!.State.IsPlayerControllable;
         SetInspectorInputsEnabled(hasActor && !_playMode);
+        _behaviorEditorButton.Disabled = !hasActor || _playMode;
         _updatingInspector = false;
     }
 
@@ -1106,6 +1149,11 @@ public partial class GameBuilderApp : Node3D
     {
         if (_document is null)
             return;
+        if (enabled && (_behaviorRuntime is null || _behaviorRuntimeError is not null))
+        {
+            ShowError($"Behavior runtime cannot start:\n{_behaviorRuntimeError ?? "the project has not loaded successfully."}");
+            return;
+        }
         _playMode = enabled;
         Input.MouseMode = Input.MouseModeEnum.Visible;
         foreach (WorldActorNode actor in _actors)
@@ -1118,6 +1166,7 @@ public partial class GameBuilderApp : Node3D
         _positionFields[2].Editable = !enabled && _selectedActor is not null;
         _yawField.Editable = !enabled && _selectedActor is not null;
         SetInspectorInputsEnabled(!enabled && _selectedActor is not null);
+        _behaviorEditorButton.Disabled = enabled || _selectedActor is null;
         UpdateHistoryButtons();
         _status.Text = enabled
             ? "Play mode — WASD/arrows to move, Space to jump, Esc to return to editing."
