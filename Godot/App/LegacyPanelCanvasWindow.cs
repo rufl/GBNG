@@ -10,6 +10,11 @@ public sealed partial class LegacyPanelCanvasWindow : Window
 {
     private const string BuiltinBehaviorRoot = "res://Assets/StreamingAssets/BehaviorLibrary";
     private const string CustomCategory = "Custom";
+    private const string DefaultBrainId = "__DEFAULT_BRAIN__";
+    private sealed record CardChoice(string Value, string Label);
+
+    private GraphNode? _customNode;
+    private int _canvasBuildGeneration;
     private readonly LegacySaveDocument _document;
     private readonly LegacyActorData _actor;
     private readonly Action _onChanged;
@@ -113,7 +118,7 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         var toolbar = new HBoxContainer();
         toolbar.AddChild(new Label
         {
-            Text = "Drag panels and notes to arrange them. Add, edit, resize, and delete notes here; edit card uses and properties in the behavior authoring window.",
+            Text = "Arrange panels and notes, add or move cards between panel decks, and remove card uses here. Edit card properties and scripts in the behavior authoring window.",
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             AutowrapMode = TextServer.AutowrapMode.Word
         });
@@ -199,6 +204,7 @@ public sealed partial class LegacyPanelCanvasWindow : Window
 
             GraphNode customNode = CreateCustomNode(uses, assignedCardIds, panelIndex);
             _canvas.AddChild(customNode);
+            _customNode = customNode;
             JsonObject brainMetadata = ParseObjectString(brain["metadataJson"], "behavior brain metadata");
             _notes = brainMetadata["panelNotes"] as JsonArray ?? new JsonArray();
             int noteIndex = 0;
@@ -232,7 +238,7 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         string customLabel = LegacySaveDocument.ReadString(metadata["customLabel"]);
         var graphNode = new GraphNode
         {
-            Name = $"panel_{panelIndex}",
+            Name = $"panel_{panelIndex}_{_canvasBuildGeneration}",
             Title = customLabel.Length > 0 ? customLabel : title,
             PositionOffset = ReadVector2(metadata["position"], new Vector2(50 + panelIndex * 380, 60)),
             CustomMinimumSize = new Vector2(310, 0),
@@ -265,27 +271,377 @@ public sealed partial class LegacyPanelCanvasWindow : Window
             string label = LegacySaveDocument.ReadString(definition["label"], propertyName);
             graphNode.AddChild(new HSeparator());
             graphNode.AddChild(CreateCanvasLabel(label, LegacySaveDocument.ReadString(definition["comment"])));
-            JsonNode? value = ReadAssignedValue(use, propertyName);
-            if (value is not JsonArray cardIds || cardIds.Count == 0)
+            JsonNode? assignedValue = ReadAssignedValue(use, propertyName);
+            graphNode.AddChild(CreateCardDeckEditor(use, usesById, definition, propertyName, assignedValue));
+            if (assignedValue is JsonArray cardIds)
             {
-                graphNode.AddChild(CreateCanvasLabel("(empty)"));
-                continue;
-            }
-            foreach (JsonNode? cardIdNode in cardIds)
-            {
-                string cardId = LegacySaveDocument.ReadString(cardIdNode);
-                if (cardId.Length == 0)
-                    continue;
-                assignedCardIds.Add(cardId);
-                string cardLabel = usesById.TryGetValue(cardId, out JsonObject? cardUse)
-                    ? GetCardTitle(LegacySaveDocument.ReadString(cardUse["behaviorUri"]))
-                    : $"Missing use · {cardId}";
-                graphNode.AddChild(CreateCanvasLabel($"  {cardLabel}", cardId));
+                foreach (JsonNode? cardIdNode in cardIds)
+                {
+                    string cardId = LegacySaveDocument.ReadString(cardIdNode);
+                    if (cardId.Length > 0)
+                        assignedCardIds.Add(cardId);
+                }
             }
         }
         if (!hasDeck)
             graphNode.AddChild(CreateCanvasLabel("No card decks."));
         return graphNode;
+    }
+
+    private Control CreateCardDeckEditor(
+        JsonObject panelUse,
+        IReadOnlyDictionary<string, JsonObject> usesById,
+        JsonObject definition,
+        string propertyName,
+        JsonNode? value)
+    {
+        string category = LegacySaveDocument.ReadString((definition["deckOptions"] as JsonObject)?["cardCategory"], "Custom");
+        if (category.Length == 0)
+            category = CustomCategory;
+        bool oneCardOnly = LegacySaveDocument.ReadBool((definition["deckOptions"] as JsonObject)?["oneCardOnly"]);
+        JsonArray? assignedCards = value as JsonArray;
+        var assignedIds = new HashSet<string>(StringComparer.Ordinal);
+        var editor = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        if (assignedCards is not null)
+        {
+            foreach (JsonNode? cardIdNode in assignedCards)
+            {
+                string cardId = LegacySaveDocument.ReadString(cardIdNode);
+                if (cardId.Length == 0)
+                    continue;
+                assignedIds.Add(cardId);
+                string title = usesById.TryGetValue(cardId, out JsonObject? cardUse)
+                    ? GetCardDisplayName(LegacySaveDocument.ReadString(cardUse["behaviorUri"]))
+                    : $"Missing use · {cardId}";
+                var row = new HBoxContainer();
+                row.AddChild(new Label
+                {
+                    Text = title,
+                    SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                    AutowrapMode = TextServer.AutowrapMode.Word
+                });
+                var remove = new Button { Name = $"RemoveCard_{cardId}", Text = "Remove" };
+                remove.Pressed += () => RemoveCardFromDeck(LegacySaveDocument.ReadString(panelUse["id"]), propertyName, cardId);
+                row.AddChild(remove);
+                editor.AddChild(row);
+            }
+        }
+        if (assignedIds.Count == 0)
+            editor.AddChild(CreateCanvasLabel("(empty)"));
+
+        var picker = new OptionButton
+        {
+            Name = $"DeckPicker_{LegacySaveDocument.ReadString(panelUse["id"])}_{propertyName}",
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            CustomMinimumSize = new Vector2(0f, 36f)
+        };
+        picker.AddItem("(choose a card)");
+        picker.SetItemMetadata(0, "");
+        List<CardChoice> choices = GetCardChoices(category, usesById.Values, assignedIds);
+        foreach (CardChoice choice in choices)
+        {
+            picker.AddItem(choice.Label);
+            picker.SetItemMetadata(picker.ItemCount - 1, choice.Value);
+        }
+        var add = new Button
+        {
+            Name = $"AddCard_{LegacySaveDocument.ReadString(panelUse["id"])}_{propertyName}",
+            Text = oneCardOnly && assignedIds.Count > 0 ? "Replace card" : "Add card",
+            Disabled = true
+        };
+        picker.ItemSelected += index => add.Disabled = picker.GetItemMetadata((int)index).AsString().Length == 0;
+        add.Pressed += () =>
+        {
+            if (picker.Selected < 0)
+                return;
+            string selected = picker.GetItemMetadata(picker.Selected).AsString();
+            if (selected.Length > 0)
+                AssignCardToDeck(LegacySaveDocument.ReadString(panelUse["id"]), propertyName, category, selected, oneCardOnly);
+        };
+        var addRow = new HBoxContainer();
+        addRow.AddChild(picker);
+        addRow.AddChild(add);
+        editor.AddChild(addRow);
+        return editor;
+    }
+
+    private List<CardChoice> GetCardChoices(string category, IEnumerable<JsonObject> brainUses, HashSet<string> assignedIds)
+    {
+        var choices = new List<CardChoice>();
+        var seenUris = new HashSet<string>(StringComparer.Ordinal);
+        foreach (string uri in _builtinMetadata.Keys.OrderBy(value => value, StringComparer.Ordinal))
+        {
+            if (IsCardInCategory(uri, category) && seenUris.Add(uri))
+                choices.Add(new CardChoice($"behavior:{uri}", GetCardDisplayName(uri)));
+        }
+
+        JsonObject? database = _document.BehaviorDatabase;
+        if (database?["behaviorIds"] is JsonArray behaviorIds
+            && database["behaviors"] is JsonArray behaviors)
+        {
+            for (int index = 0; index < behaviorIds.Count && index < behaviors.Count; index++)
+            {
+                string behaviorId = LegacySaveDocument.ReadString(behaviorIds[index]);
+                string uri = $"embedded:{behaviorId}";
+                if (behaviorId.Length > 0 && IsCardInCategory(uri, category) && seenUris.Add(uri))
+                    choices.Add(new CardChoice($"behavior:{uri}", GetCardDisplayName(uri)));
+            }
+        }
+
+        foreach (JsonObject use in brainUses)
+        {
+            string id = LegacySaveDocument.ReadString(use["id"]);
+            string uri = LegacySaveDocument.ReadString(use["behaviorUri"]);
+            if (id.Length == 0 || id == DefaultBrainId || uri == "builtin:Default Behavior"
+                || assignedIds.Contains(id) || !IsCardInCategory(uri, category))
+                continue;
+            choices.Add(new CardChoice($"use:{id}", $"{GetCardDisplayName(uri)} (move)"));
+        }
+        return choices;
+    }
+
+    private void AssignCardToDeck(string panelUseId, string propertyName, string category, string selected, bool oneCardOnly)
+    {
+        try
+        {
+            JsonObject brain = EnsureWritableBrain();
+            if (brain["behaviorUses"] is not JsonArray uses)
+                throw new InvalidDataException("This behavior brain has no assigned uses.");
+            JsonObject panelUse = FindUse(uses, panelUseId)
+                ?? throw new InvalidDataException("The selected panel no longer exists.");
+            JsonArray currentCards = ReadAssignedValue(panelUse, propertyName) as JsonArray ?? new JsonArray();
+            string useId;
+            if (selected.StartsWith("use:", StringComparison.Ordinal))
+            {
+                useId = selected["use:".Length..];
+                JsonObject cardUse = FindUse(uses, useId)
+                    ?? throw new InvalidDataException("The selected card use no longer exists.");
+                if (!IsCardInCategory(LegacySaveDocument.ReadString(cardUse["behaviorUri"]), category))
+                    throw new InvalidDataException("The selected card is not valid for this deck.");
+            }
+            else if (selected.StartsWith("behavior:", StringComparison.Ordinal))
+            {
+                string uri = selected["behavior:".Length..];
+                if (!IsCardInCategory(uri, category))
+                    throw new InvalidDataException("The selected card is not valid for this deck.");
+                useId = NewUseId(uses);
+                uses.Add(new JsonObject
+                {
+                    ["id"] = useId,
+                    ["behaviorUri"] = uri,
+                    ["metadataJson"] = "",
+                    ["propertyAssignments"] = new JsonArray()
+                });
+            }
+            else
+            {
+                throw new InvalidDataException("The selected card choice is invalid.");
+            }
+
+            if (currentCards.Any(node => LegacySaveDocument.ReadString(node) == useId))
+                return;
+            if (oneCardOnly)
+            {
+                foreach (string previousId in currentCards.Select(node => LegacySaveDocument.ReadString(node)).Where(id => id.Length > 0).Distinct(StringComparer.Ordinal))
+                {
+                    if (previousId == useId)
+                        continue;
+                    RemoveUseFromDecks(uses, previousId);
+                    RemoveBehaviorUse(uses, previousId);
+                }
+            }
+            RemoveUseFromDecks(uses, useId);
+            currentCards = ReadAssignedValue(panelUse, propertyName) as JsonArray ?? new JsonArray();
+            currentCards.Add(useId);
+            WriteAssignedValue(panelUse, propertyName, currentCards);
+            ApplyCardDeckChange();
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidDataException or FormatException or OverflowException)
+        {
+            _status.Text = exception.Message;
+        }
+    }
+
+    private void RemoveCardFromDeck(string panelUseId, string propertyName, string cardUseId)
+    {
+        try
+        {
+            JsonObject brain = EnsureWritableBrain();
+            if (brain["behaviorUses"] is not JsonArray uses)
+                throw new InvalidDataException("This behavior brain has no assigned uses.");
+            JsonObject panelUse = FindUse(uses, panelUseId)
+                ?? throw new InvalidDataException("The selected panel no longer exists.");
+            RemoveUseFromDecks(uses, cardUseId);
+            RemoveBehaviorUse(uses, cardUseId);
+            WriteAssignedValue(panelUse, propertyName, ReadAssignedValue(panelUse, propertyName) as JsonArray ?? new JsonArray());
+            ApplyCardDeckChange();
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidDataException or FormatException or OverflowException)
+        {
+            _status.Text = exception.Message;
+        }
+    }
+
+    private void ApplyCardDeckChange()
+    {
+        _layoutDirty = true;
+        _onChanged();
+        RebuildCanvas();
+        _status.Text = "Card assignment updated in memory. Use Save in GBNG to persist the project.";
+    }
+
+    private void RebuildCanvas()
+    {
+        _building = true;
+        try
+        {
+            foreach (GraphNode node in _canvas.GetChildren().OfType<GraphNode>().ToArray())
+            {
+                _canvas.RemoveChild(node);
+                node.QueueFree();
+            }
+            _panelNodes.Clear();
+            _noteNodes.Clear();
+            _resizeBoundNoteNodes.Clear();
+            _customNode = null;
+            _canvasBuildGeneration++;
+        }
+        finally
+        {
+            _building = false;
+        }
+        PopulateCanvas();
+    }
+
+    private JsonObject EnsureWritableBrain()
+    {
+        JsonObject? database = _document.BehaviorDatabase;
+        if (database?["brainIds"] is not JsonArray brainIds || database["brains"] is not JsonArray brains
+            || brainIds.Count != brains.Count)
+            throw new InvalidDataException("The .voos brainIds and brains tables are invalid.");
+        int brainIndex = FindStringIndex(brainIds, _actor.BrainName);
+        if (brainIndex < 0 || brainIndex >= brains.Count || brains[brainIndex] is not JsonObject brain)
+            throw new InvalidDataException("This actor's behavior brain no longer exists.");
+        if (_actor.BrainName != DefaultBrainId)
+        {
+            _brain = brain;
+            return brain;
+        }
+
+        JsonObject clone = JsonNode.Parse(brain.ToJsonString())!.AsObject();
+        string cloneId;
+        do
+        {
+            cloneId = Guid.NewGuid().ToString("N");
+        } while (FindStringIndex(brainIds, cloneId) >= 0);
+        brainIds.Add(cloneId);
+        brains.Add(clone);
+        _actor.Data["brainName"] = cloneId;
+        _brain = clone;
+        return clone;
+    }
+
+    private void RemoveUseFromDecks(JsonArray uses, string cardUseId)
+    {
+        foreach (JsonNode? node in uses)
+        {
+            if (node is not JsonObject use)
+                continue;
+            string uri = LegacySaveDocument.ReadString(use["behaviorUri"]);
+            JsonObject? panelData = (GetBehaviorMetadata(uri)?["cardSystemPanelData"] as JsonObject);
+            if (panelData is null || !LegacySaveDocument.ReadBool(panelData["isPanel"]))
+                continue;
+            JsonArray? definitions = _getPropertyDefinitions(uri);
+            if (definitions is null)
+                continue;
+            foreach (JsonNode? definitionNode in definitions)
+            {
+                if (definitionNode is not JsonObject definition
+                    || LegacySaveDocument.ReadString(definition["type"]) != "CardDeck")
+                    continue;
+                string name = LegacySaveDocument.ReadString(definition["variableName"]);
+                if (name.Length == 0 || ReadAssignedValue(use, name) is not JsonArray assigned)
+                    continue;
+                var remaining = new JsonArray();
+                bool changed = false;
+                foreach (JsonNode? idNode in assigned)
+                {
+                    if (LegacySaveDocument.ReadString(idNode) == cardUseId)
+                        changed = true;
+                    else
+                        remaining.Add(idNode?.DeepClone());
+                }
+                if (changed)
+                    WriteAssignedValue(use, name, remaining);
+            }
+        }
+    }
+
+    private static void RemoveBehaviorUse(JsonArray uses, string useId)
+    {
+        for (int index = uses.Count - 1; index >= 0; index--)
+        {
+            if (uses[index] is JsonObject use && LegacySaveDocument.ReadString(use["id"]) == useId)
+                uses.RemoveAt(index);
+        }
+    }
+
+    private static JsonObject? FindUse(JsonArray uses, string useId)
+    {
+        foreach (JsonNode? node in uses)
+        {
+            if (node is JsonObject use && LegacySaveDocument.ReadString(use["id"]) == useId)
+                return use;
+        }
+        return null;
+    }
+
+    private static string NewUseId(JsonArray uses)
+    {
+        string id;
+        do
+        {
+            id = Guid.NewGuid().ToString("N");
+        } while (FindUse(uses, id) is not null);
+        return id;
+    }
+
+    private bool IsCardInCategory(string uri, string category)
+    {
+        JsonObject? metadata = GetBehaviorMetadata(uri);
+        if (metadata is null)
+            return uri.StartsWith("embedded:", StringComparison.Ordinal) && category == CustomCategory;
+        if (metadata["cardSystemCardData"] is not JsonObject cardData
+            || !LegacySaveDocument.ReadBool(cardData["isCard"])
+            || cardData["categories"] is not JsonArray categories)
+            return false;
+        return categories.Any(node => LegacySaveDocument.ReadString(node) == category);
+    }
+
+    private string GetCardDisplayName(string uri)
+    {
+        string title = GetCardTitle(uri);
+        if (title.Length > 0 && title != uri)
+            return title;
+        if (uri.StartsWith("builtin:", StringComparison.Ordinal))
+            return uri["builtin:".Length..];
+        if (uri.StartsWith("embedded:", StringComparison.Ordinal))
+        {
+            string id = uri["embedded:".Length..];
+            JsonObject? database = _document.BehaviorDatabase;
+            if (database?["behaviorIds"] is JsonArray ids && database["behaviors"] is JsonArray behaviors)
+            {
+                int index = FindStringIndex(ids, id);
+                if (index >= 0 && index < behaviors.Count && behaviors[index] is JsonObject behavior)
+                {
+                    string label = LegacySaveDocument.ReadString(behavior["label"]);
+                    if (label.Length > 0 && label != "Custom")
+                        return label;
+                }
+            }
+            return $"Custom · {(id.Length > 8 ? id[..8] : id)}";
+        }
+        return uri;
     }
 
     private GraphNode CreateCustomNode(JsonArray uses, HashSet<string> assignedCardIds, int panelIndex)
@@ -297,7 +653,7 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         string title = LegacySaveDocument.ReadString(miscMetadata["customLabel"], "Custom");
         var graphNode = new GraphNode
         {
-            Name = $"custom_{panelIndex}",
+            Name = $"custom_{panelIndex}_{_canvasBuildGeneration}",
             Title = title,
             PositionOffset = ReadVector2(miscMetadata["position"], new Vector2(50 + panelIndex * 380, 60)),
             CustomMinimumSize = new Vector2(310, 0),
@@ -339,7 +695,7 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         size = new Vector2(Math.Max(size.X, 180f), Math.Max(size.Y, 120f));
         var graphNode = new GraphNode
         {
-            Name = $"note_{index}",
+            Name = $"note_{index}_{_canvasBuildGeneration}",
             Title = "Note",
             PositionOffset = ReadVector2(data["position"], new Vector2(60 + index * 340, 160)),
             CustomMinimumSize = size,
@@ -462,7 +818,7 @@ public sealed partial class LegacyPanelCanvasWindow : Window
             use["metadataJson"] = metadata.ToJsonString();
         }
 
-        GraphNode? customNode = _canvas.GetNodeOrNull<GraphNode>($"custom_{_panelNodes.Count}");
+        GraphNode? customNode = _customNode;
         if (customNode is not null)
         {
             JsonObject brainMetadata = ParseObjectString(_brain["metadataJson"], "behavior brain metadata");
@@ -604,6 +960,39 @@ public sealed partial class LegacyPanelCanvasWindow : Window
                 : parsed?.DeepClone();
         }
         return null;
+    }
+
+    private static void WriteAssignedValue(JsonObject use, string propertyName, JsonNode value)
+    {
+        JsonArray assignments;
+        if (use["propertyAssignments"] is JsonArray existing)
+        {
+            assignments = existing;
+        }
+        else if (use["propertyAssignments"] is null)
+        {
+            assignments = new JsonArray();
+            use["propertyAssignments"] = assignments;
+        }
+        else
+        {
+            throw new InvalidDataException("The behavior use propertyAssignments field must be an array.");
+        }
+
+        JsonObject? assignment = assignments
+            .OfType<JsonObject>()
+            .FirstOrDefault(candidate => LegacySaveDocument.ReadString(candidate["propertyName"]) == propertyName);
+        var envelope = new JsonObject { ["value"] = value.DeepClone() };
+        if (assignment is null)
+        {
+            assignments.Add(new JsonObject
+            {
+                ["propertyName"] = propertyName,
+                ["valueJson"] = envelope.ToJsonString()
+            });
+            return;
+        }
+        assignment["valueJson"] = envelope.ToJsonString();
     }
 
     private static JsonObject ParseObjectString(JsonNode? node, string description)
