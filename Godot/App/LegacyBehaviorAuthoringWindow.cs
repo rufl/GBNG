@@ -44,6 +44,64 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
 
     private sealed record BehaviorChoice(string Uri, string Label);
 
+    private sealed partial class StringArrayEditor : VBoxContainer
+    {
+        private readonly Func<string, OptionButton> _pickerFactory;
+        private readonly List<OptionButton> _pickers = new();
+        private readonly Button _addButton = new() { Text = "Add value" };
+
+        public StringArrayEditor(Func<string, OptionButton> pickerFactory, IEnumerable<string> values)
+        {
+            _pickerFactory = pickerFactory;
+            CustomMinimumSize = new Vector2(0f, 100f);
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            AddThemeConstantOverride("separation", 4);
+            foreach (string value in values)
+                AddValueRow(value);
+            _addButton.Pressed += () =>
+            {
+                AddValueRow("");
+                Changed?.Invoke();
+            };
+            AddChild(_addButton);
+        }
+
+        public event Action? Changed;
+
+        public JsonArray GetValues()
+        {
+            var values = new JsonArray();
+            foreach (OptionButton picker in _pickers)
+                values.Add(picker.GetItemMetadata(picker.Selected).AsString());
+            return values;
+        }
+
+        private void AddValueRow(string value)
+        {
+            var row = new HBoxContainer();
+            var picker = _pickerFactory(value);
+            picker.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            picker.ItemSelected += _ => Changed?.Invoke();
+            var removeButton = new Button { Text = "Remove" };
+            removeButton.Pressed += () => RemoveValueRow(picker, row);
+            _pickers.Add(picker);
+            row.AddChild(picker);
+            row.AddChild(removeButton);
+            AddChild(row);
+            if (_addButton.GetParent() == this)
+                MoveChild(row, GetChildCount() - 2);
+        }
+
+        private void RemoveValueRow(OptionButton picker, HBoxContainer row)
+        {
+            if (!_pickers.Remove(picker))
+                return;
+            RemoveChild(row);
+            row.QueueFree();
+            Changed?.Invoke();
+        }
+    }
+
     public LegacyBehaviorAuthoringWindow(
         LegacySaveDocument document,
         LegacyActorData actor,
@@ -551,10 +609,23 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
                 return picker;
             case "CardDeck":
                 return CreateCardDeckEditor(definition, value);
+            case "Actor":
+                return CreateActorEditor(definition, stringValue);
+            case "ActorGroup":
+                return CreateActorGroupEditor(definition, stringValue);
+            case "ActorArray":
+                return CreateActorArrayEditor(definition, value);
+            case "EnumArray":
+                if (definition["allowedValues"] is JsonArray enumValues && enumValues.Count > 0)
+                    return CreateEnumArrayEditor(definition, value);
+                return new TextEdit
+                {
+                    Text = value is JsonArray enumArray ? enumArray.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) : "[]",
+                    CustomMinimumSize = new Vector2(0f, 70f),
+                    SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+                };
             case "NumberArray":
             case "StringArray":
-            case "EnumArray":
-            case "ActorArray":
                 return new TextEdit
                 {
                     Text = value is JsonArray array ? array.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) : "[]",
@@ -565,6 +636,118 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
                 return new LineEdit { Text = stringValue, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         }
     }
+
+    private OptionButton CreateActorEditor(JsonObject definition, string selectedValue)
+    {
+        var picker = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        AddPickerOption(picker, "(none)", "", selectedValue);
+        foreach (LegacyActorData actor in GetSelectableActors(definition))
+            AddPickerOption(picker, $"{actor.DisplayName} · {actor.Name}", actor.Name, selectedValue);
+        AddUnknownPickerOption(picker, selectedValue);
+        return picker;
+    }
+
+    private OptionButton CreateActorGroupEditor(JsonObject definition, string selectedValue)
+    {
+        var picker = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        AddPickerOption(picker, "(no actors)", "", selectedValue);
+        AddPickerOption(picker, "All actors", "@ANY", selectedValue);
+
+        IEnumerable<LegacyActorData> actors = GetSelectableActors(definition);
+        var tags = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (LegacyActorData actor in actors)
+        {
+            if (actor.Data["tags"] is not JsonArray actorTags)
+                continue;
+            foreach (JsonNode? tagNode in actorTags)
+            {
+                string tag = LegacySaveDocument.ReadString(tagNode);
+                if (tag.Length > 0)
+                    tags.Add(tag);
+            }
+        }
+        foreach (string tag in tags)
+            AddPickerOption(picker, $"Actors tagged · {tag}", $"@TAG:{tag}", selectedValue);
+        foreach (LegacyActorData actor in actors)
+            AddPickerOption(picker, $"Actor · {actor.DisplayName} · {actor.Name}", actor.Name, selectedValue);
+
+        AddUnknownPickerOption(picker, selectedValue);
+        return picker;
+    }
+
+    private StringArrayEditor CreateActorArrayEditor(JsonObject definition, JsonNode? value)
+        => new(selected => CreateActorEditor(definition, selected), ReadStringArray(value));
+
+    private StringArrayEditor CreateEnumArrayEditor(JsonObject definition, JsonNode? value)
+    {
+        JsonArray allowedValues = definition["allowedValues"] as JsonArray ?? new JsonArray();
+        return new StringArrayEditor(selected => CreateEnumArrayOption(allowedValues, selected), ReadStringArray(value));
+    }
+
+    private static OptionButton CreateEnumArrayOption(JsonArray allowedValues, string selectedValue)
+    {
+        var picker = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        bool hasEmptyOption = allowedValues
+            .OfType<JsonObject>()
+            .Any(option => LegacySaveDocument.ReadString(option["value"]) == "");
+        if (!hasEmptyOption)
+            AddPickerOption(picker, "(none)", "", selectedValue);
+        foreach (JsonNode? optionNode in allowedValues)
+        {
+            if (optionNode is not JsonObject option)
+                continue;
+            string optionValue = LegacySaveDocument.ReadString(option["value"]);
+            string optionLabel = LegacySaveDocument.ReadString(option["label"], optionValue);
+            AddPickerOption(picker, optionLabel, optionValue, selectedValue);
+        }
+        AddUnknownPickerOption(picker, selectedValue);
+        return picker;
+    }
+
+    private IEnumerable<LegacyActorData> GetSelectableActors(JsonObject definition)
+    {
+        bool allowOffstage = LegacySaveDocument.ReadBool(definition["allowOffstageActors"]);
+        return _document.Actors.Where(actor => allowOffstage || !actor.IsOffstage);
+    }
+
+    private static List<string> ReadStringArray(JsonNode? value)
+    {
+        if (value is null)
+            return new List<string>();
+        if (value is not JsonArray values)
+            throw new InvalidDataException("Expected a string array for a behavior property.");
+
+        var result = new List<string>(values.Count);
+        foreach (JsonNode? item in values)
+        {
+            if (item is not JsonValue jsonValue || !jsonValue.TryGetValue(out string? text) || text is null)
+                throw new InvalidDataException("Every value in a behavior string array must be a string.");
+            result.Add(text);
+        }
+        return result;
+    }
+
+    private static void AddPickerOption(OptionButton picker, string label, string value, string selectedValue)
+    {
+        picker.AddItem(label);
+        int index = picker.ItemCount - 1;
+        picker.SetItemMetadata(index, value);
+        if (value == selectedValue)
+            picker.Select(index);
+    }
+
+    private static void AddUnknownPickerOption(OptionButton picker, string selectedValue)
+    {
+        for (int index = 0; index < picker.ItemCount; index++)
+        {
+            if (picker.GetItemMetadata(index).AsString() == selectedValue)
+                return;
+        }
+        if (selectedValue.Length > 0)
+            AddPickerOption(picker, $"Unknown · {selectedValue}", selectedValue, selectedValue);
+    }
+
+
     private ItemList CreateCardDeckEditor(JsonObject definition, JsonNode? value)
     {
         string category = LegacySaveDocument.ReadString((definition["deckOptions"] as JsonObject)?["cardCategory"], "Custom");
@@ -583,7 +766,9 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
 
         var list = new ItemList
         {
-            SelectMode = ItemList.SelectModeEnum.Multi,
+            SelectMode = LegacySaveDocument.ReadBool((definition["deckOptions"] as JsonObject)?["oneCardOnly"])
+                ? ItemList.SelectModeEnum.Single
+                : ItemList.SelectModeEnum.Multi,
             CustomMinimumSize = new Vector2(0f, 130f),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
@@ -664,6 +849,9 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
     {
         switch (editor)
         {
+            case StringArrayEditor stringArrayEditor:
+                stringArrayEditor.Changed += RefreshPropertyVisibility;
+                break;
             case CheckBox checkBox:
                 checkBox.Toggled += _ => RefreshPropertyVisibility();
                 break;
@@ -741,6 +929,8 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
             return choices.Selected >= 0 ? choices.GetItemMetadata(choices.Selected).AsString() : "";
         if (editor is ColorPickerButton colorPicker)
             return "#" + colorPicker.Color.ToHtml(false);
+        if (editor is StringArrayEditor stringArrayEditor)
+            return stringArrayEditor.GetValues().ToJsonString();
         if (editor is ItemList itemList)
             return GetSelectedDeckIds(itemList).ToJsonString();
         if (editor is TextEdit textEdit)
@@ -847,6 +1037,8 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
             return JsonValue.Create(choices.Selected >= 0 ? choices.GetItemMetadata(choices.Selected).AsString() : "");
         if (editor is ColorPickerButton colorPicker)
             return JsonValue.Create("#" + colorPicker.Color.ToHtml(false));
+        if (editor is StringArrayEditor stringValuesEditor)
+            return stringValuesEditor.GetValues();
         if (editor is ItemList itemList && type == "CardDeck")
             return GetSelectedDeckIds(itemList);
         if (editor is TextEdit arrayEditor)
