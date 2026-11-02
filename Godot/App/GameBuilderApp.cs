@@ -18,6 +18,8 @@ public partial class GameBuilderApp : Node3D
     private Camera3D _camera = null!;
     private ItemList _actorList = null!;
     private OptionButton _assetPicker = null!;
+    private LineEdit _assetSearch = null!;
+    private Label _assetCount = null!;
     private OptionButton _samplePicker = null!;
     private SpinBox[] _positionFields = Array.Empty<SpinBox>();
     private SpinBox _yawField = null!;
@@ -349,9 +351,14 @@ public partial class GameBuilderApp : Node3D
         _actorList.ItemSelected += SelectActorByIndex;
         left.AddChild(_actorList);
         left.AddChild(CreateLabel("Add built-in asset", 14));
+        _assetSearch = new LineEdit { PlaceholderText = "Search assets by name or path…" };
+        _assetSearch.TextChanged += _ => PopulateAssetPicker();
+        left.AddChild(_assetSearch);
         _assetPicker = new OptionButton { CustomMinimumSize = new Vector2(0f, 34f) };
         _assetPicker.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         left.AddChild(_assetPicker);
+        _assetCount = CreateLabel("No assets loaded", 12);
+        left.AddChild(_assetCount);
         var addActor = new Button { Text = "Add actor" };
         addActor.Pressed += AddActor;
         left.AddChild(addActor);
@@ -886,12 +893,36 @@ public partial class GameBuilderApp : Node3D
 
     private void PopulateAssetPicker()
     {
+        string selectedUri = _assetPicker.Selected >= 0
+            ? _assetPicker.GetItemMetadata(_assetPicker.Selected).AsString()
+            : "";
+        string filter = _assetSearch.Text.Trim();
         _assetPicker.Clear();
+        int selectedIndex = -1;
         foreach (RenderableEntry entry in _catalog.Entries.OrderBy(entry => entry.Uri, StringComparer.Ordinal))
         {
-            _assetPicker.AddItem(entry.Uri[(entry.Uri.LastIndexOf('/') + 1)..]);
+            if (filter.Length > 0 && !entry.Uri.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                continue;
+            int separator = entry.Uri.LastIndexOf('/');
+            string name = separator >= 0 ? entry.Uri[(separator + 1)..] : entry.Uri;
+            string parent = separator >= 0 ? entry.Uri[..separator] : "";
+            int parentSeparator = parent.LastIndexOf('/');
+            string group = parentSeparator >= 0 ? parent[(parentSeparator + 1)..] : parent;
+            _assetPicker.AddItem(group.Length > 0 ? $"{name} · {group}" : name);
             _assetPicker.SetItemMetadata(_assetPicker.ItemCount - 1, entry.Uri);
+            if (entry.Uri == selectedUri)
+                selectedIndex = _assetPicker.ItemCount - 1;
         }
+        if (_assetPicker.ItemCount > 0)
+        {
+            _assetPicker.Select(selectedIndex >= 0 ? selectedIndex : 0);
+            _assetCount.Text = $"{_assetPicker.ItemCount} of {_catalog.Entries.Count} assets";
+        }
+        else
+        {
+            _assetCount.Text = "No matching assets";
+        }
+        _assetPicker.Disabled = _assetPicker.ItemCount == 0;
     }
 
     private void AddActor()
