@@ -205,6 +205,14 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
         _removeUseButton.Disabled = true;
         _removeUseButton.Pressed += RemoveSelectedUse;
         left.AddChild(_removeUseButton);
+        var openCanvas = new Button { Text = "Open visual panel canvas" };
+        openCanvas.Pressed += () =>
+        {
+            var canvas = new LegacyPanelCanvasWindow(_document, _actor, _onChanged, _getPropertyDefinitions);
+            AddChild(canvas);
+            canvas.PopupCentered(new Vector2I(1100, 760));
+        };
+        left.AddChild(openCanvas);
 
         var right = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         columns.AddChild(right);
