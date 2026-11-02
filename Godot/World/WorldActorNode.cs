@@ -4,11 +4,22 @@ using Godot;
 
 namespace GBNG.World;
 
+public readonly record struct LegacyBehaviorMessage(string Name, string OtherActorName, int BlockStyle);
 public partial class WorldActorNode : RigidBody3D
 {
     private Node3D? _renderableRoot;
     private RayCast3D? _groundProbe;
     private bool _playMode;
+    private readonly List<LegacyBehaviorMessage> _pendingBehaviorMessages = new();
+    private HashSet<ulong> _previousContactColliderIds = new();
+    private HashSet<ulong> _currentContactColliderIds = new();
+    private readonly Dictionary<ulong, Node3D> _triggerOverlaps = new();
+    private HashSet<ulong> _previousTriggerOverlapIds = new();
+    private HashSet<ulong> _currentTriggerOverlapIds = new();
+    private CollisionShape3D? _bodyCollider;
+    private Area3D? _triggerArea;
+    private bool _hasLegacyCollisionHandlers;
+    private ulong _triggerStartPhysicsFrame;
 
     public LegacyActorData State { get; private set; } = null!;
     public string LegacyName => State.Name;
@@ -123,6 +134,9 @@ public partial class WorldActorNode : RigidBody3D
         if (State is null)
             return;
 
+        Freeze = !_playMode || !State.EnablePhysics;
+        ContactMonitor = _playMode && State.IsSolid && _hasLegacyCollisionHandlers;
+        MaxContactsReported = ContactMonitor ? 16 : 0;
         GravityScale = State.EnableGravity ? 1f : 0f;
         Mass = State.Mass;
         LinearDamp = State.Drag;
@@ -132,6 +146,22 @@ public partial class WorldActorNode : RigidBody3D
         AxisLockLinearY = State.FreezeY;
         AxisLockLinearZ = State.FreezeZ;
         CollisionLayer = State.IsSolid ? 1u : 0u;
+        EnsureTriggerArea();
+        if (_triggerArea is not null)
+        {
+            // Solid actors need the sensor only to receive events from other actors' trigger areas.
+            bool shouldMonitor = _playMode && _hasLegacyCollisionHandlers;
+            _triggerArea.CollisionLayer = State.IsSolid ? 0u : 4u;
+            _triggerArea.CollisionMask = State.IsSolid ? 4u : 7u;
+            if (_triggerArea.Monitoring != shouldMonitor)
+            {
+                _triggerArea.Monitoring = shouldMonitor;
+                _triggerStartPhysicsFrame = Engine.GetPhysicsFrames();
+                _triggerOverlaps.Clear();
+                _previousTriggerOverlapIds.Clear();
+                _currentTriggerOverlapIds.Clear();
+            }
+        }
         CollisionMask = State.IsSolid ? 3u : 0u;
         if (_renderableRoot is not null)
             _renderableRoot.Visible = !(_playMode && State.HideInPlayMode);
@@ -143,7 +173,22 @@ public partial class WorldActorNode : RigidBody3D
             return;
 
         _playMode = enabled;
-        Freeze = !enabled || !State.EnablePhysics;
+        if (!enabled)
+        {
+            _pendingBehaviorMessages.Clear();
+            _previousContactColliderIds.Clear();
+            _currentContactColliderIds.Clear();
+            _triggerOverlaps.Clear();
+            _previousTriggerOverlapIds.Clear();
+            _currentTriggerOverlapIds.Clear();
+        }
+        ApplyLegacyPhysicsSettings();
+    }
+    public void SetLegacyCollisionHandling(bool enabled)
+    {
+        if (_hasLegacyCollisionHandlers == enabled)
+            return;
+        _hasLegacyCollisionHandlers = enabled;
         ApplyLegacyPhysicsSettings();
     }
 
@@ -214,7 +259,125 @@ public partial class WorldActorNode : RigidBody3D
         CreateBodyCollider();
         if (_groundProbe is not null)
             _groundProbe.Enabled = true;
+        ApplyLegacyPhysicsSettings();
         ApplyLoopingAnimation();
+    }
+    public override void _PhysicsProcess(double deltaSeconds)
+    {
+        if (!_playMode || !_hasLegacyCollisionHandlers || State is null || _triggerArea is null || !_triggerArea.Monitoring)
+            return;
+
+        _currentTriggerOverlapIds.Clear();
+        ulong physicsFrame = Engine.GetPhysicsFrames();
+        foreach ((ulong colliderId, Node3D collider) in _triggerOverlaps)
+        {
+            if (!GodotObject.IsInstanceValid(collider))
+                continue;
+            _currentTriggerOverlapIds.Add(colliderId);
+            WorldActorNode? otherActor = FindActorAncestor(collider);
+            if (otherActor is not null)
+            {
+                if (otherActor == this || State.IsOffstage || otherActor.State.IsOffstage)
+                    continue;
+                QueueBehaviorMessage("Collision", otherActor.LegacyName);
+                if (!_previousTriggerOverlapIds.Contains(colliderId))
+                    QueueBehaviorMessage("TouchEnter", otherActor.LegacyName);
+                continue;
+            }
+
+            if ((FindTerrainAncestor(collider) is not null || collider.Name == "StageGroundCollision")
+                && !State.IsOffstage
+                && physicsFrame > _triggerStartPhysicsFrame + 1)
+                QueueBehaviorMessage("TerrainCollision", blockStyle: 255);
+        }
+
+        (_previousTriggerOverlapIds, _currentTriggerOverlapIds) = (_currentTriggerOverlapIds, _previousTriggerOverlapIds);
+        _currentTriggerOverlapIds.Clear();
+    }
+
+    private void OnTriggerBodyEntered(Node3D body) => TrackTriggerOverlap(body);
+    private void OnTriggerAreaEntered(Area3D area) => TrackTriggerOverlap(area);
+    private void OnTriggerBodyExited(Node3D body) => _triggerOverlaps.Remove(body.GetInstanceId());
+    private void OnTriggerAreaExited(Area3D area) => _triggerOverlaps.Remove(area.GetInstanceId());
+
+    private void TrackTriggerOverlap(Node3D collider)
+    {
+        if (FindActorAncestor(collider) == this)
+            return;
+        _triggerOverlaps[collider.GetInstanceId()] = collider;
+    }
+
+    public override void _IntegrateForces(PhysicsDirectBodyState3D state)
+    {
+        _currentContactColliderIds.Clear();
+        if (_playMode && State.IsSolid && _hasLegacyCollisionHandlers)
+        {
+            for (int contact = 0; contact < state.GetContactCount(); contact++)
+            {
+                ulong colliderId = state.GetContactColliderId(contact);
+                if (!_currentContactColliderIds.Add(colliderId) || state.GetContactColliderObject(contact) is not Node collider)
+                    continue;
+
+                WorldActorNode? otherActor = FindActorAncestor(collider);
+                if (otherActor is not null)
+                {
+                    if (otherActor == this || State.IsOffstage || otherActor.State.IsOffstage)
+                        continue;
+                    QueueBehaviorMessage("Collision", otherActor.LegacyName);
+                    if (!_previousContactColliderIds.Contains(colliderId))
+                        QueueBehaviorMessage("TouchEnter", otherActor.LegacyName);
+                    continue;
+                }
+
+                LegacyTerrainNode? terrain = FindTerrainAncestor(collider);
+                bool isStageGround = collider.Name == "StageGroundCollision";
+                if (terrain is null && !isStageGround)
+                    continue;
+                if (State.IsOffstage)
+                    continue;
+
+                Vector3 contactPoint = GlobalTransform * state.GetContactLocalPosition(contact);
+                Vector3 contactNormal = GlobalBasis * state.GetContactLocalNormal(contact);
+                Vector3 legacyPoint = CoordinateSpace.ToLegacy(contactPoint);
+                Vector3 legacyNormal = CoordinateSpace.ToLegacy(contactNormal);
+                int blockStyle = terrain?.GetStyleAtLegacyContact(legacyPoint, legacyNormal) ?? 18;
+                QueueBehaviorMessage("TerrainCollision", blockStyle: blockStyle);
+            }
+        }
+
+        (_previousContactColliderIds, _currentContactColliderIds) = (_currentContactColliderIds, _previousContactColliderIds);
+        _currentContactColliderIds.Clear();
+    }
+
+    public void DrainPendingBehaviorMessages(List<LegacyBehaviorMessage> destination)
+    {
+        destination.AddRange(_pendingBehaviorMessages);
+        _pendingBehaviorMessages.Clear();
+    }
+
+    private void QueueBehaviorMessage(string messageName, string otherActorName = "", int blockStyle = 0)
+    {
+        _pendingBehaviorMessages.Add(new LegacyBehaviorMessage(messageName, otherActorName, blockStyle));
+    }
+
+    private static WorldActorNode? FindActorAncestor(Node node)
+    {
+        for (Node? current = node; current is not null; current = current.GetParent())
+        {
+            if (current is WorldActorNode actor)
+                return actor;
+        }
+        return null;
+    }
+
+    private static LegacyTerrainNode? FindTerrainAncestor(Node node)
+    {
+        for (Node? current = node; current is not null; current = current.GetParent())
+        {
+            if (current is LegacyTerrainNode terrain)
+                return terrain;
+        }
+        return null;
     }
     private void ApplyLoopingAnimation()
     {
@@ -297,6 +460,7 @@ public partial class WorldActorNode : RigidBody3D
             Shape = new BoxShape3D { Size = bodySize },
             Position = actorBounds.Position + actorBounds.Size * 0.5f
         };
+        _bodyCollider = collider;
         AddChild(collider);
 
         _groundProbe = new RayCast3D
@@ -307,6 +471,30 @@ public partial class WorldActorNode : RigidBody3D
             Enabled = true
         };
         AddChild(_groundProbe);
+    }
+
+    private void EnsureTriggerArea()
+    {
+        if (_triggerArea is not null || _bodyCollider?.Shape is null)
+            return;
+
+        _triggerArea = new Area3D
+        {
+            Name = "ActorTrigger",
+            Monitoring = false,
+            Monitorable = true
+        };
+        _triggerArea.BodyEntered += OnTriggerBodyEntered;
+        _triggerArea.BodyExited += OnTriggerBodyExited;
+        _triggerArea.AreaEntered += OnTriggerAreaEntered;
+        _triggerArea.AreaExited += OnTriggerAreaExited;
+        AddChild(_triggerArea);
+        _triggerArea.AddChild(new CollisionShape3D
+        {
+            Name = "ActorTriggerShape",
+            Shape = _bodyCollider.Shape,
+            Position = _bodyCollider.Position
+        });
     }
 
     private static void ApplyTint(Node root, Color tint)

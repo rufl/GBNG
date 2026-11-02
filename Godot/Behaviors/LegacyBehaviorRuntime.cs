@@ -6,12 +6,12 @@ using GBNG.Assets;
 using GBNG.Domain;
 using GBNG.World;
 using Godot;
-using Jint;
-using Jint.Constraints;
+using Microsoft.ClearScript;
+using Microsoft.ClearScript.V8;
 
 namespace GBNG.Behaviors;
 
-public sealed partial class LegacyBehaviorRuntime
+public sealed partial class LegacyBehaviorRuntime : IDisposable
 {
     private static readonly Regex GuidPattern = new(@"guid:\s*([0-9a-f]{32})", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Regex ExportPattern = new(@"(?m)^\s*export\s+(?=(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z_$][\w$]*))", RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -27,12 +27,20 @@ public sealed partial class LegacyBehaviorRuntime
     private readonly Action<JsonArray> _requestUi;
     private readonly Action? _actorsChanged;
     private readonly Action<Vector3>? _requestCameraOffset;
-    private readonly Jint.Engine _engine;
-    private readonly OperationDeadlineConstraint _executionDeadline = new();
+    private readonly V8ScriptEngine _engine;
+    private long _executionDeadlineTimestamp;
     private readonly Dictionary<string, WorldActorNode> _actorsByName = new(StringComparer.Ordinal);
     private readonly List<WorldActorNode> _actorsById = new();
     private readonly HashSet<string> _actorsToDestroy = new(StringComparer.Ordinal);
+    private (string FromActor, string ToActor, bool Destroy)? _pendingPlayerControlTransfer;
+    private readonly HashSet<string> _collisionHandlingBrainIds = new(StringComparer.Ordinal);
     private readonly HashSet<string> _keysHeldLastTick = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _actorsKnownToRuntime = new(StringComparer.Ordinal);
+    private readonly List<object> _actorStatesBuffer = new();
+    private readonly List<LegacyBehaviorMessage> _pendingBehaviorMessagesBuffer = new();
+    private readonly List<string> _keysHeldBuffer = new();
+    private readonly List<string> _keysJustPressedBuffer = new();
+    private readonly List<string> _keysJustReleasedBuffer = new();
     private double _gameTime;
     private Vector2 _lookAxes;
     private Vector2 _mousePosition;
@@ -73,19 +81,24 @@ public sealed partial class LegacyBehaviorRuntime
         _requestUi = requestUi;
         _actorsChanged = actorsChanged;
         _requestCameraOffset = requestCameraOffset;
-        _engine = new Jint.Engine(options => options
-            .MaxStatements(1_000_000)
-            .Constraint(_executionDeadline));
-
-        RegisterHostBindings();
-        ExecuteScript(ReadEngineSource(), "GBNG behavior engine", TimeSpan.FromSeconds(5));
-        RegisterBuiltInModules();
-        RegisterEmbeddedModules();
-        ConfigureBehaviorDatabase();
-        SyncActors();
-        ApplySkyType(LegacySaveDocument.ReadString(_document.Stage?["skyType"], "Day"));
-        ApplySceneLighting(LegacySaveDocument.ReadString(_document.Stage?["sceneLightingMode"], "Day"));
-
+        _engine = new V8ScriptEngine();
+        try
+        {
+            _engine.ContinuationCallback = ShouldContinueScript;
+            RegisterHostBindings();
+            ExecuteScript(ReadEngineSource(), "GBNG behavior engine", TimeSpan.FromSeconds(5));
+            RegisterBuiltInModules();
+            RegisterEmbeddedModules();
+            ConfigureBehaviorDatabase();
+            SyncActors();
+            ApplySkyType(LegacySaveDocument.ReadString(_document.Stage?["skyType"], "Day"));
+            ApplySceneLighting(LegacySaveDocument.ReadString(_document.Stage?["sceneLightingMode"], "Day"));
+        }
+        catch
+        {
+            _engine.Dispose();
+            throw;
+        }
 
     }
     public void Tick(double deltaSeconds)
@@ -111,10 +124,11 @@ public sealed partial class LegacyBehaviorRuntime
             _collectInput = false;
             _physicsQueryAvailable = false;
         }
-        _engine.SetValue("__gbDelta", deltaSeconds);
-        _engine.SetValue("__gbGameTime", _gameTime);
-        ExecuteScript("__gbTick(__gbDelta, __gbGameTime);");
+        SetScriptValue("__gbDelta", deltaSeconds);
+        SetScriptValue("__gbGameTime", _gameTime);
+        ExecuteScript("__gbTick(__gbDelta, __gbGameTime);", timeBudget: TimeSpan.FromSeconds(1));
         ApplyRuntimeResponse(deltaSeconds);
+        ApplyPendingPlayerControlTransfer();
     }
 
     internal void SetLookAxes(Vector2 lookAxes) => _lookAxes = lookAxes;
@@ -128,41 +142,58 @@ public sealed partial class LegacyBehaviorRuntime
 
     public void SendUiMessage(string actorName, string messageName, string argumentJson)
     {
-        _engine.SetValue("__gbUiActor", actorName);
-        _engine.SetValue("__gbUiMessageName", messageName);
-        _engine.SetValue("__gbUiArgumentJson", argumentJson.Length == 0 ? "{}" : argumentJson);
+        SetScriptValue("__gbUiActor", actorName);
+        SetScriptValue("__gbUiMessageName", messageName);
+        SetScriptValue("__gbUiArgumentJson", argumentJson.Length == 0 ? "{}" : argumentJson);
         ExecuteScript("__gbSendUiMessage(__gbUiActor, __gbUiMessageName, __gbUiArgumentJson);");
+    }
+    public void Dispose() => _engine.Dispose();
+
+    private bool ShouldContinueScript()
+    {
+        long deadline = System.Threading.Volatile.Read(ref _executionDeadlineTimestamp);
+        return deadline == 0 || System.Diagnostics.Stopwatch.GetTimestamp() < deadline;
     }
 
     private void ExecuteScript(string source, string? sourceName = null, TimeSpan? timeBudget = null)
     {
-        _executionDeadline.Begin(timeBudget ?? TimeSpan.FromMilliseconds(250));
+        TimeSpan budget = timeBudget ?? TimeSpan.FromMilliseconds(250);
+        long budgetTicks = (long)Math.Ceiling(budget.TotalSeconds * System.Diagnostics.Stopwatch.Frequency);
+        long deadline = System.Diagnostics.Stopwatch.GetTimestamp() + budgetTicks;
+        System.Threading.Volatile.Write(ref _executionDeadlineTimestamp, deadline);
         try
         {
             if (sourceName is null)
                 _engine.Execute(source);
             else
-                _engine.Execute(source, sourceName);
+                _engine.Execute(sourceName, source);
         }
         finally
         {
-            _executionDeadline.End();
+            System.Threading.Volatile.Write(ref _executionDeadlineTimestamp, 0);
         }
     }
 
+    private void SetScriptValue(string name, object value)
+        => _engine.Script.SetProperty(name, value);
+
+    private string GetScriptString(string name)
+        => _engine.Script.GetProperty(name) as string
+            ?? throw new InvalidDataException($"Behavior runtime global '{name}' was not a string.");
+
     private void RegisterHostBindings()
     {
-        _engine.SetValue("getActorString", new Func<int, int, string>(GetActorString));
-        _engine.SetValue("setActorString", new Action<int, int, string>(SetActorString));
-        _engine.SetValue("getActorBoolean", new Func<int, int, bool>(GetActorBoolean));
-        _engine.SetValue("setActorBoolean", new Action<int, int, bool>(SetActorBoolean));
-        _engine.SetValue("getActorFloat", new Func<int, int, double>(GetActorFloat));
-        _engine.SetValue("setActorFloat", new Action<int, int, double>(SetActorFloat));
-        _engine.SetValue("setActorVector3", new Action<int, int, double, double, double>(SetActorVector3));
-        _engine.SetValue("setActorQuaternion", new Action<int, int, double, double, double, double>(SetActorQuaternion));
-        _engine.SetValue("__gbReadActorVector3", new Func<int, int, string>(ReadActorVector3Json));
-        _engine.SetValue("__gbReadActorQuaternion", new Func<int, int, string>(ReadActorQuaternionJson));
-        _engine.SetValue("__gbService", new Func<string, string, string>(CallService));
+        SetScriptValue("getActorString", new Func<int, int, string>(GetActorString));
+        SetScriptValue("setActorString", new Action<int, int, string>(SetActorString));
+        SetScriptValue("getActorBoolean", new Func<int, int, bool>(GetActorBoolean));
+        SetScriptValue("setActorBoolean", new Action<int, int, bool>(SetActorBoolean));
+        SetScriptValue("getActorFloat", new Func<int, int, double>(GetActorFloat));
+        SetScriptValue("setActorFloat", new Action<int, int, double>(SetActorFloat));
+        SetScriptValue("setActorVector3", new Action<int, int, double, double, double>(SetActorVector3));
+        SetScriptValue("setActorQuaternion", new Action<int, int, double, double, double, double>(SetActorQuaternion));
+        SetScriptValue("__gbReadActorVector3", new Func<int, int, string>(ReadActorVector3Json));
+        SetScriptValue("__gbReadActorQuaternion", new Func<int, int, string>(ReadActorQuaternionJson));
+        SetScriptValue("__gbService", new Func<string, string, string>(CallService));
 
         ExecuteScript(BridgeSource, "GBNG behavior bridge");
     }
@@ -189,7 +220,8 @@ function getActorQuaternion(actorId, fieldId, result) {
   result.set(value.x, value.y, value.z, value.w);
 }
 function __gbConfigureDatabase(database) {
-  moduleBehaviors_.database.reset(database);
+  const collisionHandlingBrainIds = moduleBehaviors_.database.reset(database);
+  globalThis.__gbCollisionBrainIdsJson = JSON.stringify(collisionHandlingBrainIds);
   initBehaviorsPending = true;
 }
 function __gbSyncActors(states) {
@@ -255,9 +287,17 @@ function __gbTick(dt, gameTime) {
     moduleBehaviors_.update(dt, gameTime);
     ApiV2Context.instance.endFrame();
     globalThis.__gbResponseJson = JSON.stringify(response);
-    globalThis.__gbMemoryJson = JSON.stringify(Array.from(moduleBehaviors_.actors_.values(), actor => ({
-      name: actor.name, memoryJson: actor.getMemoryJson(), requestedDestroy: actor.requestedDestroy
-    })));
+    const memoryChanges = [];
+    for (const actor of moduleBehaviors_.actors_.values()) {
+      if (actor.memoryDirty_ && !actor.requestedDestroy) {
+        memoryChanges.push({name: actor.name, memoryJson: actor.getMemoryJson()});
+        actor.memoryDirty_ = false;
+      }
+      if (actor.requestedDestroy) {
+        memoryChanges.push({name: actor.name, requestedDestroy: true});
+      }
+    }
+    globalThis.__gbMemoryJson = JSON.stringify(memoryChanges);
   } finally {
     ApiV2Context.tearDown();
   }
@@ -400,8 +440,8 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
         string body = ExportPattern.Replace(source, "");
         string exportObject = string.Join(",", names.Select(name => $"{name}: (typeof {name} === 'undefined' ? undefined : {name})"));
         body += $"\nreturn {{{exportObject}}};\n";
-        _engine.SetValue("__gbModuleKey", uri);
-        _engine.SetValue("__gbModuleBody", body);
+        SetScriptValue("__gbModuleKey", uri);
+        SetScriptValue("__gbModuleBody", body);
         ExecuteScript("__gbRegisterModule(__gbModuleKey, __gbModuleBody);");
     }
 
@@ -411,23 +451,37 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
         if (database is null)
             return;
 
-        _engine.SetValue("__gbDatabaseJson", database.ToJsonString());
+        SetScriptValue("__gbDatabaseJson", database.ToJsonString());
         ExecuteScript("__gbInstallDatabase(__gbDatabaseJson);");
+        _collisionHandlingBrainIds.Clear();
+        if (JsonNode.Parse(GetScriptString("__gbCollisionBrainIdsJson")) is JsonArray brainIds)
+        {
+            foreach (JsonNode? brainId in brainIds)
+            {
+                string id = LegacySaveDocument.ReadString(brainId);
+                if (id.Length > 0)
+                    _collisionHandlingBrainIds.Add(id);
+            }
+        }
     }
 
     private void SyncActors()
     {
         _actorsByName.Clear();
         _actorsById.Clear();
-        var states = new List<object>(_actors.Count);
+        List<object> states = _actorStatesBuffer;
+        states.Clear();
         bool hasInputFrame = _collectInput;
         bool mouseIsDown = hasInputFrame && Input.IsMouseButtonPressed(MouseButton.Left) && !_mouseOverUi;
         bool secondaryActionDown = hasInputFrame && Input.IsMouseButtonPressed(MouseButton.Right) && !_mouseOverUi;
         bool mouseJustPressed = mouseIsDown && !_reportedMouseDown;
         bool mouseJustReleased = !mouseIsDown && _reportedMouseDown;
-        var keysHeld = new List<string>();
-        var keysJustPressed = new List<string>();
-        var keysJustReleased = new List<string>();
+        List<string> keysHeld = _keysHeldBuffer;
+        List<string> keysJustPressed = _keysJustPressedBuffer;
+        List<string> keysJustReleased = _keysJustReleasedBuffer;
+        keysHeld.Clear();
+        keysJustPressed.Clear();
+        keysJustReleased.Clear();
         if (hasInputFrame)
         {
             foreach (string keyName in ScriptableKeyNames)
@@ -446,9 +500,7 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
                 }
             }
         }
-        string[] keysHeldArray = hasInputFrame ? keysHeld.ToArray() : Array.Empty<string>();
-        string[] keysJustPressedArray = hasInputFrame ? keysJustPressed.ToArray() : Array.Empty<string>();
-        string[] keysJustReleasedArray = hasInputFrame ? keysJustReleased.ToArray() : Array.Empty<string>();
+        List<LegacyBehaviorMessage> pendingBehaviorMessages = _pendingBehaviorMessagesBuffer;
 
         Vector2 viewportSize = _camera.GetViewport().GetVisibleRect().Size;
         float uiScale = viewportSize.X / LegacyGameUiWidth;
@@ -461,6 +513,7 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
         foreach (WorldActorNode actor in _actors)
         {
             _actorsByName.Add(actor.LegacyName, actor);
+            actor.SetLegacyCollisionHandling(_collisionHandlingBrainIds.Contains(actor.State.BrainName));
             _actorsById.Add(actor);
             bool isPlayer = actor.State.IsPlayerControllable;
             bool hasPlayerInput = isPlayer && hasInputFrame;
@@ -479,8 +532,8 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
                 var query = PhysicsRayQueryParameters3D.Create(
                     aimOriginGodot,
                     aimOriginGodot + aimDirectionGodot * 99f);
-                query.CollisionMask = ActorCollisionLayer | TerrainCollisionLayer;
-                query.CollideWithAreas = false;
+                query.CollisionMask = ActorCollisionLayer | ActorTriggerCollisionLayer | TerrainCollisionLayer;
+                query.CollideWithAreas = true;
                 query.CollideWithBodies = true;
                 query.Exclude = new Godot.Collections.Array<Rid> { actor.GetRid() };
                 Godot.Collections.Dictionary hit = _world.GetWorld3D().DirectSpaceState.IntersectRay(query);
@@ -493,14 +546,28 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
                 }
             }
 
-            IReadOnlyList<object> messages = hasPlayerInput
+            List<object>? messages = hasPlayerInput
                 ? BuildInputMessages(actor.LegacyName, keysHeld, keysJustPressed, keysJustReleased, mouseJustPressed, mouseJustReleased, mouseIsDown, mouseRayOriginGodot, mouseRayDirectionGodot)
-                : Array.Empty<object>();
+                : null;
+            pendingBehaviorMessages.Clear();
+            actor.DrainPendingBehaviorMessages(pendingBehaviorMessages);
+            foreach (LegacyBehaviorMessage pendingMessage in pendingBehaviorMessages)
+            {
+                messages ??= new List<object>(pendingBehaviorMessages.Count);
+                messages.Add(new
+                {
+                    targetActorName = actor.LegacyName,
+                    name = pendingMessage.Name,
+                    data = pendingMessage.Name == "TerrainCollision"
+                        ? (object)new { blockStyle = pendingMessage.BlockStyle }
+                        : new { other = pendingMessage.OtherActorName }
+                });
+            }
             states.Add(new
             {
                 name = actor.LegacyName,
                 brainName = actor.State.BrainName,
-                memoryJson = actor.State.MemoryJson,
+                memoryJson = _actorsKnownToRuntime.Contains(actor.LegacyName) ? null : actor.State.MemoryJson,
                 preferOffstage = actor.State.IsOffstage,
                 transformParent = actor.State.TransformParent,
                 spawnPosition = ToVectorJson(spawnPosition),
@@ -526,17 +593,21 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
                         mouseRayDirection = ToVectorJson(mouseRayDirection),
                         mouseWheelRaw = _mouseWheelRaw,
                         mouseWheel = _mouseWheelRaw * (OperatingSystem.IsMacOS() ? 0.033f : 1f),
-                        keysJustPressed = keysJustPressedArray,
-                        keysHeld = keysHeldArray,
-                        keysJustReleased = keysJustReleasedArray
+                        keysJustPressed = keysJustPressed,
+                        keysHeld = keysHeld,
+                        keysJustReleased = keysJustReleased
                     }
                     : null,
-                messages
+                messages = (object?)messages ?? Array.Empty<object>()
             });
         }
 
-        _engine.SetValue("__gbActorStates", JsonSerializer.Serialize(states));
+        SetScriptValue("__gbActorStates", JsonSerializer.Serialize(states));
+        states.Clear();
         ExecuteScript("__gbActorStatesJson(__gbActorStates);");
+        foreach (string actorName in _actorsByName.Keys)
+            _actorsKnownToRuntime.Add(actorName);
+        _actorsKnownToRuntime.RemoveWhere(name => !_actorsByName.ContainsKey(name));
         if (hasInputFrame)
         {
             _keysHeldLastTick.Clear();
@@ -612,7 +683,7 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
     private WorldActorNode? RaycastActorUnderMouse(Vector3 origin, Vector3 direction)
     {
         var query = PhysicsRayQueryParameters3D.Create(origin, origin + direction * 1000f);
-        query.CollisionMask = ActorCollisionLayer;
+        query.CollisionMask = ActorCollisionLayer | ActorTriggerCollisionLayer;
         query.CollideWithAreas = true;
         query.CollideWithBodies = true;
         Godot.Collections.Dictionary hit = _world.GetWorld3D().DirectSpaceState.IntersectRay(query);
@@ -660,7 +731,7 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
 
     private void ApplyRuntimeResponse(double deltaSeconds)
     {
-        string responseJson = _engine.GetValue("__gbResponseJson").AsString();
+        string responseJson = GetScriptString("__gbResponseJson");
         if (JsonNode.Parse(responseJson) is JsonObject response)
         {
             if (response["velocityChanges"] is JsonArray velocityChanges)
@@ -690,7 +761,7 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
             }
         }
 
-        string memoryJson = _engine.GetValue("__gbMemoryJson").AsString();
+        string memoryJson = GetScriptString("__gbMemoryJson");
         if (JsonNode.Parse(memoryJson) is JsonArray memories)
         {
             foreach (JsonNode? item in memories)
@@ -701,12 +772,14 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
                 WorldActorNode? actor = FindActor(actorName);
                 if (actor is null)
                     continue;
-                actor.State.Data["memoryJson"] = LegacySaveDocument.ReadString(actorMemory["memoryJson"], "{}");
-                actor.ApplyDesiredVelocity(deltaSeconds);
+                if (actorMemory["memoryJson"] is JsonValue)
+                    actor.State.Data["memoryJson"] = LegacySaveDocument.ReadString(actorMemory["memoryJson"], "{}");
                 if (LegacySaveDocument.ReadBool(actorMemory["requestedDestroy"]))
                     _actorsToDestroy.Add(actorName);
             }
         }
+        foreach (WorldActorNode actor in _actors)
+            actor.ApplyDesiredVelocity(deltaSeconds);
         DestroyPendingActors();
         _terrain?.FlushUpdates();
 
@@ -720,7 +793,7 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
         foreach (string actorName in _actorsToDestroy)
         {
             WorldActorNode? actor = FindActor(actorName);
-            if (actor is null)
+            if (actor is null || actor.LegacyName.StartsWith("builtin:", StringComparison.InvariantCulture))
                 continue;
 
             foreach (WorldActorNode child in _actors.Where(candidate => candidate.State.TransformParent == actorName).ToArray())
@@ -1003,18 +1076,21 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
             case "GetActorColorField":
             {
                 WorldActorNode? actor = GetActor(LegacySaveDocument.ReadInt(args["actorId"], -1));
-                return actor is null ? "null" : JsonSerializer.Serialize(ToColorJson(actor.State.Tint));
+                int fieldId = LegacySaveDocument.ReadInt(args["fieldId"], 0);
+                return JsonSerializer.Serialize(actor is not null && fieldId == 0 ? ToColorJson(actor.State.Tint) : ToColorJson(Colors.White));
             }
             case "SetActorColorField":
             {
                 WorldActorNode? actor = GetActor(LegacySaveDocument.ReadInt(args["actorId"], -1));
-                if (actor is null || args["newValue"] is not JsonObject color)
-                    return "false";
-                actor.SetTint(new Color(
-                    LegacySaveDocument.ReadFloat(color["r"], 1f),
-                    LegacySaveDocument.ReadFloat(color["g"], 1f),
-                    LegacySaveDocument.ReadFloat(color["b"], 1f),
-                    LegacySaveDocument.ReadFloat(color["a"], 1f)));
+                int fieldId = LegacySaveDocument.ReadInt(args["fieldId"], 0);
+                if (actor is not null && fieldId == 0 && args["newValue"] is JsonObject color)
+                {
+                    actor.SetTint(new Color(
+                        LegacySaveDocument.ReadFloat(color["r"], 1f),
+                        LegacySaveDocument.ReadFloat(color["g"], 1f),
+                        LegacySaveDocument.ReadFloat(color["b"], 1f),
+                        LegacySaveDocument.ReadFloat(color["a"], 1f)));
+                }
                 return "true";
             }
             case "GetPlayerActors":
@@ -1040,8 +1116,14 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
             case "GetScreenInfo":
             {
                 Vector2 viewportSize = _camera.GetViewport().GetVisibleRect().Size;
-                float uiHeight = viewportSize.X > 0f ? viewportSize.Y * 1600f / viewportSize.X : 900f;
-                return JsonSerializer.Serialize(new { width = 1600f, height = uiHeight });
+                int uiHeight = viewportSize.X > 0f ? (int)Math.Ceiling(viewportSize.Y * 1600f / viewportSize.X) : 900;
+                return JsonSerializer.Serialize(new
+                {
+                    width = 1600,
+                    height = uiHeight,
+                    pixelWidth = (int)viewportSize.X,
+                    pixelHeight = (int)viewportSize.Y
+                });
             }
             case "GetCameraInfo":
                 return JsonSerializer.Serialize(new

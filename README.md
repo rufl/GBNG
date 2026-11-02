@@ -17,7 +17,7 @@ This is not an officially supported Google product.
 This fork keeps the two implementations separate:
 
 * `unity` preserves the original Unity project and stabilizes it on the pinned Unity 6 stack. Keep changes there limited to compatibility, quality-of-life, and stability work.
-* `godot` is the GBNG — New Gen rewrite. It targets Godot 4.7.2 .NET, .NET 10, and Jint 4.17; it reuses the original `.voos` projects and assets while replacing Unity runtime services with Godot implementations.
+* `godot` is the GBNG — New Gen rewrite. It targets Godot 4.7.2 .NET, .NET 10, and ClearScript/V8 7.5.1.1; it reuses the original `.voos` projects and assets while replacing Unity runtime services with Godot implementations.
 
 For the Godot branch, install the Godot 4.7.2 .NET build and .NET 10 SDK, then run `dotnet build GBNG.Godot.sln` and open the repository's `project.godot` in Godot. To launch a bundled example from the command line:
 
@@ -25,7 +25,7 @@ For the Godot branch, install the Godot 4.7.2 .NET build and .NET 10 SDK, then r
 godot --path . -- res://Assets/StreamingAssets/ExampleGames/Public/sample-platformer.voos --play
 ```
 
-Bundled examples are read-only project resources; use **Save as…** to create a writable `.voos` copy. The Godot branch currently loads and saves projects, supports actor selection and inspector editing, instantiates converted assets, and runs legacy behaviors with keyboard/mouse input state and message events alongside Godot physics, terrain, audio, particles, and behavior UI. It is not feature-complete: multiplayer/Photon, Workshop publishing, optional integrations, and full Unity editor workflows remain unmigrated. Keep `unity` as the complete reference until those contracts have Godot replacements.
+Bundled examples are read-only project resources; use **Save as…** to create a writable `.voos` copy. The Godot branch currently loads and saves projects, supports actor selection and inspector editing (including behavior-brain assignment), instantiates converted assets, and runs legacy behaviors with keyboard/mouse state and message events alongside Godot solid/trigger physics, editable terrain, audio, particles, behavior UI, and single-player host services for physics queries, player-control transfer, actor cloning/destruction, projection/screen info, and scene settings. Profiling markers do not collect timings yet. This is not feature-complete: multiplayer/Photon synchronization and room discovery, Steam Workshop publishing/assets, optional third-party integrations, and several Unity editor workflows remain unmigrated. Keep `unity` as the complete reference until those contracts have Godot replacements.
 
 ## Prerequisites
 

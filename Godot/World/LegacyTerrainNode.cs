@@ -1,3 +1,4 @@
+using GBNG.Domain;
 using Godot;
 
 namespace GBNG.World;
@@ -50,6 +51,28 @@ public partial class LegacyTerrainNode : Node3D
 
     public bool TryGetCell(int x, int y, int z, out byte shape, out ushort style, out byte direction)
         => _data.TryGetCell(x, y, z, out shape, out style, out direction);
+
+    public int GetStyleAtLegacyContact(Vector3 legacyPoint, Vector3 legacyNormal)
+    {
+        Vector3 localPoint = CoordinateSpace.ToLegacy(ToLocal(CoordinateSpace.ToGodot(legacyPoint)));
+        Vector3 localNormal = CoordinateSpace.ToLegacy(GlobalBasis.Inverse() * CoordinateSpace.ToGodot(legacyNormal));
+        Vector3 centeredPoint = localPoint - new Vector3(0f, HalfHeight, 0f);
+        if (IsCellFace(centeredPoint.X / LegacyTerrainData.CellWidth)
+            || IsCellFace(centeredPoint.Y / LegacyTerrainData.CellHeight)
+            || IsCellFace(centeredPoint.Z / LegacyTerrainData.CellWidth))
+        {
+            localPoint -= localNormal * HalfHeight;
+            centeredPoint = localPoint - new Vector3(0f, HalfHeight, 0f);
+        }
+
+        int x = Mathf.RoundToInt(centeredPoint.X / LegacyTerrainData.CellWidth) + _data.Width / 2;
+        int y = Mathf.RoundToInt(centeredPoint.Y / LegacyTerrainData.CellHeight) - LegacyTerrainData.CellsYStart;
+        int z = Mathf.RoundToInt(centeredPoint.Z / LegacyTerrainData.CellWidth) + _data.Depth / 2;
+        return _data.TryGetCell(x, y, z, out _, out ushort style, out _) ? style : 255;
+    }
+
+    private static bool IsCellFace(float coordinate)
+        => Mathf.Abs(Mathf.Abs(coordinate % 1f) - 0.5f) < 0.0001f;
 
     public bool SetCell(int x, int y, int z, int shape, int style, int direction)
     {

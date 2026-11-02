@@ -50,6 +50,8 @@ public partial class GameBuilderApp : Node3D
     private CheckBox _physicsField = null!;
     private CheckBox _gravityField = null!;
     private CheckBox _playerField = null!;
+    private OptionButton _brainField = null!;
+
 
 
     public override void _Ready()
@@ -348,6 +350,12 @@ public partial class GameBuilderApp : Node3D
         scroll.AddChild(inspector);
         _selectionTitle = CreateLabel("Select an actor", 18);
         inspector.AddChild(_selectionTitle);
+        inspector.AddChild(CreateLabel("Brain", 14));
+        _brainField = new OptionButton { CustomMinimumSize = new Vector2(0f, 34f) };
+        _brainField.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        _brainField.ItemSelected += UpdateSelectedBrain;
+        inspector.AddChild(_brainField);
+        _inspectorInputs.Add(_brainField);
         inspector.AddChild(CreateLabel("Display name", 14));
         _displayNameField = new LineEdit();
         _displayNameField.TextChanged += UpdateSelectedDisplayName;
@@ -433,10 +441,82 @@ public partial class GameBuilderApp : Node3D
             {
                 case LineEdit lineEdit: lineEdit.Editable = enabled; break;
                 case TextEdit textEdit: textEdit.Editable = enabled; break;
-                case SpinBox spinBox: spinBox.Editable = enabled; break;
                 case CheckBox checkBox: checkBox.Disabled = !enabled; break;
+                case OptionButton optionButton: optionButton.Disabled = !enabled; break;
             }
         }
+        RefreshBrainChoices();
+    }
+
+    private void RefreshBrainChoices()
+    {
+        if (_brainField is null)
+            return;
+
+        _brainField.Clear();
+        string currentBrain = _selectedActor?.State.BrainName ?? "";
+        JsonObject? database = _document?.BehaviorDatabase;
+        bool hasDatabase = database is not null;
+        if (database?["brainIds"] is JsonArray brainIds && database["brains"] is JsonArray brains)
+        {
+            int count = Math.Min(brainIds.Count, brains.Count);
+            for (int index = 0; index < count; index++)
+            {
+                string id = LegacySaveDocument.ReadString(brainIds[index]);
+                if (id.Length == 0)
+                    continue;
+                _brainField.AddItem(GetBrainChoiceLabel(id, brains[index] as JsonObject, index));
+                _brainField.SetItemMetadata(_brainField.ItemCount - 1, id);
+            }
+        }
+
+        int currentIndex = -1;
+        for (int index = 0; index < _brainField.ItemCount; index++)
+        {
+            if (_brainField.GetItemMetadata(index).AsString() == currentBrain)
+            {
+                currentIndex = index;
+                break;
+            }
+        }
+        if (currentBrain.Length > 0 && currentIndex < 0)
+        {
+            _brainField.AddItem($"{currentBrain} (not in behavior database)");
+            _brainField.SetItemMetadata(_brainField.ItemCount - 1, "");
+            currentIndex = _brainField.ItemCount - 1;
+        }
+        _brainField.Select(currentIndex);
+        _brainField.Disabled = _playMode || _selectedActor is null || !hasDatabase;
+    }
+
+    private static string GetBrainChoiceLabel(string id, JsonObject? brain, int index)
+    {
+        if (id == "__DEFAULT_BRAIN__")
+            return "Default brain";
+
+        JsonArray? behaviorUses = brain?["behaviorUses"] as JsonArray;
+        string label = behaviorUses is { Count: > 0 } && behaviorUses[0] is JsonObject firstUse
+            ? LegacySaveDocument.ReadString(firstUse["behaviorUri"])
+            : "";
+        int schemeSeparator = label.IndexOf(':');
+        if (schemeSeparator >= 0)
+            label = label[(schemeSeparator + 1)..];
+        if (label.Length == 0)
+            label = $"Brain {index + 1}";
+        if (behaviorUses is { Count: > 1 })
+            label += $" +{behaviorUses.Count - 1}";
+
+        string shortId = id.Length > 8 ? id[..8] : id;
+        return $"{label} · {shortId}";
+    }
+
+    private void UpdateSelectedBrain(long index)
+    {
+        if (_updatingInspector || _playMode || _selectedActor is null || _document?.BehaviorDatabase is null)
+            return;
+        string brainName = _brainField.GetItemMetadata((int)index).AsString();
+        if (brainName.Length > 0)
+            _selectedActor.State.WriteString("brainName", brainName);
     }
 
     private void UpdateSelectedDisplayName(string value)
@@ -573,6 +653,7 @@ public partial class GameBuilderApp : Node3D
 
     private void ClearWorld()
     {
+        _behaviorRuntime?.Dispose();
         _behaviorRuntime = null;
         _behaviorUi?.SetCommands(new JsonArray());
         foreach (Node child in _world.GetChildren())
@@ -580,6 +661,11 @@ public partial class GameBuilderApp : Node3D
         _actors.Clear();
         _selectedActor = null;
         _actorList?.Clear();
+    }
+    public override void _ExitTree()
+    {
+        _behaviorRuntime?.Dispose();
+        _behaviorRuntime = null;
     }
 
     private void AddStageGround(JsonObject? stage)
@@ -682,6 +768,11 @@ public partial class GameBuilderApp : Node3D
     {
         if (_document is null || _selectedActor is null)
             return;
+        if (_selectedActor.LegacyName.StartsWith("builtin:", StringComparison.Ordinal))
+        {
+            ShowError($"Built-in actors such as {_selectedActor.State.DisplayName} cannot be deleted.");
+            return;
+        }
         string name = _selectedActor.LegacyName;
         _document.RemoveActor(name);
         _actors.Remove(_selectedActor);
@@ -693,6 +784,7 @@ public partial class GameBuilderApp : Node3D
     private void RefreshRuntimeActors()
     {
         RefreshActorList();
+        RefreshBrainChoices();
         if (_selectedActor is not null && !_actors.Contains(_selectedActor))
             SelectActor(_actors.FirstOrDefault());
     }

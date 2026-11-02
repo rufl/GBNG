@@ -4,7 +4,6 @@ using GBNG.Assets;
 using GBNG.Domain;
 using GBNG.World;
 using Godot;
-using Jint;
 
 namespace GBNG.Behaviors;
 
@@ -12,6 +11,7 @@ public sealed partial class LegacyBehaviorRuntime
 {
     private const uint ActorCollisionLayer = 1u;
     private const uint TerrainCollisionLayer = 2u;
+    private const uint ActorTriggerCollisionLayer = 4u;
     private const string ActorPrefabRoot = "res://Assets/StreamingAssets/PrefabLibrary/ActorPrefabs";
     private readonly Dictionary<string, AudioStreamWav> _soundCache = new(StringComparer.Ordinal);
     private bool _refreshDatabasePending;
@@ -25,12 +25,12 @@ public sealed partial class LegacyBehaviorRuntime
         {
             Shape = new SphereShape3D { Radius = radius },
             Transform = new Transform3D(Basis.Identity, center),
-            CollisionMask = ActorCollisionLayer,
+            CollisionMask = ActorCollisionLayer | ActorTriggerCollisionLayer,
             CollideWithBodies = true,
-            CollideWithAreas = false
+            CollideWithAreas = true
         };
-        var names = new HashSet<string>(StringComparer.Ordinal);
-        foreach (Godot.Collections.Dictionary hit in _world.GetWorld3D().DirectSpaceState.IntersectShape(query, 1024))
+        var names = new List<string>();
+        foreach (Godot.Collections.Dictionary hit in _world.GetWorld3D().DirectSpaceState.IntersectShape(query, 500))
         {
             WorldActorNode? actor = FindActorFromHit(hit);
             if (actor is not null && (tag.Length == 0 || ActorHasTag(actor, tag)))
@@ -67,7 +67,7 @@ public sealed partial class LegacyBehaviorRuntime
         bool includeActors = LegacySaveDocument.ReadBool(args["includeActors"], true);
         bool includeTerrain = LegacySaveDocument.ReadBool(args["includeTerrain"], true);
         string excludeActor = LegacySaveDocument.ReadString(args["excludeActor"]);
-        uint mask = (includeActors ? ActorCollisionLayer : 0u) | (includeTerrain ? TerrainCollisionLayer : 0u);
+        uint mask = (includeActors ? ActorCollisionLayer | ActorTriggerCollisionLayer : 0u) | (includeTerrain ? TerrainCollisionLayer : 0u);
         if (mask == 0u || direction.LengthSquared() == 0f || maxDistance == 0f)
             return mode is 2 or 3 ? "{\"hits\":[]}" : mode == 1 ? "null" : "false";
         direction = direction.Normalized();
@@ -78,7 +78,7 @@ public sealed partial class LegacyBehaviorRuntime
         if (excludedActorNode is not null)
             excluded.Add(excludedActorNode.GetRid());
         PhysicsDirectSpaceState3D space = _world.GetWorld3D().DirectSpaceState;
-        int remaining = Math.Min(_actors.Count + 32, 256);
+        int remaining = 500;
         while (remaining-- > 0)
         {
             Godot.Collections.Dictionary hit;
@@ -153,7 +153,7 @@ public sealed partial class LegacyBehaviorRuntime
     private string SetTerrainCell(JsonObject args)
     {
         if (_terrain is null || args["cell"] is not JsonObject cell || args["value"] is not JsonObject value)
-            return _terrain is null ? "true" : "false";
+            return "false";
         int x = LegacySaveDocument.ReadInt(cell["x"], 0) + _terrain.Width / 2;
         int y = LegacySaveDocument.ReadInt(cell["y"], 0) - LegacyTerrainData.CellsYStart;
         int z = LegacySaveDocument.ReadInt(cell["z"], 0) + _terrain.Depth / 2;
@@ -341,30 +341,53 @@ public sealed partial class LegacyBehaviorRuntime
         if (names is null)
             return;
         foreach (JsonNode? node in names)
+            QueueActorDestruction(LegacySaveDocument.ReadString(node));
+    }
+
+    private void QueueActorDestruction(string actorName)
+    {
+        WorldActorNode? actor = FindActor(actorName);
+        if (actor is not null && !actor.LegacyName.StartsWith("builtin:", StringComparison.InvariantCulture))
+            _actorsToDestroy.Add(actorName);
+    }
+
+    private void ApplyPendingPlayerControlTransfer()
+    {
+        if (_pendingPlayerControlTransfer is not { } request)
+            return;
+        _pendingPlayerControlTransfer = null;
+
+        WorldActorNode? current = _actors.FirstOrDefault(actor => actor.State.IsPlayerControllable);
+        if (current is null || current.LegacyName != request.FromActor)
+            return;
+        WorldActorNode? target = request.ToActor.Length > 0 ? FindActor(request.ToActor) : null;
+        if (target == current)
+            return;
+
+        foreach (WorldActorNode actor in _actors)
         {
-            string name = LegacySaveDocument.ReadString(node);
-            if (FindActor(name) is not null)
-                _actorsToDestroy.Add(name);
+            bool isPlayer = actor == target;
+            if (actor.State.IsPlayerControllable == isPlayer)
+                continue;
+            actor.State.WriteBool("isPlayerControllable", isPlayer);
+            actor.ApplyLegacyPhysicsSettings();
         }
+
+        if (request.Destroy)
+            QueueActorDestruction(current.LegacyName);
+        DestroyPendingActors();
     }
 
     private string TransferPlayerControl(JsonObject args)
     {
         string fromName = LegacySaveDocument.ReadString(args["fromActor"]);
-        string toName = LegacySaveDocument.ReadString(args["toActor"]);
         WorldActorNode? current = _actors.FirstOrDefault(actor => actor.State.IsPlayerControllable);
-        if (current is not null && fromName.Length > 0 && current.LegacyName != fromName)
-            return "false";
-        WorldActorNode? target = toName.Length > 0
-            ? FindActor(toName)
-            : _actors.FirstOrDefault(actor => actor.LegacyName != fromName && ActorHasTag(actor, "player"));
-        if (target is null)
-            return "false";
-        foreach (WorldActorNode actor in _actors)
+        if (current is not null && current.LegacyName == fromName)
         {
-            bool isPlayer = actor == target;
-            actor.State.WriteBool("isPlayerControllable", isPlayer);
-            actor.ApplyLegacyPhysicsSettings();
+            _pendingPlayerControlTransfer = (
+                fromName,
+                LegacySaveDocument.ReadString(args["toActor"]),
+                LegacySaveDocument.ReadBool(args["destroy"]));
         }
         return "true";
     }
