@@ -18,8 +18,13 @@ public sealed partial class LegacyPanelCanvasWindow : Window
     private readonly Label _status = new();
     private readonly Dictionary<string, JsonObject?> _builtinMetadata = new(StringComparer.Ordinal);
     private readonly List<(GraphNode Node, JsonObject Use)> _panelNodes = new();
+    private readonly List<(GraphNode Node, TextEdit Text, JsonObject Data)> _noteNodes = new();
+    private readonly HashSet<GraphNode> _resizeBoundNoteNodes = new();
+    private JsonArray _notes = new();
+    private int _nextNoteNodeId;
     private JsonObject? _brain;
     private bool _building;
+    private bool _viewInitialized;
     private bool _layoutDirty;
     private JsonObject? _pendingViewState;
 
@@ -55,9 +60,11 @@ public sealed partial class LegacyPanelCanvasWindow : Window
             _canvas.Zoom = Math.Clamp(LegacySaveDocument.ReadFloat(viewState["scale"], 1f), _canvas.ZoomMin, _canvas.ZoomMax);
             _canvas.ScrollOffset = ReadVector2(viewState["viewPosition"], Vector2.Zero);
             _pendingViewState = null;
+            _viewInitialized = true;
             return;
         }
         FitCanvasToContent();
+        _viewInitialized = true;
     }
 
     private void FitCanvasToContent()
@@ -106,10 +113,13 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         var toolbar = new HBoxContainer();
         toolbar.AddChild(new Label
         {
-            Text = "Drag panels to preserve their layout. Edit card uses and properties in the behavior authoring window.",
+            Text = "Drag panels and notes to arrange them. Add, edit, resize, and delete notes here; edit card uses and properties in the behavior authoring window.",
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             AutowrapMode = TextServer.AutowrapMode.Word
         });
+        var addNote = new Button { Text = "Add note" };
+        addNote.Pressed += AddPanelNote;
+        toolbar.AddChild(addNote);
         var saveView = new Button { Text = "Save view" };
         saveView.Pressed += SaveViewState;
         toolbar.AddChild(saveView);
@@ -189,7 +199,19 @@ public sealed partial class LegacyPanelCanvasWindow : Window
 
             GraphNode customNode = CreateCustomNode(uses, assignedCardIds, panelIndex);
             _canvas.AddChild(customNode);
-            _status.Text = $"{panelIndex} panel(s) plus the Custom panel. Layout changes remain in memory until GBNG saves the project.";
+            JsonObject brainMetadata = ParseObjectString(brain["metadataJson"], "behavior brain metadata");
+            _notes = brainMetadata["panelNotes"] as JsonArray ?? new JsonArray();
+            int noteIndex = 0;
+            foreach (JsonNode? noteData in _notes)
+            {
+                if (noteData is not JsonObject note)
+                    continue;
+                GraphNode noteNode = CreateNoteNode(note, noteIndex++);
+                _canvas.AddChild(noteNode);
+                BindNoteResize(noteNode, note, _noteNodes[^1].Text);
+            }
+            _status.Text = $"{panelIndex} panel(s), the Custom panel, and {_noteNodes.Count} note(s). Layout changes remain in memory until GBNG saves the project.";
+            _nextNoteNodeId = noteIndex;
         }
         finally
         {
@@ -311,6 +333,111 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         return graphNode;
     }
 
+    private GraphNode CreateNoteNode(JsonObject data, int index)
+    {
+        Vector2 size = ReadVector2(data["size"], new Vector2(300, 200));
+        size = new Vector2(Math.Max(size.X, 180f), Math.Max(size.Y, 120f));
+        var graphNode = new GraphNode
+        {
+            Name = $"note_{index}",
+            Title = "Note",
+            PositionOffset = ReadVector2(data["position"], new Vector2(60 + index * 340, 160)),
+            CustomMinimumSize = size,
+            Resizable = true,
+            Draggable = true,
+            Selectable = true
+        };
+        graphNode.AddThemeColorOverride("title_color", new Color("#f2cf78"));
+        graphNode.AddThemeFontSizeOverride("title_font_size", 22);
+        var text = new TextEdit
+        {
+            Text = LegacySaveDocument.ReadString(data["content"]),
+            CustomMinimumSize = new Vector2(Math.Max(size.X - 24f, 130f), Math.Max(size.Y - 48f, 80f)),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+            WrapMode = TextEdit.LineWrappingMode.Boundary
+        };
+        text.AddThemeFontSizeOverride("font_size", 20);
+        text.TextChanged += () =>
+        {
+            if (_building)
+                return;
+            data["content"] = text.Text;
+            PersistNotes();
+        };
+        graphNode.AddChild(text);
+        var delete = new Button { Text = "Delete note" };
+        delete.Pressed += () => DeletePanelNote(graphNode, data);
+        graphNode.AddChild(delete);
+        _noteNodes.Add((graphNode, text, data));
+        return graphNode;
+    }
+
+    private void BindNoteResize(GraphNode node, JsonObject data, TextEdit text)
+    {
+        if (!_resizeBoundNoteNodes.Add(node))
+            return;
+        node.Resized += () =>
+        {
+            if (_building || !_viewInitialized || _brain is null)
+                return;
+            Vector2 size = node.Size;
+            if (ReadVector2(data["size"], size).IsEqualApprox(size))
+                return;
+            data["size"] = CreateVector2(size);
+            data["content"] = text.Text;
+            PersistNotes();
+        };
+    }
+
+    private void AddPanelNote()
+    {
+        if (_brain is null)
+            return;
+        Vector2 viewCenter = new(_canvas.Size.X / 2f, (_canvas.Size.Y + 48f) / 2f);
+        Vector2 size = new(300f, 200f);
+        Vector2 position = (viewCenter + _canvas.ScrollOffset) / Math.Max(_canvas.Zoom, 0.001f) - size / 2f;
+        var data = new JsonObject
+        {
+            ["position"] = CreateVector2(position),
+            ["size"] = CreateVector2(size),
+            ["content"] = ""
+        };
+        _notes.Add(data);
+        GraphNode node = CreateNoteNode(data, _nextNoteNodeId++);
+        _canvas.AddChild(node);
+        BindNoteResize(node, data, _noteNodes[^1].Text);
+        PersistNotes();
+    }
+
+    private void DeletePanelNote(GraphNode node, JsonObject data)
+    {
+        for (int index = 0; index < _notes.Count; index++)
+        {
+            if (ReferenceEquals(_notes[index], data))
+            {
+                _notes.RemoveAt(index);
+                break;
+            }
+        }
+        _noteNodes.RemoveAll(note => note.Node == node);
+        _resizeBoundNoteNodes.Remove(node);
+        _canvas.RemoveChild(node);
+        node.QueueFree();
+        PersistNotes();
+    }
+
+    private void PersistNotes()
+    {
+        if (_brain is null)
+            return;
+        JsonObject brainMetadata = ParseObjectString(_brain["metadataJson"], "behavior brain metadata");
+        brainMetadata["panelNotes"] = _notes.DeepClone();
+        _brain["metadataJson"] = brainMetadata.ToJsonString();
+        _layoutDirty = true;
+        _status.Text = "Panel notes updated in memory. Use Save in GBNG to persist the project.";
+    }
+
     private static Label CreateCanvasLabel(string text, string tooltip = "")
     {
         var label = new Label
@@ -345,6 +472,13 @@ public sealed partial class LegacyPanelCanvasWindow : Window
             brainMetadata["miscPanelUseMetadata"] = miscMetadata;
             _brain["metadataJson"] = brainMetadata.ToJsonString();
         }
+        foreach ((GraphNode node, TextEdit text, JsonObject data) in _noteNodes)
+        {
+            data["position"] = CreateVector2(node.PositionOffset);
+            data["size"] = CreateVector2(node.Size);
+            data["content"] = text.Text;
+        }
+        PersistNotes();
         SaveViewStateToBrain();
         _layoutDirty = true;
         _status.Text = "Panel layout updated in memory. Use Save in GBNG to persist the project.";
