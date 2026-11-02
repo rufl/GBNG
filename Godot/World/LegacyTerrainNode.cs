@@ -31,20 +31,55 @@ public partial class LegacyTerrainNode : Node3D
 
     private readonly Dictionary<ushort, SurfaceTool> _surfaces = new();
     private readonly Dictionary<ushort, StandardMaterial3D> _materials = new();
+    private LegacyTerrainData _data = null!;
+    private MeshInstance3D? _meshInstance;
+    private StaticBody3D? _body;
+    private CollisionShape3D? _collisionShape;
+    private bool _dirty;
 
     private LegacyTerrainNode() { }
 
     public static LegacyTerrainNode Create(LegacyTerrainData data)
     {
-        var terrain = new LegacyTerrainNode { Name = "Terrain" };
-        terrain.Build(data);
+        var terrain = new LegacyTerrainNode { Name = "Terrain", _data = data };
+        terrain.Build();
         return terrain;
     }
+    public int Width => _data.Width;
+    public int Depth => _data.Depth;
 
-    private void Build(LegacyTerrainData data)
+    public bool TryGetCell(int x, int y, int z, out byte shape, out ushort style, out byte direction)
+        => _data.TryGetCell(x, y, z, out shape, out style, out direction);
+
+    public bool SetCell(int x, int y, int z, int shape, int style, int direction)
     {
+        if (!_data.SetCell(x, y, z, shape, style, direction))
+            return false;
+        _dirty = true;
+        return true;
+    }
+
+    public void FlushUpdates()
+    {
+        if (!_dirty)
+            return;
+        _dirty = false;
+        Build();
+    }
+
+    public string Encode() => _data.Encode();
+
+    private void Build()
+    {
+        LegacyTerrainData data = _data;
+        _surfaces.Clear();
+        _materials.Clear();
+        BuildGreedyFullBlocks(data);
         foreach (TerrainCell cell in data.EnumerateCells())
         {
+            if (cell.Shape == 0)
+                continue;
+
             Vector3 center = new(
                 (cell.X - data.Width * 0.5f) * LegacyTerrainData.CellWidth,
                 (cell.Y + LegacyTerrainData.CellsYStart) * LegacyTerrainData.CellHeight + HalfHeight,
@@ -54,9 +89,6 @@ public partial class LegacyTerrainNode : Node3D
 
             switch (cell.Shape)
             {
-                case 0:
-                    AddFullBlock(data, cell, center, rotation);
-                    break;
                 case 1:
                     AddHalfBlock(center, rotation, cell.Style);
                     break;
@@ -72,9 +104,6 @@ public partial class LegacyTerrainNode : Node3D
             }
         }
 
-        if (_surfaces.Count == 0)
-            return;
-
         var mesh = new ArrayMesh();
         foreach ((ushort style, SurfaceTool surface) in _surfaces.OrderBy(pair => pair.Key))
         {
@@ -82,38 +111,220 @@ public partial class LegacyTerrainNode : Node3D
             surface.Commit(mesh);
         }
 
-        var meshInstance = new MeshInstance3D { Name = "TerrainMesh", Mesh = mesh };
-        AddChild(meshInstance);
-        if (mesh.GetSurfaceCount() == 0)
-            return;
-
-        Shape3D collisionShape = mesh.CreateTrimeshShape();
-        if (collisionShape is null)
+        if (_meshInstance is null && mesh.GetSurfaceCount() > 0)
         {
-            GD.PushError("Godot could not create static collision for decoded terrain.");
+            _meshInstance = new MeshInstance3D { Name = "TerrainMesh" };
+            AddChild(_meshInstance);
+        }
+        if (_meshInstance is not null)
+            _meshInstance.Mesh = mesh;
+
+        if (mesh.GetSurfaceCount() == 0)
+        {
+            if (_collisionShape is not null)
+                _collisionShape.Shape = null;
             return;
         }
 
-        var body = new StaticBody3D { Name = "TerrainCollision" };
-        body.AddChild(new CollisionShape3D { Name = "TerrainCollisionShape", Shape = collisionShape });
-        AddChild(body);
+        Shape3D? collisionShape = mesh.CreateTrimeshShape();
+        if (collisionShape is null)
+        {
+            GD.PushError("Godot could not create static collision for decoded terrain.");
+            if (_collisionShape is not null)
+                _collisionShape.Shape = null;
+            return;
+        }
+
+        if (_body is null)
+        {
+            _body = new StaticBody3D { Name = "TerrainCollision", CollisionLayer = 2u, CollisionMask = 1u };
+            _collisionShape = new CollisionShape3D { Name = "TerrainCollisionShape", Shape = collisionShape };
+            _body.AddChild(_collisionShape);
+            AddChild(_body);
+        }
+        else
+        {
+            _collisionShape!.Shape = collisionShape;
+        }
     }
 
-    private void AddFullBlock(LegacyTerrainData data, TerrainCell cell, Vector3 center, Basis rotation)
+    private void BuildGreedyFullBlocks(LegacyTerrainData data)
     {
-        if (!IsFull(data, cell.X - 1, cell.Y, cell.Z))
-            AddQuad(cell.Style, center, rotation, new(-HalfWidth, -HalfHeight, -HalfWidth), new(-HalfWidth, -HalfHeight, HalfWidth), new(-HalfWidth, HalfHeight, HalfWidth), new(-HalfWidth, HalfHeight, -HalfWidth), Vector3.Left);
-        if (!IsFull(data, cell.X + 1, cell.Y, cell.Z))
-            AddQuad(cell.Style, center, rotation, new(HalfWidth, -HalfHeight, HalfWidth), new(HalfWidth, -HalfHeight, -HalfWidth), new(HalfWidth, HalfHeight, -HalfWidth), new(HalfWidth, HalfHeight, HalfWidth), Vector3.Right);
-        if (!IsFull(data, cell.X, cell.Y + 1, cell.Z))
-            AddQuad(cell.Style, center, rotation, new(-HalfWidth, HalfHeight, HalfWidth), new(HalfWidth, HalfHeight, HalfWidth), new(HalfWidth, HalfHeight, -HalfWidth), new(-HalfWidth, HalfHeight, -HalfWidth), Vector3.Up);
-        if (!IsFull(data, cell.X, cell.Y - 1, cell.Z))
-            AddQuad(cell.Style, center, rotation, new(-HalfWidth, -HalfHeight, -HalfWidth), new(HalfWidth, -HalfHeight, -HalfWidth), new(HalfWidth, -HalfHeight, HalfWidth), new(-HalfWidth, -HalfHeight, HalfWidth), Vector3.Down);
-        if (!IsFull(data, cell.X, cell.Y, cell.Z - 1))
-            AddQuad(cell.Style, center, rotation, new(HalfWidth, -HalfHeight, -HalfWidth), new(-HalfWidth, -HalfHeight, -HalfWidth), new(-HalfWidth, HalfHeight, -HalfWidth), new(HalfWidth, HalfHeight, -HalfWidth), Vector3.Back);
-        if (!IsFull(data, cell.X, cell.Y, cell.Z + 1))
-            AddQuad(cell.Style, center, rotation, new(-HalfWidth, -HalfHeight, HalfWidth), new(HalfWidth, -HalfHeight, HalfWidth), new(HalfWidth, HalfHeight, HalfWidth), new(-HalfWidth, HalfHeight, HalfWidth), Vector3.Forward);
+        int[] mask = new int[Math.Max(
+            Math.Max(data.Depth * data.Height, data.Width * data.Depth),
+            data.Width * data.Height)];
+
+        for (int axis = 0; axis < 3; axis++)
+        {
+            int planeCount = axis switch { 0 => data.Width, 1 => data.Height, _ => data.Depth };
+            int uCount = axis == 1 ? data.Width : axis == 0 ? data.Depth : data.Width;
+            int vCount = axis == 0 ? data.Height : axis == 1 ? data.Depth : data.Height;
+            int maskLength = uCount * vCount;
+
+            for (int plane = 0; plane < planeCount; plane++)
+            {
+                for (int side = 0; side < 2; side++)
+                {
+                    bool positive = side == 1;
+                    Array.Clear(mask, 0, maskLength);
+
+                    for (int v = 0; v < vCount; v++)
+                    {
+                        int rowStart = v * uCount;
+                        for (int u = 0; u < uCount; u++)
+                        {
+                            int x = axis == 0 ? plane : u;
+                            int y = axis == 1 ? plane : v;
+                            int z = axis == 2 ? plane : axis == 0 ? u : v;
+                            if (!data.TryGetCell(x, y, z, out byte shape, out ushort style, out _) || shape != 0)
+                                continue;
+
+                            int step = positive ? 1 : -1;
+                            if (axis == 2)
+                                step = -step;
+                            int neighborX = x + (axis == 0 ? step : 0);
+                            int neighborY = y + (axis == 1 ? step : 0);
+                            int neighborZ = z + (axis == 2 ? step : 0);
+                            if (data.TryGetCell(neighborX, neighborY, neighborZ, out byte neighborShape, out _, out _) && neighborShape == 0)
+                                continue;
+
+                            mask[rowStart + u] = style + 1;
+                        }
+                    }
+
+                    for (int v = 0; v < vCount; v++)
+                    {
+                        for (int u = 0; u < uCount; u++)
+                        {
+                            int styleKey = mask[v * uCount + u];
+                            if (styleKey == 0)
+                                continue;
+
+                            int width = 1;
+                            while (u + width < uCount && mask[v * uCount + u + width] == styleKey)
+                                width++;
+
+                            int height = 1;
+                            while (v + height < vCount)
+                            {
+                                int nextRow = (v + height) * uCount + u;
+                                int column = 0;
+                                while (column < width && mask[nextRow + column] == styleKey)
+                                    column++;
+                                if (column != width)
+                                    break;
+                                height++;
+                            }
+
+                            for (int row = 0; row < height; row++)
+                                Array.Clear(mask, (v + row) * uCount + u, width);
+                            AddGreedyFace(data, axis, positive, plane, u, v, width, height, (ushort)(styleKey - 1));
+                        }
+                    }
+                }
+            }
+        }
     }
+
+    private void AddGreedyFace(
+        LegacyTerrainData data,
+        int axis,
+        bool positive,
+        int plane,
+        int u,
+        int v,
+        int width,
+        int height,
+        ushort style)
+    {
+        float xLow = 0f;
+        float xHigh = 0f;
+        float yLow = 0f;
+        float yHigh = 0f;
+        float zHigh = 0f;
+        float zLow = 0f;
+
+        Vector3 a;
+        Vector3 b;
+        Vector3 c;
+        Vector3 d;
+        Vector3 normal;
+        if (axis == 0)
+        {
+            yLow = (v + LegacyTerrainData.CellsYStart) * LegacyTerrainData.CellHeight;
+            yHigh = (v + height + LegacyTerrainData.CellsYStart) * LegacyTerrainData.CellHeight;
+            zHigh = (data.Depth * 0.5f + 0.5f - u) * LegacyTerrainData.CellWidth;
+            zLow = (data.Depth * 0.5f + 0.5f - u - width) * LegacyTerrainData.CellWidth;
+            float x = (plane - data.Width * 0.5f + (positive ? 0.5f : -0.5f)) * LegacyTerrainData.CellWidth;
+            if (positive)
+            {
+                a = new Vector3(x, yLow, zHigh);
+                b = new Vector3(x, yLow, zLow);
+                c = new Vector3(x, yHigh, zLow);
+                d = new Vector3(x, yHigh, zHigh);
+                normal = Vector3.Right;
+            }
+            else
+            {
+                a = new Vector3(x, yLow, zLow);
+                b = new Vector3(x, yLow, zHigh);
+                c = new Vector3(x, yHigh, zHigh);
+                d = new Vector3(x, yHigh, zLow);
+                normal = Vector3.Left;
+            }
+        }
+        else if (axis == 1)
+        {
+            xLow = (u - data.Width * 0.5f - 0.5f) * LegacyTerrainData.CellWidth;
+            xHigh = (u + width - data.Width * 0.5f - 0.5f) * LegacyTerrainData.CellWidth;
+            zHigh = (data.Depth * 0.5f + 0.5f - v) * LegacyTerrainData.CellWidth;
+            zLow = (data.Depth * 0.5f + 0.5f - v - height) * LegacyTerrainData.CellWidth;
+            float y = (plane + LegacyTerrainData.CellsYStart + (positive ? 1f : 0f)) * LegacyTerrainData.CellHeight;
+            if (positive)
+            {
+                a = new Vector3(xLow, y, zHigh);
+                b = new Vector3(xHigh, y, zHigh);
+                c = new Vector3(xHigh, y, zLow);
+                d = new Vector3(xLow, y, zLow);
+                normal = Vector3.Up;
+            }
+            else
+            {
+                a = new Vector3(xLow, y, zLow);
+                b = new Vector3(xHigh, y, zLow);
+                c = new Vector3(xHigh, y, zHigh);
+                d = new Vector3(xLow, y, zHigh);
+                normal = Vector3.Down;
+            }
+        }
+        else
+        {
+            xLow = (u - data.Width * 0.5f - 0.5f) * LegacyTerrainData.CellWidth;
+            xHigh = (u + width - data.Width * 0.5f - 0.5f) * LegacyTerrainData.CellWidth;
+            yLow = (v + LegacyTerrainData.CellsYStart) * LegacyTerrainData.CellHeight;
+            yHigh = (v + height + LegacyTerrainData.CellsYStart) * LegacyTerrainData.CellHeight;
+            float z = (data.Depth * 0.5f + (positive ? 0.5f : -0.5f) - plane) * LegacyTerrainData.CellWidth;
+            if (positive)
+            {
+                a = new Vector3(xLow, yLow, z);
+                b = new Vector3(xHigh, yLow, z);
+                c = new Vector3(xHigh, yHigh, z);
+                d = new Vector3(xLow, yHigh, z);
+                normal = Vector3.Back;
+            }
+            else
+            {
+                a = new Vector3(xHigh, yLow, z);
+                b = new Vector3(xLow, yLow, z);
+                c = new Vector3(xLow, yHigh, z);
+                d = new Vector3(xHigh, yHigh, z);
+                normal = Vector3.Forward;
+            }
+        }
+
+        AddQuad(style, Vector3.Zero, Basis.Identity, a, b, c, d, normal);
+    }
+
 
     private void AddHalfBlock(Vector3 center, Basis rotation, ushort style)
     {
@@ -192,10 +403,6 @@ public partial class LegacyTerrainNode : Node3D
         return surface;
     }
 
-    private static bool IsFull(LegacyTerrainData data, int x, int y, int z)
-    {
-        return data.TryGetCell(x, y, z, out byte shape, out _, out _) && shape == 0;
-    }
 
     private static StandardMaterial3D CreateMaterial(ushort style)
     {
@@ -221,7 +428,8 @@ public partial class LegacyTerrainNode : Node3D
             };
         }
 
-        string directory = style >= 18 && style <= 28
+        bool organicStyle = style is >= 18 and <= 26 or 28;
+        string directory = organicStyle
             ? "res://Assets/GameAssets/Environment/OrganicStyleTextures/"
             : "res://Assets/GameAssets/Environment/NonOrganicStyleTextures/";
         string path = directory + textureName;

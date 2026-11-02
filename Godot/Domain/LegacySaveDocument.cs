@@ -67,6 +67,12 @@ public sealed class LegacySaveDocument
         return new LegacySaveDocument(root, path);
     }
 
+    public void SaveTerrainPayload(string encodedTerrain)
+    {
+        JsonObject gridState = EnsureObject(_root, "gridState");
+        gridState["v2Data"] = encodedTerrain;
+    }
+
     public void SaveActorTransforms(IReadOnlyDictionary<string, Transform3D> transforms)
     {
         foreach (LegacyActorData actor in _actors)
@@ -193,6 +199,8 @@ public sealed class LegacyActorData
 
     internal LegacyActorData(JsonObject data) => _data = data;
 
+    internal JsonObject Data => _data;
+
     public string Name => LegacySaveDocument.ReadString(_data["name"]);
     public string DisplayName => LegacySaveDocument.ReadString(_data["displayName"], Name);
     public string Description => LegacySaveDocument.ReadString(_data["description"]);
@@ -206,6 +214,7 @@ public sealed class LegacyActorData
     public bool IsSolid => LegacySaveDocument.ReadBool(_data["isSolid"], true);
     public bool IsPlayerControllable => LegacySaveDocument.ReadBool(_data["isPlayerControllable"]);
     public bool HideInPlayMode => LegacySaveDocument.ReadBool(_data["hideInPlayMode"]);
+    public bool WasClonedByScript => LegacySaveDocument.ReadBool(_data["wasClonedByScript"]);
     public bool FreezeRotations => LegacySaveDocument.ReadBool(_data["freezeRotations"]);
     public bool FreezeX => LegacySaveDocument.ReadBool(_data["freezeX"]);
     public bool FreezeY => LegacySaveDocument.ReadBool(_data["freezeY"]);
@@ -303,7 +312,7 @@ public sealed class LegacyActorData
         WriteVector(target, scale);
     }
 
-    private static Vector3 ReadVector(JsonNode? node, Vector3 fallback)
+    internal static Vector3 ReadVector(JsonNode? node, Vector3 fallback)
     {
         if (node is not JsonObject vector)
             return fallback;
@@ -313,7 +322,7 @@ public sealed class LegacyActorData
             LegacySaveDocument.ReadFloat(vector["z"], fallback.Z));
     }
 
-    private static Quaternion ReadQuaternion(JsonNode? node)
+    internal static Quaternion ReadQuaternion(JsonNode? node)
     {
         if (node is not JsonObject quaternion)
             return Quaternion.Identity;

@@ -21,16 +21,59 @@ public partial class WorldActorNode : RigidBody3D
     public bool IgnoreVerticalDesiredVelocity { get; set; }
     public bool UseStickyDesiredVelocity { get; set; }
 
-    public void ApplyDesiredVelocity()
+    public Aabb GetWorldRenderBounds()
     {
-        if (!UseDesiredVelocity || Freeze)
+        Aabb? bounds = null;
+        foreach (Node node in FindChildren("*", "MeshInstance3D", true, false))
+        {
+            if (node is not MeshInstance3D meshInstance || meshInstance.Mesh is null)
+                continue;
+
+            Aabb localBounds = meshInstance.GetAabb();
+            for (int corner = 0; corner < 8; corner++)
+            {
+                Vector3 localPoint = localBounds.Position + new Vector3(
+                    (corner & 1) == 0 ? 0f : localBounds.Size.X,
+                    (corner & 2) == 0 ? 0f : localBounds.Size.Y,
+                    (corner & 4) == 0 ? 0f : localBounds.Size.Z);
+                Vector3 worldPoint = meshInstance.ToGlobal(localPoint);
+                bounds = bounds is null ? new Aabb(worldPoint, Vector3.Zero) : bounds.Value.Expand(worldPoint);
+            }
+        }
+
+        return bounds ?? new Aabb(GlobalPosition, Vector3.Zero);
+    }
+
+
+    public void ApplyDesiredVelocity(double deltaSeconds)
+    {
+        if (!_playMode)
             return;
 
-        Vector3 velocity = DesiredVelocity;
-        if (IgnoreVerticalDesiredVelocity)
-            velocity.Y = LinearVelocity.Y;
-        LinearVelocity = velocity;
+        if (State.EnablePhysics && StickyForce.LengthSquared() > 0f)
+            ApplyCentralForce(StickyForce);
+
+        if (!UseDesiredVelocity && !UseStickyDesiredVelocity)
+            return;
+
+        Vector3 velocity = (UseDesiredVelocity ? DesiredVelocity : Vector3.Zero)
+            + (UseStickyDesiredVelocity ? StickyDesiredVelocity : Vector3.Zero);
+        if (State.EnablePhysics)
+        {
+            if (Freeze)
+                return;
+            if (IgnoreVerticalDesiredVelocity)
+                velocity.Y = LinearVelocity.Y;
+            LinearVelocity = velocity;
+        }
+        else
+        {
+            if (IgnoreVerticalDesiredVelocity)
+                velocity.Y = 0f;
+            GlobalPosition += velocity * (float)deltaSeconds;
+        }
     }
+
 
     public void SetTint(Color tint)
     {
@@ -59,6 +102,20 @@ public partial class WorldActorNode : RigidBody3D
         State.WriteString("loopingAnimation", animationName);
         ApplyLoopingAnimation();
     }
+    public bool PlayOneShotAnimation(string animationName)
+    {
+        if (_renderableRoot is null)
+            return false;
+        foreach (AnimationPlayer player in _renderableRoot.FindChildren("*", "AnimationPlayer", true, false).OfType<AnimationPlayer>())
+        {
+            if (!player.HasAnimation(animationName))
+                continue;
+            player.Play(animationName);
+            return true;
+        }
+        return false;
+    }
+
 
 
     public void ApplyLegacyPhysicsSettings()
@@ -75,7 +132,7 @@ public partial class WorldActorNode : RigidBody3D
         AxisLockLinearY = State.FreezeY;
         AxisLockLinearZ = State.FreezeZ;
         CollisionLayer = State.IsSolid ? 1u : 0u;
-        CollisionMask = State.IsSolid ? 1u : 0u;
+        CollisionMask = State.IsSolid ? 3u : 0u;
         if (_renderableRoot is not null)
             _renderableRoot.Visible = !(_playMode && State.HideInPlayMode);
     }
@@ -93,6 +150,13 @@ public partial class WorldActorNode : RigidBody3D
     public void Initialize(LegacyActorData state, RenderableEntry? renderable)
     {
         State = state;
+        DesiredVelocity = CoordinateSpace.ToGodot(state.ReadLegacyVector("desiredVelocity", Vector3.Zero));
+        StickyDesiredVelocity = CoordinateSpace.ToGodot(state.ReadLegacyVector("stickyDesiredVelocity", Vector3.Zero));
+        StickyForce = CoordinateSpace.ToGodot(state.ReadLegacyVector("stickyForce", Vector3.Zero));
+        UseDesiredVelocity = LegacySaveDocument.ReadBool(state.Data["useDesiredVelocity"]);
+        IgnoreVerticalDesiredVelocity = LegacySaveDocument.ReadBool(state.Data["ignoreVerticalDesiredVelocity"]);
+        UseStickyDesiredVelocity = LegacySaveDocument.ReadBool(state.Data["useStickyDesiredVelocity"]);
+
         Name = state.Name.Replace('/', '_').Replace(':', '_');
         SetMeta("legacy_name", state.Name);
         GlobalTransform = state.GetWorldTransform();
@@ -103,7 +167,7 @@ public partial class WorldActorNode : RigidBody3D
         LockRotation = State.FreezeRotations;
         PhysicsMaterialOverride = new PhysicsMaterial { Bounce = state.Bounciness, Friction = 0.7f };
         CollisionLayer = state.IsSolid ? 1u : 0u;
-        CollisionMask = state.IsSolid ? 1u : 0u;
+        CollisionMask = state.IsSolid ? 3u : 0u;
         Freeze = true;
         FreezeMode = FreezeModeEnum.Static;
         LinearVelocity = state.Velocity;

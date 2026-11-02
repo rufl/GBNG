@@ -7,10 +7,11 @@ using GBNG.Domain;
 using GBNG.World;
 using Godot;
 using Jint;
+using Jint.Constraints;
 
 namespace GBNG.Behaviors;
 
-public sealed class LegacyBehaviorRuntime
+public sealed partial class LegacyBehaviorRuntime
 {
     private static readonly Regex GuidPattern = new(@"guid:\s*([0-9a-f]{32})", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Regex ExportPattern = new(@"(?m)^\s*export\s+(?=(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z_$][\w$]*))", RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -21,48 +22,132 @@ public sealed class LegacyBehaviorRuntime
     private readonly LegacySaveDocument _document;
     private readonly LegacyRenderableCatalog _catalog;
     private readonly Node3D _world;
+    private readonly LegacyTerrainNode? _terrain;
     private readonly Camera3D _camera;
+    private readonly Action<JsonArray> _requestUi;
+    private readonly Action? _actorsChanged;
+    private readonly Action<Vector3>? _requestCameraOffset;
     private readonly Jint.Engine _engine;
+    private readonly OperationDeadlineConstraint _executionDeadline = new();
     private readonly Dictionary<string, WorldActorNode> _actorsByName = new(StringComparer.Ordinal);
     private readonly List<WorldActorNode> _actorsById = new();
+    private readonly HashSet<string> _actorsToDestroy = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _keysHeldLastTick = new(StringComparer.Ordinal);
     private double _gameTime;
+    private Vector2 _lookAxes;
+    private Vector2 _mousePosition;
+    private float _mouseWheelRaw;
+    private bool _mouseOverUi;
+    private bool _reportedMouseDown;
+    private bool _collectInput;
+    private bool _physicsQueryAvailable;
 
+    private static readonly string[] ScriptableKeyNames =
+    [
+        "1", "2", "3", "4", "5", "6", "7", "8", "9", "0",
+        "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m",
+        "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
+        "space", "enter", "return", "backspace", "up", "down", "left", "right",
+        "[1]", "[2]", "[3]", "[4]", "[5]", "[6]", "[7]", "[8]", "[9]", "[0]",
+        "mouse 0", "@jump", "@pri", "@sec"
+    ];
+
+    private const float LegacyGameUiWidth = 1600f;
     public LegacyBehaviorRuntime(
         List<WorldActorNode> actors,
         LegacySaveDocument document,
         LegacyRenderableCatalog catalog,
         Node3D world,
-        Camera3D camera)
+        LegacyTerrainNode? terrain,
+        Camera3D camera,
+        Action<JsonArray> requestUi,
+        Action? actorsChanged = null,
+        Action<Vector3>? requestCameraOffset = null)
     {
         _actors = actors;
         _document = document;
         _catalog = catalog;
         _world = world;
+        _terrain = terrain;
         _camera = camera;
+        _requestUi = requestUi;
+        _actorsChanged = actorsChanged;
+        _requestCameraOffset = requestCameraOffset;
         _engine = new Jint.Engine(options => options
             .MaxStatements(1_000_000)
-            .TimeoutInterval(TimeSpan.FromMilliseconds(250)));
+            .Constraint(_executionDeadline));
 
         RegisterHostBindings();
-        _engine.Execute(ReadEngineSource(), "GBNG behavior engine");
+        ExecuteScript(ReadEngineSource(), "GBNG behavior engine", TimeSpan.FromSeconds(5));
         RegisterBuiltInModules();
         RegisterEmbeddedModules();
         ConfigureBehaviorDatabase();
         SyncActors();
-    }
+        ApplySkyType(LegacySaveDocument.ReadString(_document.Stage?["skyType"], "Day"));
+        ApplySceneLighting(LegacySaveDocument.ReadString(_document.Stage?["sceneLightingMode"], "Day"));
 
+
+    }
     public void Tick(double deltaSeconds)
     {
         if (deltaSeconds <= 0d)
             return;
-
         _gameTime += deltaSeconds;
-        SyncActors();
+        if (_refreshDatabasePending)
+        {
+            _refreshDatabasePending = false;
+            RegisterBuiltInModules();
+            RegisterEmbeddedModules();
+            ConfigureBehaviorDatabase();
+        }
+        _collectInput = true;
+        _physicsQueryAvailable = true;
+        try
+        {
+            SyncActors();
+        }
+        finally
+        {
+            _collectInput = false;
+            _physicsQueryAvailable = false;
+        }
         _engine.SetValue("__gbDelta", deltaSeconds);
         _engine.SetValue("__gbGameTime", _gameTime);
-        _engine.Execute("__gbTick(__gbDelta, __gbGameTime);");
-        ApplyRuntimeResponse();
-        PersistRuntimeMemory();
+        ExecuteScript("__gbTick(__gbDelta, __gbGameTime);");
+        ApplyRuntimeResponse(deltaSeconds);
+    }
+
+    internal void SetLookAxes(Vector2 lookAxes) => _lookAxes = lookAxes;
+
+    internal void SetPointerState(Vector2 viewportPosition, float mouseWheelRaw, bool mouseOverUi)
+    {
+        _mousePosition = viewportPosition;
+        _mouseWheelRaw = mouseWheelRaw;
+        _mouseOverUi = mouseOverUi;
+    }
+
+    public void SendUiMessage(string actorName, string messageName, string argumentJson)
+    {
+        _engine.SetValue("__gbUiActor", actorName);
+        _engine.SetValue("__gbUiMessageName", messageName);
+        _engine.SetValue("__gbUiArgumentJson", argumentJson.Length == 0 ? "{}" : argumentJson);
+        ExecuteScript("__gbSendUiMessage(__gbUiActor, __gbUiMessageName, __gbUiArgumentJson);");
+    }
+
+    private void ExecuteScript(string source, string? sourceName = null, TimeSpan? timeBudget = null)
+    {
+        _executionDeadline.Begin(timeBudget ?? TimeSpan.FromMilliseconds(250));
+        try
+        {
+            if (sourceName is null)
+                _engine.Execute(source);
+            else
+                _engine.Execute(source, sourceName);
+        }
+        finally
+        {
+            _executionDeadline.End();
+        }
     }
 
     private void RegisterHostBindings()
@@ -79,7 +164,7 @@ public sealed class LegacyBehaviorRuntime
         _engine.SetValue("__gbReadActorQuaternion", new Func<int, int, string>(ReadActorQuaternionJson));
         _engine.SetValue("__gbService", new Func<string, string, string>(CallService));
 
-        _engine.Execute(BridgeSource, "GBNG behavior bridge");
+        ExecuteScript(BridgeSource, "GBNG behavior bridge");
     }
 
     private const string BridgeSource = @"
@@ -91,6 +176,9 @@ function __gbRegisterModule(key, body) {
 }
 function callVoosService(name, args = {}) {
   return JSON.parse(__gbService(name, JSON.stringify(args)));
+}
+function __gbSendUiMessage(actorName, messageName, argumentJson) {
+  moduleBehaviors_.sendMessage(actorName, messageName, JSON.parse(argumentJson), null);
 }
 function getActorVector3(actorId, fieldId, result) {
   const value = JSON.parse(__gbReadActorVector3(actorId, fieldId));
@@ -107,6 +195,7 @@ function __gbConfigureDatabase(database) {
 function __gbSyncActors(states) {
   const liveNames = new Set();
   const orderedNames = [];
+  const inputMessages = [];
   for (let i = 0; i < states.length; i++) {
     const state = states[i];
     liveNames.add(state.name);
@@ -130,17 +219,23 @@ function __gbSyncActors(states) {
       isSprinting: state.isSprinting,
       worldSpaceThrottle: new THREE.Vector3(state.worldSpaceThrottle.x, state.worldSpaceThrottle.y, state.worldSpaceThrottle.z),
       inputThrottle: new THREE.Vector3(state.inputThrottle.x, state.inputThrottle.y, state.inputThrottle.z),
-      aimDirection: new THREE.Vector3(0, 0, 1),
-      aimOrigin: new THREE.Vector3(state.position.x, state.position.y, state.position.z),
-      lastAimHitPoint: new THREE.Vector3(),
-      aimingAtName: '',
-      lookAxes: new THREE.Vector3()
+      aimDirection: new THREE.Vector3(state.aimDirection.x, state.aimDirection.y, state.aimDirection.z),
+      aimOrigin: new THREE.Vector3(state.aimOrigin.x, state.aimOrigin.y, state.aimOrigin.z),
+      lastAimHitPoint: new THREE.Vector3(state.lastAimHitPoint.x, state.lastAimHitPoint.y, state.lastAimHitPoint.z),
+      aimingAtName: state.aimingAtName,
+      lookAxes: new THREE.Vector3(state.lookAxes.x, state.lookAxes.y, state.lookAxes.z),
+      hasInputState: state.hasInputState,
+      inputState: state.inputState
     });
+    if (state.messages) inputMessages.push(...state.messages);
   }
   for (const name of moduleBehaviors_.actors_.keys()) {
     if (!liveNames.has(name)) moduleBehaviors_.actors_.delete(name);
   }
   moduleBehaviors_.namesById_ = orderedNames;
+  for (const message of inputMessages) {
+    moduleBehaviors_.sendMessage(message.targetActorName, message.name, message.data || {}, null);
+  }
 }
 function __gbTick(dt, gameTime) {
   response = {
@@ -194,8 +289,22 @@ function __gbTick(dt, gameTime) {
             string guid = guidMatch.Groups[1].Value;
             if (!pathByGuid.TryGetValue(guid, out string? sourcePath))
                 throw new FileNotFoundException($"Behavior source GUID {guid} in {ScriptingSystemsPath} has no text asset.");
-            source.AppendLine(Godot.FileAccess.GetFileAsString(sourcePath));
+            string text = Godot.FileAccess.GetFileAsString(sourcePath);
+            if (Path.GetFileName(sourcePath) == "debug.js.txt")
+            {
+                int testIndex = text.IndexOf("\nrunUnitTests('debug'", StringComparison.Ordinal);
+                if (testIndex >= 0)
+                    text = text[..testIndex];
+            }
+            source.AppendLine(text);
         }
+        source.AppendLine(@"
+getCallStack = function () {
+  const lines = (new Error().stack || '').split('\n');
+  const callFrame = lines.findIndex(line => line.includes('getCallStack'));
+  return callFrame < 0 ? lines.join('\n') : lines.slice(callFrame + 1).join('\n');
+};
+");
 
         source.AppendLine(ActorHostSource);
         source.AppendLine(BehaviorSystemHostSource);
@@ -212,20 +321,58 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
 
     private void RegisterBuiltInModules()
     {
+        HashSet<string> requiredUris = GetRequiredBuiltInUris();
+        var pathsByUri = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         foreach (string path in EnumerateFiles(BuiltinBehaviorRoot, ".js.txt"))
         {
-            string moduleName = Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(path));
-            if (string.IsNullOrWhiteSpace(moduleName))
+            if (path.Contains("/Specs/", StringComparison.Ordinal))
                 continue;
-            RegisterModule($"builtin:{moduleName}", Godot.FileAccess.GetFileAsString(path));
+            string moduleName = Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(path));
+            string uri = $"builtin:{moduleName}";
+            if (!requiredUris.Contains(uri))
+                continue;
+            if (!pathsByUri.TryGetValue(uri, out List<string>? paths))
+                pathsByUri.Add(uri, paths = new List<string>());
+            paths.Add(path);
         }
+
+        foreach (string uri in requiredUris.Order(StringComparer.Ordinal))
+        {
+            if (!pathsByUri.TryGetValue(uri, out List<string>? paths))
+                throw new FileNotFoundException($"No built-in behavior module exists for '{uri}'.");
+            if (paths.Count != 1)
+                throw new InvalidDataException($"Built-in behavior module '{uri}' is ambiguous: {string.Join(", ", paths)}.");
+            RegisterModule(uri, Godot.FileAccess.GetFileAsString(paths[0]));
+        }
+    }
+
+    private HashSet<string> GetRequiredBuiltInUris()
+    {
+        var required = new HashSet<string>(StringComparer.Ordinal);
+        if (_document.BehaviorDatabase?["brains"] is not JsonArray brains)
+            return required;
+
+        foreach (JsonNode? brain in brains)
+        {
+            if (brain?["behaviorUses"] is not JsonArray uses)
+                continue;
+            foreach (JsonNode? use in uses)
+            {
+                string uri = LegacySaveDocument.ReadString(use?["behaviorUri"]);
+                if (uri.StartsWith("builtin:", StringComparison.Ordinal))
+                    required.Add(uri);
+            }
+        }
+
+        return required;
     }
 
     private void RegisterEmbeddedModules()
     {
         JsonObject? database = _document.BehaviorDatabase;
-        if (database?['"'"'behaviorIds'"'"'] is not JsonArray ids || database['"'"'behaviors'"'"'] is not JsonArray behaviors)
+        if (database?["behaviorIds"] is not JsonArray ids || database["behaviors"] is not JsonArray behaviors)
             return;
+
 
         int count = Math.Min(ids.Count, behaviors.Count);
         for (int i = 0; i < count; i++)
@@ -233,7 +380,7 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
             string id = LegacySaveDocument.ReadString(ids[i]);
             if (id.Length == 0 || behaviors[i] is not JsonObject behavior)
                 continue;
-            string source = LegacySaveDocument.ReadString(behavior['"'"'javascript'"'"']);
+            string source = LegacySaveDocument.ReadString(behavior["javascript"]);
             if (source.Length > 0)
                 RegisterModule($"embedded:{id}", source);
         }
@@ -255,7 +402,7 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
         body += $"\nreturn {{{exportObject}}};\n";
         _engine.SetValue("__gbModuleKey", uri);
         _engine.SetValue("__gbModuleBody", body);
-        _engine.Execute("__gbRegisterModule(__gbModuleKey, __gbModuleBody);");
+        ExecuteScript("__gbRegisterModule(__gbModuleKey, __gbModuleBody);");
     }
 
     private void ConfigureBehaviorDatabase()
@@ -265,7 +412,7 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
             return;
 
         _engine.SetValue("__gbDatabaseJson", database.ToJsonString());
-        _engine.Execute("__gbInstallDatabase(__gbDatabaseJson);");
+        ExecuteScript("__gbInstallDatabase(__gbDatabaseJson);");
     }
 
     private void SyncActors()
@@ -273,21 +420,82 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
         _actorsByName.Clear();
         _actorsById.Clear();
         var states = new List<object>(_actors.Count);
+        bool hasInputFrame = _collectInput;
+        bool mouseIsDown = hasInputFrame && Input.IsMouseButtonPressed(MouseButton.Left) && !_mouseOverUi;
+        bool secondaryActionDown = hasInputFrame && Input.IsMouseButtonPressed(MouseButton.Right) && !_mouseOverUi;
+        bool mouseJustPressed = mouseIsDown && !_reportedMouseDown;
+        bool mouseJustReleased = !mouseIsDown && _reportedMouseDown;
+        var keysHeld = new List<string>();
+        var keysJustPressed = new List<string>();
+        var keysJustReleased = new List<string>();
+        if (hasInputFrame)
+        {
+            foreach (string keyName in ScriptableKeyNames)
+            {
+                bool isHeld = IsScriptableKeyHeld(keyName, mouseIsDown, secondaryActionDown);
+                bool wasHeld = _keysHeldLastTick.Contains(keyName);
+                if (isHeld)
+                {
+                    keysHeld.Add(keyName);
+                    if (!wasHeld)
+                        keysJustPressed.Add(keyName);
+                }
+                else if (wasHeld)
+                {
+                    keysJustReleased.Add(keyName);
+                }
+            }
+        }
+        string[] keysHeldArray = hasInputFrame ? keysHeld.ToArray() : Array.Empty<string>();
+        string[] keysJustPressedArray = hasInputFrame ? keysJustPressed.ToArray() : Array.Empty<string>();
+        string[] keysJustReleasedArray = hasInputFrame ? keysJustReleased.ToArray() : Array.Empty<string>();
+
+        Vector2 viewportSize = _camera.GetViewport().GetVisibleRect().Size;
+        float uiScale = viewportSize.X / LegacyGameUiWidth;
+        Vector2 mouseUiPosition = uiScale > 0f ? _mousePosition / uiScale : Vector2.Zero;
+        Vector3 mouseRayOriginGodot = _camera.ProjectRayOrigin(_mousePosition);
+        Vector3 mouseRayDirectionGodot = _camera.ProjectRayNormal(_mousePosition);
+        Vector3 mouseRayOrigin = CoordinateSpace.ToLegacy(mouseRayOriginGodot);
+        Vector3 mouseRayDirection = CoordinateSpace.ToLegacy(mouseRayDirectionGodot);
+
         foreach (WorldActorNode actor in _actors)
         {
             _actorsByName.Add(actor.LegacyName, actor);
             _actorsById.Add(actor);
-            Vector3 playerInput = actor.State.IsPlayerControllable ? ReadPlayerThrottle() : Vector3.Zero;
-            Vector3 forward = CoordinateSpace.ToLegacy(-_camera.GlobalBasis.Z);
-            forward.Y = 0f;
-            forward = forward.LengthSquared() > 0f ? forward.Normalized() : Vector3.Forward;
-            Vector3 right = CoordinateSpace.ToLegacy(_camera.GlobalBasis.X);
-            right.Y = 0f;
-            right = right.LengthSquared() > 0f ? right.Normalized() : Vector3.Right;
-            Vector3 worldThrottle = (right * playerInput.X + forward * playerInput.Y).LimitLength(1f);
-            Vector3 position = CoordinateSpace.ToLegacy(actor.GlobalPosition);
+            bool isPlayer = actor.State.IsPlayerControllable;
+            bool hasPlayerInput = isPlayer && hasInputFrame;
+            Vector3 playerInput = isPlayer ? ReadPlayerThrottle() : Vector3.Zero;
+            Vector3 worldThrottleGodot = _camera.GlobalBasis * CoordinateSpace.ToGodot(playerInput);
+            Vector3 worldThrottle = CoordinateSpace.ToLegacy(worldThrottleGodot.Normalized());
             Vector3 spawnPosition = actor.State.ReadLegacyVector("spawnPosition", actor.State.ReadLegacyVector("position", Vector3.Zero));
             Quaternion spawnRotation = actor.State.ReadLegacyQuaternion("spawnRotation");
+            Vector3 aimDirectionGodot = isPlayer ? -_camera.GlobalBasis.Z : -actor.GlobalBasis.Z;
+            Vector3 aimOriginGodot = isPlayer ? _camera.GlobalPosition : actor.GlobalPosition + new Vector3(0f, 0.5f, 0f);
+            Vector3 lastAimHitPoint = Vector3.Zero;
+            string? aimingAtName = null;
+            bool aimingEnabled = isPlayer && LegacySaveDocument.ReadBool(actor.State.Data["enableAiming"]);
+            if (aimingEnabled && _physicsQueryAvailable)
+            {
+                var query = PhysicsRayQueryParameters3D.Create(
+                    aimOriginGodot,
+                    aimOriginGodot + aimDirectionGodot * 99f);
+                query.CollisionMask = ActorCollisionLayer | TerrainCollisionLayer;
+                query.CollideWithAreas = false;
+                query.CollideWithBodies = true;
+                query.Exclude = new Godot.Collections.Array<Rid> { actor.GetRid() };
+                Godot.Collections.Dictionary hit = _world.GetWorld3D().DirectSpaceState.IntersectRay(query);
+                if (hit.Count > 0)
+                {
+                    lastAimHitPoint = CoordinateSpace.ToLegacy(hit["position"].AsVector3());
+                    WorldActorNode? target = FindActorFromHit(hit);
+                    if (target != actor)
+                        aimingAtName = target?.LegacyName;
+                }
+            }
+
+            IReadOnlyList<object> messages = hasPlayerInput
+                ? BuildInputMessages(actor.LegacyName, keysHeld, keysJustPressed, keysJustReleased, mouseJustPressed, mouseJustReleased, mouseIsDown, mouseRayOriginGodot, mouseRayDirectionGodot)
+                : Array.Empty<object>();
             states.Add(new
             {
                 name = actor.LegacyName,
@@ -297,28 +505,160 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
                 transformParent = actor.State.TransformParent,
                 spawnPosition = ToVectorJson(spawnPosition),
                 spawnRotation = ToQuaternionJson(spawnRotation),
-                position = ToVectorJson(position),
-                isSprinting = Input.IsKeyPressed(Key.Shift),
+                isSprinting = isPlayer && Input.IsKeyPressed(Key.Shift),
                 worldSpaceThrottle = ToVectorJson(worldThrottle),
-                inputThrottle = ToVectorJson(playerInput)
+                inputThrottle = ToVectorJson(playerInput),
+                aimDirection = ToVectorJson(CoordinateSpace.ToLegacy(aimDirectionGodot.Normalized())),
+                aimOrigin = ToVectorJson(CoordinateSpace.ToLegacy(aimOriginGodot)),
+                lastAimHitPoint = ToVectorJson(lastAimHitPoint),
+                aimingAtName,
+                lookAxes = ToVectorJson(isPlayer ? new Vector3(_lookAxes.X, _lookAxes.Y, 0f) : Vector3.Zero),
+                hasInputState = hasPlayerInput,
+                inputState = hasPlayerInput
+                    ? new
+                    {
+                        mouseX = mouseUiPosition.X,
+                        mouseY = mouseUiPosition.Y,
+                        mouseButtonIsPressed = mouseIsDown,
+                        mouseButtonJustPressed = mouseJustPressed,
+                        mouseButtonJustReleased = mouseJustReleased,
+                        mouseRayOrigin = ToVectorJson(mouseRayOrigin),
+                        mouseRayDirection = ToVectorJson(mouseRayDirection),
+                        mouseWheelRaw = _mouseWheelRaw,
+                        mouseWheel = _mouseWheelRaw * (OperatingSystem.IsMacOS() ? 0.033f : 1f),
+                        keysJustPressed = keysJustPressedArray,
+                        keysHeld = keysHeldArray,
+                        keysJustReleased = keysJustReleasedArray
+                    }
+                    : null,
+                messages
             });
         }
 
         _engine.SetValue("__gbActorStates", JsonSerializer.Serialize(states));
-        _engine.Execute("__gbActorStatesJson(__gbActorStates);");
+        ExecuteScript("__gbActorStatesJson(__gbActorStates);");
+        if (hasInputFrame)
+        {
+            _keysHeldLastTick.Clear();
+            _keysHeldLastTick.UnionWith(keysHeld);
+            _reportedMouseDown = mouseIsDown;
+        }
+        _lookAxes = Vector2.Zero;
+        _mouseWheelRaw = 0f;
+    }
+
+    private List<object> BuildInputMessages(
+        string actorName,
+        List<string> keysHeld,
+        List<string> keysJustPressed,
+        List<string> keysJustReleased,
+        bool mouseJustPressed,
+        bool mouseJustReleased,
+        bool mouseIsDown,
+        Vector3 mouseRayOrigin,
+        Vector3 mouseRayDirection)
+    {
+        var messages = new List<object>();
+        if (keysJustPressed.Contains("@jump"))
+        {
+            AddInputMessage(messages, actorName, "JumpTriggered");
+            AddInputMessage(messages, actorName, "Jump");
+        }
+        if (keysJustPressed.Contains("@pri"))
+        {
+            AddInputMessage(messages, actorName, "Action1Triggered");
+            AddInputMessage(messages, actorName, "PrimaryAction");
+        }
+        if (keysJustPressed.Contains("@sec"))
+        {
+            AddInputMessage(messages, actorName, "Action2Triggered");
+            AddInputMessage(messages, actorName, "SecondaryAction");
+        }
+        foreach (string keyName in ScriptableKeyNames)
+        {
+            var data = new { keyName };
+            if (keysJustPressed.Contains(keyName))
+                AddInputMessage(messages, actorName, "KeyDown", data);
+            if (keysHeld.Contains(keyName))
+                AddInputMessage(messages, actorName, "KeyHeld", data);
+            if (keysJustReleased.Contains(keyName))
+                AddInputMessage(messages, actorName, "KeyUp", data);
+        }
+        if (mouseJustPressed)
+            AddInputMessage(messages, actorName, "MouseDown");
+        if (mouseIsDown)
+            AddInputMessage(messages, actorName, "MouseHeld");
+        if (mouseJustReleased)
+            AddInputMessage(messages, actorName, "MouseUp");
+        if (mouseJustPressed)
+        {
+            WorldActorNode? clickedActor = RaycastActorUnderMouse(mouseRayOrigin, mouseRayDirection);
+            if (clickedActor is not null)
+                AddInputMessage(messages, clickedActor.LegacyName, "ActorClicked");
+        }
+        return messages;
+    }
+
+    private static void AddInputMessage(List<object> messages, string targetActorName, string messageName, object? data = null)
+    {
+        messages.Add(new
+        {
+            targetActorName,
+            name = messageName,
+            data = data ?? new object()
+        });
+    }
+
+    private WorldActorNode? RaycastActorUnderMouse(Vector3 origin, Vector3 direction)
+    {
+        var query = PhysicsRayQueryParameters3D.Create(origin, origin + direction * 1000f);
+        query.CollisionMask = ActorCollisionLayer;
+        query.CollideWithAreas = true;
+        query.CollideWithBodies = true;
+        Godot.Collections.Dictionary hit = _world.GetWorld3D().DirectSpaceState.IntersectRay(query);
+        return hit.Count > 0 ? FindActorFromHit(hit) : null;
+    }
+
+    private static bool IsScriptableKeyHeld(string keyName, bool mouseIsDown, bool secondaryActionDown)
+    {
+        if (keyName == "mouse 0")
+            return mouseIsDown;
+        if (keyName == "@jump")
+            return Input.IsKeyPressed(Key.Space);
+        if (keyName == "@pri")
+            return mouseIsDown;
+        if (keyName == "@sec")
+            return secondaryActionDown;
+        if (keyName.Length == 1 && char.IsAsciiLetter(keyName[0]))
+            return Input.IsKeyPressed((Key)char.ToUpperInvariant(keyName[0]));
+        if (keyName.Length == 1 && char.IsAsciiDigit(keyName[0]))
+            return Input.IsKeyPressed((Key)((int)Key.Key0 + keyName[0] - '0'));
+        if (keyName.Length == 3 && keyName[0] == '[' && keyName[2] == ']')
+            return Input.IsKeyPressed((Key)((int)Key.Kp0 + keyName[1] - '0'));
+        return keyName switch
+        {
+            "space" => Input.IsKeyPressed(Key.Space),
+            "enter" or "return" => Input.IsKeyPressed(Key.Enter),
+            "backspace" => Input.IsKeyPressed(Key.Backspace),
+            "up" => Input.IsKeyPressed(Key.Up),
+            "down" => Input.IsKeyPressed(Key.Down),
+            "left" => Input.IsKeyPressed(Key.Left),
+            "right" => Input.IsKeyPressed(Key.Right),
+            _ => false
+        };
     }
 
     private Vector3 ReadPlayerThrottle()
     {
-        Vector2 input = Vector2.Zero;
-        if (Input.IsKeyPressed(Key.A) || Input.IsKeyPressed(Key.Left)) input.X -= 1f;
-        if (Input.IsKeyPressed(Key.D) || Input.IsKeyPressed(Key.Right)) input.X += 1f;
-        if (Input.IsKeyPressed(Key.W) || Input.IsKeyPressed(Key.Up)) input.Y += 1f;
-        if (Input.IsKeyPressed(Key.S) || Input.IsKeyPressed(Key.Down)) input.Y -= 1f;
-        return new Vector3(input.X, input.Y, 0f).LimitLength(1f);
+        float horizontal = (Input.IsKeyPressed(Key.D) || Input.IsKeyPressed(Key.Right) ? 1f : 0f)
+            - (Input.IsKeyPressed(Key.A) || Input.IsKeyPressed(Key.Left) ? 1f : 0f);
+        float vertical = (Input.IsKeyPressed(Key.Space) ? 1f : 0f) - (Input.IsKeyPressed(Key.C) ? 1f : 0f);
+        float depth = (Input.IsKeyPressed(Key.W) || Input.IsKeyPressed(Key.Up) ? 1f : 0f)
+            - (Input.IsKeyPressed(Key.S) || Input.IsKeyPressed(Key.Down) ? 1f : 0f);
+        return new Vector3(horizontal, vertical, depth);
     }
 
-    private void ApplyRuntimeResponse()
+    private void ApplyRuntimeResponse(double deltaSeconds)
     {
         string responseJson = _engine.GetValue("__gbResponseJson").AsString();
         if (JsonNode.Parse(responseJson) is JsonObject response)
@@ -351,25 +691,57 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
         }
 
         string memoryJson = _engine.GetValue("__gbMemoryJson").AsString();
-        if (JsonNode.Parse(memoryJson) is not JsonArray memories)
-            return;
-        foreach (JsonNode? item in memories)
+        if (JsonNode.Parse(memoryJson) is JsonArray memories)
         {
-            if (item is not JsonObject actorMemory)
-                continue;
-            WorldActorNode? actor = FindActor(LegacySaveDocument.ReadString(actorMemory["name"]));
+            foreach (JsonNode? item in memories)
+            {
+                if (item is not JsonObject actorMemory)
+                    continue;
+                string actorName = LegacySaveDocument.ReadString(actorMemory["name"]);
+                WorldActorNode? actor = FindActor(actorName);
+                if (actor is null)
+                    continue;
+                actor.State.Data["memoryJson"] = LegacySaveDocument.ReadString(actorMemory["memoryJson"], "{}");
+                actor.ApplyDesiredVelocity(deltaSeconds);
+                if (LegacySaveDocument.ReadBool(actorMemory["requestedDestroy"]))
+                    _actorsToDestroy.Add(actorName);
+            }
+        }
+        DestroyPendingActors();
+        _terrain?.FlushUpdates();
+
+    }
+    private void DestroyPendingActors()
+    {
+        if (_actorsToDestroy.Count == 0)
+            return;
+
+        bool changed = false;
+        foreach (string actorName in _actorsToDestroy)
+        {
+            WorldActorNode? actor = FindActor(actorName);
             if (actor is null)
                 continue;
-            actor.State.Data["memoryJson"] = LegacySaveDocument.ReadString(actorMemory["memoryJson"], "{}");
-            actor.ApplyDesiredVelocity();
-            actor.ApplyLegacyPhysicsSettings();
+
+            foreach (WorldActorNode child in _actors.Where(candidate => candidate.State.TransformParent == actorName).ToArray())
+            {
+                Transform3D worldTransform = child.GlobalTransform;
+                child.Reparent(_world, keepGlobalTransform: false);
+                child.GlobalTransform = worldTransform;
+            }
+            _document.RemoveActor(actorName);
+            _actors.Remove(actor);
+            actor.QueueFree();
+            changed = true;
+        }
+        _actorsToDestroy.Clear();
+        if (changed)
+        {
+            SyncActors();
+            _actorsChanged?.Invoke();
         }
     }
 
-    private void PersistRuntimeMemory()
-    {
-        // Runtime memory is copied back to the save document after every tick in ApplyRuntimeResponse.
-    }
 
     private string GetActorString(int actorId, int fieldId)
     {
@@ -409,6 +781,7 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
             case 1: actor.State.WriteString("description", value); break;
             case 2: actor.State.SetTransformParent(value); break;
             case 3: actor.State.WriteString("commentText", value); break;
+            case 4: actor.State.WriteString("debugString", value); break;
             case 5:
                 actor.State.Data["tags"] = new JsonArray(value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                     .Select(tag => (JsonNode?)JsonValue.Create(tag)).ToArray());
@@ -477,9 +850,18 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
 
         switch (fieldId)
         {
-            case 11: actor.UseDesiredVelocity = value; break;
-            case 12: actor.IgnoreVerticalDesiredVelocity = value; break;
-            case 18: actor.UseStickyDesiredVelocity = value; break;
+            case 11:
+                actor.UseDesiredVelocity = value;
+                actor.State.WriteBool("useDesiredVelocity", value);
+                break;
+            case 12:
+                actor.IgnoreVerticalDesiredVelocity = value;
+                actor.State.WriteBool("ignoreVerticalDesiredVelocity", value);
+                break;
+            case 18:
+                actor.UseStickyDesiredVelocity = value;
+                actor.State.WriteBool("useStickyDesiredVelocity", value);
+                break;
         }
     }
 
@@ -530,7 +912,10 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
                 break;
             case 3: actor.SetRenderableOffset(legacyValue); break;
             case 4: actor.State.WriteLegacyVector("spawnPosition", legacyValue); break;
-            case 5: actor.DesiredVelocity = godotValue; break;
+            case 5:
+                actor.DesiredVelocity = godotValue;
+                actor.State.WriteLegacyVector("desiredVelocity", legacyValue);
+                break;
             case 6:
                 actor.LinearVelocity = godotValue;
                 actor.State.SetVelocity(godotValue);
@@ -539,8 +924,14 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
                 actor.AngularVelocity = godotValue;
                 actor.State.SetAngularVelocity(godotValue);
                 break;
-            case 8: actor.StickyDesiredVelocity = godotValue; break;
-            case 9: actor.StickyForce = godotValue; break;
+            case 8:
+                actor.StickyDesiredVelocity = godotValue;
+                actor.State.WriteLegacyVector("stickyDesiredVelocity", legacyValue);
+                break;
+            case 9:
+                actor.StickyForce = godotValue;
+                actor.State.WriteLegacyVector("stickyForce", legacyValue);
+                break;
         }
     }
 
@@ -577,7 +968,7 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
             4 => actor.State.SpawnPosition,
             5 => actor.DesiredVelocity,
             6 => actor.GetWorldRenderBounds().Size,
-            7 => CoordinateSpace.ToGodot(actor.GetWorldRenderBounds().GetCenter()),
+            7 => actor.GetWorldRenderBounds().GetCenter(),
             8 => actor.LinearVelocity,
             9 => actor.AngularVelocity,
             10 => actor.StickyDesiredVelocity,
@@ -618,83 +1009,110 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
             {
                 WorldActorNode? actor = GetActor(LegacySaveDocument.ReadInt(args["actorId"], -1));
                 if (actor is null || args["newValue"] is not JsonObject color)
-                    return "null";
+                    return "false";
                 actor.SetTint(new Color(
                     LegacySaveDocument.ReadFloat(color["r"], 1f),
                     LegacySaveDocument.ReadFloat(color["g"], 1f),
                     LegacySaveDocument.ReadFloat(color["b"], 1f),
                     LegacySaveDocument.ReadFloat(color["a"], 1f)));
-                return "null";
+                return "true";
             }
             case "GetPlayerActors":
                 return JsonSerializer.Serialize(_actors.Where(actor => actor.State.IsPlayerControllable).Select(actor => actor.LegacyName));
             case "GetPlayerControlledActor":
                 return JsonSerializer.Serialize(_actors.FirstOrDefault(actor => actor.State.IsPlayerControllable)?.LegacyName);
             case "GetCameraActor":
-                return JsonSerializer.Serialize(_actors.Select(actor => LegacySaveDocument.ReadString(actor.State.Data["cameraActor"]))
-                    .FirstOrDefault(name => name.Length > 0));
+            {
+                WorldActorNode? player = _actors.FirstOrDefault(actor => actor.State.IsPlayerControllable);
+                string cameraName = player is null ? "" : LegacySaveDocument.ReadString(player.State.Data["cameraActor"]);
+                return JsonSerializer.Serialize(_actors.FirstOrDefault(actor => actor.LegacyName == cameraName)?.LegacyName);
+            }
             case "GetPlayersInfo":
-                return JsonSerializer.Serialize(new { allPlayers = new[] { new { id = "local", slotNumber = 1, nickname = "Local Player" } } });
+                return JsonSerializer.Serialize(new
+                {
+                    allPlayers = new[] { new { id = "local", slotNumber = 1, nickName = "Local Player" } },
+                    localPlayerId = "local"
+                });
             case "IsMultiplayer":
                 return "false";
             case "IsMasterClient":
                 return "true";
             case "GetScreenInfo":
-                Vector2I screenSize = _camera.GetViewport().GetVisibleRect().Size;
-                return JsonSerializer.Serialize(new { width = screenSize.X, height = screenSize.Y });
+            {
+                Vector2 viewportSize = _camera.GetViewport().GetVisibleRect().Size;
+                float uiHeight = viewportSize.X > 0f ? viewportSize.Y * 1600f / viewportSize.X : 900f;
+                return JsonSerializer.Serialize(new { width = 1600f, height = uiHeight });
+            }
             case "GetCameraInfo":
                 return JsonSerializer.Serialize(new
                 {
-                    position = ToVectorJson(CoordinateSpace.ToLegacy(_camera.GlobalPosition)),
-                    rotation = ToQuaternionJson(CoordinateSpace.ToLegacy(_camera.GlobalBasis.GetRotationQuaternion())),
-                    fov = _camera.Fov
+                    pos = ToVectorJson(CoordinateSpace.ToLegacy(_camera.GlobalPosition)),
+                    rot = ToQuaternionJson(CoordinateSpace.ToLegacy(_camera.GlobalBasis.GetRotationQuaternion()))
                 });
             case "OverlapSphere":
-            {
-                Vector3 center = CoordinateSpace.ToGodot(LegacyActorData.ReadVector(args["center"], Vector3.Zero));
-                float radius = LegacySaveDocument.ReadFloat(args["radius"], 0f);
-                string tag = LegacySaveDocument.ReadString(args["tag"]);
-                return JsonSerializer.Serialize(_actors.Where(actor =>
-                    (tag.Length == 0 || ActorHasTag(actor, tag)) && actor.GlobalPosition.DistanceTo(center) <= radius)
-                    .Select(actor => actor.LegacyName));
-            }
+                return OverlapSphere(args);
             case "RequestUi":
-                return "null";
+                _requestUi(args["commands"] as JsonArray ?? new JsonArray());
+                return "true";
             case "ReportBehaviorException":
                 GD.PushError($"Behavior runtime exception: {argsJson}");
-                return "null";
+                return "true";
             case "LogBehaviorMessage":
                 GD.Print(argsJson);
-                return "null";
+                return "true";
             case "BeginProfileSample":
             case "EndProfileSample":
-                return "null";
-            case "GetActorScreenRect":
-            case "ProjectPoint":
-            case "ProjectSphere":
-            case "RequestTempCameraOffset":
-            case "TransferPlayerControl":
-                throw new NotSupportedException($"Godot behavior service '{serviceName}' requires a scene/UI integration not yet available in this runtime.");
-            case "CloneActor":
-            case "InstantiatePrefab":
-            case "DestroyActors":
+                return "0";
             case "CheckBox":
+                return CheckBox(args);
             case "Cast":
+                return Cast(args);
             case "SetTerrainCell":
+                return SetTerrainCell(args);
             case "GetTerrainCell":
-            case "PlaySound":
-            case "SpawnParticleEffect":
+                return GetTerrainCell(args);
+            case "CloneActor":
+                return CloneActor(args);
+            case "InstantiatePrefab":
+                return InstantiatePrefab(args);
+            case "DestroyActors":
+                QueueActorDestruction(args["actorNames"] as JsonArray);
+                return "true";
             case "PlayOneShotAnimation":
+            {
+                WorldActorNode? actor = GetActor(LegacySaveDocument.ReadInt(args["actorTempId"], -1));
+                actor?.PlayOneShotAnimation(LegacySaveDocument.ReadString(args["animationName"]));
+                return "true";
+            }
+            case "TransferPlayerControl":
+                return TransferPlayerControl(args);
+            case "RequestTempCameraOffset":
+                return RequestCameraOffset(args);
+            case "ProjectPoint":
+                return ProjectPoint(args);
+            case "ProjectSphere":
+                return ProjectSphere(args);
+            case "GetActorScreenRect":
+                return GetActorScreenRect(args);
+            case "PlaySound":
+                return PlaySound(args);
+            case "SpawnParticleEffect":
+                return SpawnParticleEffect(args);
             case "SetSkyType":
+                return SetSkyType(args);
             case "GetSkyType":
+                return JsonSerializer.Serialize(new { value = LegacySaveDocument.ReadString(_document.Stage?["skyType"], "Day") });
             case "SetSkyColor":
+                return SetSkyColor(args);
             case "GetSkyColor":
+                return JsonSerializer.Serialize(new { value = ReadStageColor("skyColor") });
             case "SetSceneLighting":
+                return SetSceneLighting(args);
             case "GetSceneLighting":
-                throw new NotSupportedException($"Godot behavior service '{serviceName}' has no Godot implementation.");
+                return JsonSerializer.Serialize(new { value = LegacySaveDocument.ReadString(_document.Stage?["sceneLightingMode"], "DAY").ToUpperInvariant() });
             default:
                 throw new NotSupportedException($"Unknown legacy behavior service '{serviceName}'.");
-        }
+    }
     }
 
     private bool ActorHasTag(WorldActorNode actor, string tag)
@@ -702,13 +1120,6 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
         return actor.State.Data["tags"] is JsonArray tags && tags.Any(value => LegacySaveDocument.ReadString(value) == tag);
     }
 
-    private void ApplyRuntimeResponsePlaceholder()
-    {
-    }
-
-    private void PersistRuntimeMemoryPlaceholder()
-    {
-    }
 
     private WorldActorNode? GetActor(int actorId)
         => (uint)actorId < (uint)_actorsById.Count ? _actorsById[actorId] : null;

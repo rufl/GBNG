@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using GBNG.Behaviors;
 using GBNG.Assets;
 using GBNG.Domain;
 using GBNG.World;
@@ -11,6 +12,8 @@ public partial class GameBuilderApp : Node3D
     private readonly List<WorldActorNode> _actors = new();
     private LegacyRenderableCatalog _catalog = null!;
     private LegacySaveDocument? _document;
+    private LegacyBehaviorRuntime? _behaviorRuntime;
+    private LegacyBehaviorUi _behaviorUi = null!;
     private Node3D _world = null!;
     private Camera3D _camera = null!;
     private ItemList _actorList = null!;
@@ -27,6 +30,7 @@ public partial class GameBuilderApp : Node3D
     private FileDialog _saveDialog = null!;
     private AcceptDialog _errorDialog = null!;
     private WorldActorNode? _selectedActor;
+
     private LegacyTerrainNode? _terrain;
     private bool _updatingInspector;
     private bool _playMode;
@@ -34,6 +38,19 @@ public partial class GameBuilderApp : Node3D
     private float _cameraPitch = Mathf.DegToRad(-28f);
     private float _cameraDistance = 26f;
     private Vector3 _cameraTarget = new(0f, 2f, 0f);
+    private Vector3 _temporaryCameraOffset;
+    private Vector2 _lookAxes;
+    private float _mouseWheelRaw;
+    private readonly List<Control> _inspectorInputs = new();
+    private LineEdit _displayNameField = null!;
+    private TextEdit _descriptionField = null!;
+    private SpinBox[] _scaleFields = Array.Empty<SpinBox>();
+    private SpinBox[] _tintFields = Array.Empty<SpinBox>();
+    private CheckBox _solidField = null!;
+    private CheckBox _physicsField = null!;
+    private CheckBox _gravityField = null!;
+    private CheckBox _playerField = null!;
+
 
     public override void _Ready()
     {
@@ -43,46 +60,53 @@ public partial class GameBuilderApp : Node3D
         PopulateSamples();
         string[] commandLineArgs = OS.GetCmdlineUserArgs();
         if (commandLineArgs.Length > 0)
+        {
             LoadProject(commandLineArgs[0]);
+            if (commandLineArgs.Contains("--play", StringComparer.Ordinal))
+                SetPlayMode(true);
+        }
         else
+        {
             ShowWelcome();
+        }
     }
 
     public override void _Process(double delta)
     {
-        if (_playMode && GetPlayerActor() is WorldActorNode player)
+        if (!_playMode || GetPlayerActor() is not WorldActorNode player)
+            return;
+
+        WorldActorNode? cameraActor = GetCameraActor(player);
+        if (cameraActor is not null)
         {
-            Vector3 target = player.GlobalPosition + new Vector3(0f, 3f, 0f);
-            _cameraTarget = _cameraTarget.Lerp(target, 1f - Mathf.Exp(-5f * (float)delta));
-            UpdateOrbitCamera();
+            _camera.GlobalPosition = cameraActor.GlobalPosition + _temporaryCameraOffset;
+            _camera.GlobalRotation = cameraActor.GlobalRotation;
+            _camera.Fov = ReadCameraFieldOfView(cameraActor);
+            return;
         }
+
+        Vector3 target = player.GlobalPosition + new Vector3(0f, 3f, 0f) + _temporaryCameraOffset;
+        _cameraTarget = _cameraTarget.Lerp(target, 1f - Mathf.Exp(-5f * (float)delta));
+        UpdateOrbitCamera();
     }
 
     public override void _PhysicsProcess(double delta)
     {
-        if (!_playMode || GetPlayerActor() is not WorldActorNode player || !player.State.EnablePhysics)
-            return;
+        if (_playMode)
+        {
+            Vector2 pointerPosition = GetViewport().GetMousePosition();
+            _behaviorRuntime?.SetLookAxes(_lookAxes);
+            _behaviorRuntime?.SetPointerState(pointerPosition, _mouseWheelRaw, IsPointerOverUi(pointerPosition));
+            _behaviorRuntime?.Tick(delta);
+        }
+        _lookAxes = Vector2.Zero;
+        _mouseWheelRaw = 0f;
+    }
 
-        Vector2 input = Vector2.Zero;
-        if (Input.IsKeyPressed(Key.A) || Input.IsKeyPressed(Key.Left)) input.X -= 1f;
-        if (Input.IsKeyPressed(Key.D) || Input.IsKeyPressed(Key.Right)) input.X += 1f;
-        if (Input.IsKeyPressed(Key.W) || Input.IsKeyPressed(Key.Up)) input.Y += 1f;
-        if (Input.IsKeyPressed(Key.S) || Input.IsKeyPressed(Key.Down)) input.Y -= 1f;
-
-        Vector3 forward = -_camera.GlobalBasis.Z;
-        forward.Y = 0f;
-        forward = forward.Normalized();
-        Vector3 right = _camera.GlobalBasis.X;
-        right.Y = 0f;
-        right = right.Normalized();
-        Vector3 move = (right * input.X + forward * input.Y).LimitLength(1f);
-        Vector3 velocity = player.LinearVelocity;
-        velocity.X = move.X * 8f;
-        velocity.Z = move.Z * 8f;
-        player.LinearVelocity = velocity;
-
-        if (Input.IsKeyPressed(Key.Space) && player.IsGrounded)
-            player.ApplyCentralImpulse(Vector3.Up * player.Mass * 15f);
+    private bool IsPointerOverUi(Vector2 viewportPosition)
+    {
+        Control? hovered = GetViewport().GuiGetHoveredControl();
+        return (hovered is not null && hovered != _behaviorUi) || _behaviorUi.IsInteractivePoint(viewportPosition);
     }
 
     public override void _UnhandledInput(InputEvent @event)
@@ -91,6 +115,13 @@ public partial class GameBuilderApp : Node3D
         {
             if (mouseButton.ButtonIndex == MouseButton.Right)
                 Input.MouseMode = mouseButton.Pressed ? Input.MouseModeEnum.Captured : Input.MouseModeEnum.Visible;
+            if (mouseButton.ButtonIndex == MouseButton.Left && mouseButton.Pressed && !_playMode)
+                SelectActorAt(mouseButton.Position);
+            if (mouseButton.Pressed && mouseButton.ButtonIndex is MouseButton.WheelUp or MouseButton.WheelDown)
+            {
+                float wheelDelta = 0.1f * mouseButton.Factor;
+                _mouseWheelRaw += mouseButton.ButtonIndex == MouseButton.WheelUp ? wheelDelta : -wheelDelta;
+            }
             if (mouseButton.ButtonIndex == MouseButton.WheelUp)
                 _cameraDistance = Mathf.Max(4f, _cameraDistance * 0.88f);
             if (mouseButton.ButtonIndex == MouseButton.WheelDown)
@@ -101,6 +132,7 @@ public partial class GameBuilderApp : Node3D
         {
             _cameraYaw -= motion.Relative.X * 0.004f;
             _cameraPitch = Mathf.Clamp(_cameraPitch - motion.Relative.Y * 0.004f, -1.35f, 0.15f);
+            _lookAxes += new Vector2(-motion.Relative.X * 0.004f, -motion.Relative.Y * 0.004f);
             UpdateOrbitCamera();
         }
         else if (@event is InputEventKey key && key.Pressed && !key.Echo && key.Keycode == Key.Escape)
@@ -163,6 +195,11 @@ public partial class GameBuilderApp : Node3D
         root.AddChild(_welcome);
         _editor = BuildEditorPanel();
         root.AddChild(_editor);
+
+        _behaviorUi = new LegacyBehaviorUi { Name = "BehaviorUi", Visible = false };
+        _behaviorUi.SetMessageHandler((actorName, messageName, argumentJson) =>
+            _behaviorRuntime?.SendUiMessage(actorName, messageName, argumentJson));
+        root.AddChild(_behaviorUi);
 
         _openDialog = new FileDialog
         {
@@ -300,10 +337,27 @@ public partial class GameBuilderApp : Node3D
         };
         rightPanel.AddThemeStyleboxOverride("panel", MakePanelStyle("#1b2734", "#334455"));
         body.AddChild(rightPanel);
-        var inspector = new VBoxContainer();
-        rightPanel.AddChild(inspector);
+        var scroll = new ScrollContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill
+        };
+        rightPanel.AddChild(scroll);
+        var inspector = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        inspector.AddThemeConstantOverride("separation", 7);
+        scroll.AddChild(inspector);
         _selectionTitle = CreateLabel("Select an actor", 18);
         inspector.AddChild(_selectionTitle);
+        inspector.AddChild(CreateLabel("Display name", 14));
+        _displayNameField = new LineEdit();
+        _displayNameField.TextChanged += UpdateSelectedDisplayName;
+        inspector.AddChild(_displayNameField);
+        _inspectorInputs.Add(_displayNameField);
+        inspector.AddChild(CreateLabel("Description", 14));
+        _descriptionField = new TextEdit { CustomMinimumSize = new Vector2(0f, 74f) };
+        _descriptionField.TextChanged += UpdateSelectedDescription;
+        inspector.AddChild(_descriptionField);
+        _inspectorInputs.Add(_descriptionField);
         inspector.AddChild(CreateLabel("World position", 14));
         _positionFields = new SpinBox[3];
         string[] axes = ["X", "Y", "Z"];
@@ -322,6 +376,38 @@ public partial class GameBuilderApp : Node3D
         _yawField = CreateSpinBox();
         _yawField.ValueChanged += value => UpdateSelectedYaw((float)value);
         inspector.AddChild(_yawField);
+        inspector.AddChild(CreateLabel("Local scale", 14));
+        _scaleFields = new SpinBox[3];
+        for (int axis = 0; axis < 3; axis++)
+        {
+            var row = new HBoxContainer();
+            row.AddChild(CreateLabel(axes[axis], 14));
+            SpinBox field = CreateSpinBox();
+            int index = axis;
+            field.ValueChanged += _ => UpdateSelectedScale(index);
+            row.AddChild(field);
+            _scaleFields[axis] = field;
+            _inspectorInputs.Add(field);
+            inspector.AddChild(row);
+        }
+        inspector.AddChild(CreateLabel("Tint (RGBA)", 14));
+        _tintFields = new SpinBox[4];
+        string[] channels = ["R", "G", "B", "A"];
+        for (int channel = 0; channel < 4; channel++)
+        {
+            var row = new HBoxContainer();
+            row.AddChild(CreateLabel(channels[channel], 14));
+            SpinBox field = CreateUnitSpinBox();
+            field.ValueChanged += _ => UpdateSelectedTint();
+            row.AddChild(field);
+            _tintFields[channel] = field;
+            _inspectorInputs.Add(field);
+            inspector.AddChild(row);
+        }
+        _solidField = CreateFlagField(inspector, "Solid", value => UpdateSelectedBoolean("isSolid", value, true));
+        _physicsField = CreateFlagField(inspector, "Physics", value => UpdateSelectedBoolean("enablePhysics", value));
+        _gravityField = CreateFlagField(inspector, "Gravity", value => UpdateSelectedBoolean("enableGravity", value, true));
+        _playerField = CreateFlagField(inspector, "Player controllable", value => UpdateSelectedBoolean("isPlayerControllable", value));
         _status = CreateLabel("Ready", 13);
         _status.AutowrapMode = TextServer.AutowrapMode.Word;
         inspector.AddChild(_status);
@@ -330,6 +416,80 @@ public partial class GameBuilderApp : Node3D
     }
 
 
+    private CheckBox CreateFlagField(VBoxContainer parent, string label, Action<bool> changed)
+    {
+        var field = new CheckBox { Text = label };
+        field.Toggled += value => changed(value);
+        parent.AddChild(field);
+        _inspectorInputs.Add(field);
+        return field;
+    }
+
+    private void SetInspectorInputsEnabled(bool enabled)
+    {
+        foreach (Control input in _inspectorInputs)
+        {
+            switch (input)
+            {
+                case LineEdit lineEdit: lineEdit.Editable = enabled; break;
+                case TextEdit textEdit: textEdit.Editable = enabled; break;
+                case SpinBox spinBox: spinBox.Editable = enabled; break;
+                case CheckBox checkBox: checkBox.Disabled = !enabled; break;
+            }
+        }
+    }
+
+    private void UpdateSelectedDisplayName(string value)
+    {
+        if (_updatingInspector || _playMode || _selectedActor is null)
+            return;
+        _selectedActor.State.WriteString("displayName", value);
+        _selectionTitle.Text = value.Length > 0 ? value : _selectedActor.LegacyName;
+        for (int index = 0; index < _actorList.ItemCount; index++)
+        {
+            if (_actorList.GetItemMetadata(index).AsString() == _selectedActor.LegacyName)
+            {
+                _actorList.SetItemText(index, value.Length > 0 ? value : _selectedActor.LegacyName);
+                break;
+            }
+        }
+    }
+
+    private void UpdateSelectedDescription()
+    {
+        if (!_updatingInspector && !_playMode && _selectedActor is not null)
+            _selectedActor.State.WriteString("description", _descriptionField.Text);
+    }
+
+    private void UpdateSelectedScale(int changedAxis)
+    {
+        if (_updatingInspector || _playMode || _selectedActor is null)
+            return;
+        Vector3 scale = _selectedActor.Scale;
+        scale[changedAxis] = (float)_scaleFields[changedAxis].Value;
+        _selectedActor.Scale = scale;
+        _selectedActor.State.SetScale(scale);
+    }
+
+    private void UpdateSelectedTint()
+    {
+        if (_updatingInspector || _playMode || _selectedActor is null)
+            return;
+        _selectedActor.SetTint(new Color(
+            (float)_tintFields[0].Value,
+            (float)_tintFields[1].Value,
+            (float)_tintFields[2].Value,
+            (float)_tintFields[3].Value));
+    }
+
+    private void UpdateSelectedBoolean(string property, bool value, bool refreshPhysics = false)
+    {
+        if (_updatingInspector || _playMode || _selectedActor is null)
+            return;
+        _selectedActor.State.WriteBool(property, value);
+        if (refreshPhysics)
+            _selectedActor.ApplyLegacyPhysicsSettings();
+    }
     private void ShowWelcome()
     {
         _welcome.Visible = true;
@@ -358,7 +518,18 @@ public partial class GameBuilderApp : Node3D
             }
 
             BuildActors(document);
+            _behaviorRuntime = new LegacyBehaviorRuntime(
+                _actors,
+                document,
+                _catalog,
+                _world,
+                _terrain,
+                _camera,
+                _behaviorUi.SetCommands,
+                RefreshRuntimeActors,
+                SetTemporaryCameraOffset);
             GD.Print($"Loaded {document.Actors.Count} actors from {path} (save version {document.Version}).");
+
             PopulateAssetPicker();
             _welcome.Visible = false;
             _editor.Visible = true;
@@ -369,6 +540,7 @@ public partial class GameBuilderApp : Node3D
         }
         catch (Exception exception)
         {
+            GD.PushError($"Could not load project: {exception}");
             ShowError($"Could not load project:\n{exception.Message}");
         }
     }
@@ -401,6 +573,8 @@ public partial class GameBuilderApp : Node3D
 
     private void ClearWorld()
     {
+        _behaviorRuntime = null;
+        _behaviorUi?.SetCommands(new JsonArray());
         foreach (Node child in _world.GetChildren())
             child.QueueFree();
         _actors.Clear();
@@ -430,7 +604,7 @@ public partial class GameBuilderApp : Node3D
         mesh.MaterialOverride = new StandardMaterial3D { AlbedoColor = ground, Roughness = 1f };
         _world.AddChild(mesh);
 
-        var body = new StaticBody3D { Name = "StageGroundCollision" };
+        var body = new StaticBody3D { Name = "StageGroundCollision", CollisionLayer = 2u, CollisionMask = 1u };
         var shape = new CollisionShape3D
         {
             Shape = new BoxShape3D { Size = new Vector3(width, 0.1f, depth) },
@@ -516,6 +690,18 @@ public partial class GameBuilderApp : Node3D
         RefreshActorList();
         SelectActor(_actors.FirstOrDefault());
     }
+    private void RefreshRuntimeActors()
+    {
+        RefreshActorList();
+        if (_selectedActor is not null && !_actors.Contains(_selectedActor))
+            SelectActor(_actors.FirstOrDefault());
+    }
+
+    private void SetTemporaryCameraOffset(Vector3 legacyOffset)
+    {
+        _temporaryCameraOffset = CoordinateSpace.ToGodot(legacyOffset);
+    }
+
 
     private void RefreshActorList()
     {
@@ -535,23 +721,47 @@ public partial class GameBuilderApp : Node3D
         string name = (string)_actorList.GetItemMetadata((int)index);
         SelectActor(_actors.FirstOrDefault(actor => actor.LegacyName == name));
     }
+    private void SelectActorAt(Vector2 screenPosition)
+    {
+        Vector3 origin = _camera.ProjectRayOrigin(screenPosition);
+        Vector3 direction = _camera.ProjectRayNormal(screenPosition);
+        var query = PhysicsRayQueryParameters3D.Create(origin, origin + direction * 10000f);
+        query.CollisionMask = 1u;
+        query.CollideWithBodies = true;
+        Godot.Collections.Dictionary hit = _world.GetWorld3D().DirectSpaceState.IntersectRay(query);
+        if (hit.Count == 0 || hit["collider"].AsGodotObject() is not Node node)
+            return;
+        WorldActorNode? actor = _actors.FirstOrDefault(candidate => candidate == node || candidate.IsAncestorOf(node));
+        if (actor is not null)
+            SelectActor(actor);
+    }
+
 
     private void SelectActor(WorldActorNode? actor)
     {
         _selectedActor = actor;
         _updatingInspector = true;
         bool hasActor = actor is not null;
-        _selectionTitle.Text = hasActor ? actor!.State.DisplayName : "Select an actor";
-        _selectionTitle.TooltipText = hasActor ? actor!.LegacyName : "";
+        _displayNameField.Text = hasActor ? actor!.State.DisplayName : "";
+        _descriptionField.Text = hasActor ? actor!.State.Description : "";
         for (int axis = 0; axis < 3; axis++)
         {
             _positionFields[axis].Editable = hasActor && !_playMode;
-            _positionFields[axis].Value = hasActor
-                ? actor!.GlobalPosition[axis]
-                : 0d;
+            _positionFields[axis].Value = hasActor ? actor!.GlobalPosition[axis] : 0d;
+            _scaleFields[axis].Value = hasActor ? actor!.Scale[axis] : 1d;
         }
         _yawField.Editable = hasActor && !_playMode;
         _yawField.Value = hasActor ? actor!.GlobalRotationDegrees.Y : 0d;
+        Color tint = hasActor ? actor!.State.Tint : Colors.White;
+        _tintFields[0].Value = tint.R;
+        _tintFields[1].Value = tint.G;
+        _tintFields[2].Value = tint.B;
+        _tintFields[3].Value = tint.A;
+        _solidField.ButtonPressed = hasActor && actor!.State.IsSolid;
+        _physicsField.ButtonPressed = hasActor && actor!.State.EnablePhysics;
+        _gravityField.ButtonPressed = hasActor && actor!.State.EnableGravity;
+        _playerField.ButtonPressed = hasActor && actor!.State.IsPlayerControllable;
+        SetInspectorInputsEnabled(hasActor && !_playMode);
         _updatingInspector = false;
     }
 
@@ -582,11 +792,13 @@ public partial class GameBuilderApp : Node3D
         foreach (WorldActorNode actor in _actors)
             actor.SetPlayMode(enabled);
         _playButton.Text = enabled ? "Stop" : "Play";
+        _behaviorUi.Visible = enabled;
         _actorList.Visible = !enabled;
         _positionFields[0].Editable = !enabled && _selectedActor is not null;
         _positionFields[1].Editable = !enabled && _selectedActor is not null;
         _positionFields[2].Editable = !enabled && _selectedActor is not null;
         _yawField.Editable = !enabled && _selectedActor is not null;
+        SetInspectorInputsEnabled(!enabled && _selectedActor is not null);
         _status.Text = enabled
             ? "Play mode — WASD/arrows to move, Space to jump, Esc to return to editing."
             : "Edit mode — select an actor and change its transform.";
@@ -630,6 +842,11 @@ public partial class GameBuilderApp : Node3D
                 transforms.Add(actor.LegacyName, actor.GlobalTransform);
             }
             _document.SaveActorTransforms(transforms);
+            if (_terrain is not null)
+            {
+                _terrain.FlushUpdates();
+                _document.SaveTerrainPayload(_terrain.Encode());
+            }
             _document.SaveTo(path);
             _status.Text = $"Saved {Path.GetFileName(path)} — {_actors.Count} actors.";
         }
@@ -655,6 +872,30 @@ public partial class GameBuilderApp : Node3D
     {
         return _actors.FirstOrDefault(actor => actor.State.IsPlayerControllable);
     }
+    private WorldActorNode? GetCameraActor(WorldActorNode player)
+    {
+        string name = LegacySaveDocument.ReadString(player.State.Data["cameraActor"]);
+        return name.Length == 0 ? null : _actors.FirstOrDefault(actor => actor.LegacyName == name);
+    }
+
+    private static float ReadCameraFieldOfView(WorldActorNode cameraActor)
+    {
+        const float defaultFov = 60f;
+        string settings = LegacySaveDocument.ReadString(cameraActor.State.Data["cameraSettingsJson"]);
+        if (settings.Length == 0)
+            return defaultFov;
+        try
+        {
+            JsonObject? values = JsonNode.Parse(settings) as JsonObject;
+            float fov = LegacySaveDocument.ReadFloat(values?["fov"], defaultFov);
+            return fov > 0f ? Mathf.Clamp(fov, 1f, 179f) : defaultFov;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return defaultFov;
+        }
+    }
+
 
     private Vector3 ComputeWorldCenter()
     {
@@ -722,6 +963,18 @@ public partial class GameBuilderApp : Node3D
             Editable = true
         };
     }
+    private static SpinBox CreateUnitSpinBox()
+    {
+        return new SpinBox
+        {
+            MinValue = 0f,
+            MaxValue = 1f,
+            Step = 0.01f,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            Editable = true
+        };
+    }
+
 
     private static StyleBoxFlat MakePanelStyle(string background, string border)
     {

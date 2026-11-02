@@ -12,6 +12,21 @@ what you will create!
 
 This is not an officially supported Google product.
 
+## Fork branches
+
+This fork keeps the two implementations separate:
+
+* `unity` preserves the original Unity project and stabilizes it on the pinned Unity 6 stack. Keep changes there limited to compatibility, quality-of-life, and stability work.
+* `godot` is the GBNG — New Gen rewrite. It targets Godot 4.7.2 .NET, .NET 10, and Jint 4.17; it reuses the original `.voos` projects and assets while replacing Unity runtime services with Godot implementations.
+
+For the Godot branch, install the Godot 4.7.2 .NET build and .NET 10 SDK, then run `dotnet build GBNG.Godot.sln` and open the repository's `project.godot` in Godot. To launch a bundled example from the command line:
+
+```sh
+godot --path . -- res://Assets/StreamingAssets/ExampleGames/Public/sample-platformer.voos --play
+```
+
+Bundled examples are read-only project resources; use **Save as…** to create a writable `.voos` copy. The Godot branch currently loads and saves projects, supports actor selection and inspector editing, instantiates converted assets, and runs legacy behaviors with keyboard/mouse input state and message events alongside Godot physics, terrain, audio, particles, and behavior UI. It is not feature-complete: multiplayer/Photon, Workshop publishing, optional integrations, and full Unity editor workflows remain unmigrated. Keep `unity` as the complete reference until those contracts have Godot replacements.
+
 ## Prerequisites
 
 * [Unity Editor 6000.6.6f1](https://unity.com/releases/editor/whats-new/6000.6.6f1). This fork is pinned to that editor release.

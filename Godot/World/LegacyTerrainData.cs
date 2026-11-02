@@ -126,6 +126,78 @@ public sealed class LegacyTerrainData
         return shape != EmptyShape;
     }
 
+    public bool SetCell(int x, int y, int z, int shape, int style, int direction)
+    {
+        if ((uint)x >= (uint)Width || (uint)y >= (uint)Height || (uint)z >= (uint)Depth
+            || shape < -1 || shape > 3 || style < 0 || style > 511 || (uint)direction > 3)
+            return false;
+
+        int index = (y * Depth + z) * Width + x;
+        _shapes[index] = shape < 0 ? (byte)EmptyShape : (byte)shape;
+        _styles[index] = shape < 0 ? (ushort)0 : (ushort)style;
+        _directions[index] = shape < 0 ? (byte)0 : (byte)direction;
+        return true;
+    }
+
+    public string Encode()
+    {
+        using var output = new MemoryStream();
+        using (var deflater = new DeflateStream(output, CompressionLevel.Optimal, leaveOpen: true))
+        using (var writer = new BinaryWriter(deflater, System.Text.Encoding.UTF8, leaveOpen: true))
+        {
+            writer.Write(0);
+            writer.Write(Width);
+            writer.Write(Height);
+            writer.Write(Depth);
+
+            for (int y = 0; y < Height; y++)
+            {
+                for (int z = 0; z < Depth; z++)
+                {
+                    int rowStart = (y * Depth + z) * Width;
+                    int segmentCount = 0;
+                    for (int x = 0; x < Width;)
+                    {
+                        int index = rowStart + x;
+                        byte shape = _shapes[index];
+                        ushort style = _styles[index];
+                        byte direction = _directions[index];
+                        int length = 1;
+                        while (x + length < Width
+                            && _shapes[index + length] == shape
+                            && _styles[index + length] == style
+                            && _directions[index + length] == direction)
+                            length++;
+                        x += length;
+                        segmentCount++;
+                    }
+
+                    writer.Write(segmentCount);
+                    for (int x = 0; x < Width;)
+                    {
+                        int index = rowStart + x;
+                        byte shape = _shapes[index];
+                        ushort style = _styles[index];
+                        byte direction = _directions[index];
+                        int length = 1;
+                        while (x + length < Width
+                            && _shapes[index + length] == shape
+                            && _styles[index + length] == style
+                            && _directions[index + length] == direction)
+                            length++;
+
+                        int encodedShape = shape == EmptyShape ? 0 : shape + 1;
+                        int encoded = (length << 22) | (style << 13) | (encodedShape << 4) | direction;
+                        writer.Write(encoded);
+                        x += length;
+                    }
+                }
+            }
+        }
+
+        return Convert.ToBase64String(output.ToArray());
+    }
+
     public IEnumerable<TerrainCell> EnumerateCells()
     {
         for (int y = 0; y < Height; y++)
