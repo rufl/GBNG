@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using Godot;
 
@@ -5,7 +6,14 @@ namespace GBNG.Assets;
 
 public sealed class LegacyRenderableCatalog
 {
+    private const string ManifestFileName = "manifest.json";
+    private static readonly JsonSerializerOptions ManifestOptions = new()
+    {
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
     private readonly Dictionary<string, RenderableEntry> _entries = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _projectAssetUris = new(StringComparer.Ordinal);
 
     private LegacyRenderableCatalog() { }
     public IReadOnlyCollection<RenderableEntry> Entries => _entries.Values;
@@ -36,7 +44,261 @@ public sealed class LegacyRenderableCatalog
         return catalog;
     }
 
+    public void LoadProjectAssets(string projectPath)
+    {
+        foreach (string uri in _projectAssetUris)
+            _entries.Remove(uri);
+        _projectAssetUris.Clear();
+        if (projectPath.StartsWith("res://", StringComparison.Ordinal))
+            return;
+
+        string directory = GetProjectAssetDirectory(projectPath);
+        Dictionary<string, string> assets = ReadProjectAssetManifest(Path.Combine(directory, ManifestFileName));
+        foreach ((string uri, string fileName) in assets)
+        {
+            string modelPath = Path.Combine(directory, fileName);
+            if (!File.Exists(modelPath))
+                throw new FileNotFoundException($"The imported model for '{uri}' is missing.", modelPath);
+            _entries.Add(uri, new RenderableEntry(uri, string.Empty, [modelPath], Array.Empty<string>()));
+            _projectAssetUris.Add(uri);
+        }
+    }
+
+    public RenderableEntry ImportProjectModel(string projectPath, string sourcePath)
+    {
+        if (projectPath.StartsWith("res://", StringComparison.Ordinal))
+            throw new InvalidOperationException("Save a writable .voos copy before importing a model.");
+        string source = Path.GetFullPath(sourcePath);
+        string extension = Path.GetExtension(source);
+        if (!File.Exists(source)
+            || (!extension.Equals(".glb", StringComparison.OrdinalIgnoreCase)
+                && !extension.Equals(".gltf", StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidDataException("Choose an existing glTF (.glb or .gltf) model.");
+
+        string id = Guid.NewGuid().ToString("N");
+        string uri = $"custom:{id}/{Path.GetFileNameWithoutExtension(source)}";
+        string fileName = $"{id}.glb";
+        string directory = GetProjectAssetDirectory(projectPath);
+        Directory.CreateDirectory(directory);
+        string destination = Path.Combine(directory, fileName);
+        try
+        {
+            if (extension.Equals(".glb", StringComparison.OrdinalIgnoreCase))
+            {
+                File.Copy(source, destination);
+            }
+            else
+            {
+                var document = new GltfDocument();
+                var state = new GltfState();
+                string basePath = Path.GetDirectoryName(source) ?? string.Empty;
+                if (document.AppendFromFile(source, state, 0, basePath) != Error.Ok
+                    || document.WriteToFilesystem(state, destination) != Error.Ok)
+                    throw new InvalidDataException("Godot could not convert this glTF model to a self-contained GLB.");
+            }
+
+            Node3D? validationInstance = LoadModelInstance(destination);
+            if (validationInstance is null)
+                throw new InvalidDataException("Godot could not parse this glTF model.");
+            validationInstance.Free();
+        }
+        catch
+        {
+            if (File.Exists(destination))
+                File.Delete(destination);
+            throw;
+        }
+
+        var entry = new RenderableEntry(uri, string.Empty, [destination], Array.Empty<string>());
+        _entries.Add(uri, entry);
+        _projectAssetUris.Add(uri);
+        try
+        {
+            WriteProjectAssetManifest(
+                Path.Combine(directory, ManifestFileName),
+                _projectAssetUris.ToDictionary(
+                    assetUri => assetUri,
+                    assetUri => Path.GetFileName(_entries[assetUri].ModelPaths[0]),
+                    StringComparer.Ordinal));
+        }
+        catch
+        {
+            _entries.Remove(uri);
+            _projectAssetUris.Remove(uri);
+            File.Delete(destination);
+            throw;
+        }
+        return entry;
+    }
+
+    public void CopyProjectAssets(string sourceProjectPath, string destinationProjectPath)
+    {
+        if (sourceProjectPath.StartsWith("res://", StringComparison.Ordinal))
+            return;
+        string sourceProject = Path.GetFullPath(sourceProjectPath);
+        string destinationProject = Path.GetFullPath(destinationProjectPath);
+        StringComparison pathComparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        if (string.Equals(sourceProject, destinationProject, pathComparison))
+            return;
+        string sourceDirectory = GetProjectAssetDirectory(sourceProject);
+        Dictionary<string, string> sourceAssets = ReadProjectAssetManifest(Path.Combine(sourceDirectory, ManifestFileName));
+        if (sourceAssets.Count == 0)
+            return;
+
+        string destinationDirectory = GetProjectAssetDirectory(destinationProject);
+        Directory.CreateDirectory(destinationDirectory);
+        string destinationManifestPath = Path.Combine(destinationDirectory, ManifestFileName);
+        Dictionary<string, string> destinationAssets = ReadProjectAssetManifest(destinationManifestPath);
+        foreach ((string uri, string fileName) in sourceAssets)
+        {
+            string source = Path.Combine(sourceDirectory, fileName);
+            if (!File.Exists(source))
+                throw new FileNotFoundException($"The imported model for '{uri}' is missing.", source);
+            if (destinationAssets.TryGetValue(uri, out string? existingFile)
+                && !string.Equals(existingFile, fileName, StringComparison.Ordinal))
+                throw new IOException($"The destination already contains a different imported model for '{uri}'.");
+
+            string destination = Path.Combine(destinationDirectory, fileName);
+            if (File.Exists(destination))
+            {
+                if (!FilesEqual(source, destination))
+                    throw new IOException($"The destination asset already exists with different contents: {destination}");
+            }
+            else
+            {
+                File.Copy(source, destination);
+            }
+            destinationAssets[uri] = fileName;
+        }
+        WriteProjectAssetManifest(destinationManifestPath, destinationAssets);
+    }
+
     public bool TryGet(string uri, out RenderableEntry entry) => _entries.TryGetValue(uri, out entry!);
+
+    public static Node3D? LoadModelInstance(string modelPath)
+    {
+        try
+        {
+            string extension = Path.GetExtension(modelPath);
+            if (!modelPath.StartsWith("res://", StringComparison.Ordinal)
+                && (extension.Equals(".glb", StringComparison.OrdinalIgnoreCase)
+                    || extension.Equals(".gltf", StringComparison.OrdinalIgnoreCase)))
+            {
+                var document = new GltfDocument();
+                var state = new GltfState();
+                string basePath = Path.GetDirectoryName(modelPath) ?? string.Empty;
+                if (document.AppendFromFile(modelPath, state, 0, basePath) != Error.Ok)
+                    return null;
+                Node? gltfRoot = document.GenerateScene(state);
+                if (gltfRoot is Node3D modelRoot)
+                    return modelRoot;
+                gltfRoot?.Free();
+                return null;
+            }
+
+            PackedScene? packedScene = ResourceLoader.Load<PackedScene>(modelPath);
+            Node? instance = packedScene?.Instantiate();
+            if (instance is Node3D model)
+                return model;
+            instance?.Free();
+            return null;
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"Could not load model '{modelPath}': {exception.Message}");
+            return null;
+        }
+    }
+
+    private static string GetProjectAssetDirectory(string projectPath)
+    {
+        string fullPath = Path.GetFullPath(projectPath);
+        string directory = Path.GetDirectoryName(fullPath)
+            ?? throw new InvalidOperationException($"The project has no parent directory: {projectPath}");
+        return Path.Combine(directory, $"{Path.GetFileNameWithoutExtension(fullPath)}.assets");
+    }
+
+    private static Dictionary<string, string> ReadProjectAssetManifest(string manifestPath)
+    {
+        var assets = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (!File.Exists(manifestPath))
+            return assets;
+
+        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(manifestPath));
+        JsonElement root = document.RootElement;
+        if (!root.TryGetProperty("formatVersion", out JsonElement version)
+            || version.ValueKind != JsonValueKind.Number
+            || version.GetInt32() != 1
+            || !root.TryGetProperty("assets", out JsonElement entries)
+            || entries.ValueKind != JsonValueKind.Array)
+            throw new InvalidDataException($"Unsupported imported-asset manifest: {manifestPath}");
+
+        foreach (JsonElement item in entries.EnumerateArray())
+        {
+            string uri = item.TryGetProperty("uri", out JsonElement uriValue) && uriValue.ValueKind == JsonValueKind.String
+                ? uriValue.GetString() ?? string.Empty
+                : string.Empty;
+            string fileName = item.TryGetProperty("file", out JsonElement fileValue) && fileValue.ValueKind == JsonValueKind.String
+                ? fileValue.GetString() ?? string.Empty
+                : string.Empty;
+            if (!IsValidCustomUri(uri) || !IsValidAssetFileName(fileName))
+                throw new InvalidDataException($"Invalid imported-asset entry in {manifestPath}.");
+            assets.Add(uri, fileName);
+        }
+        return assets;
+    }
+
+    private static bool IsValidCustomUri(string uri)
+    {
+        if (!uri.StartsWith("custom:", StringComparison.Ordinal))
+            return false;
+        string value = uri["custom:".Length..];
+        int separator = value.IndexOf('/');
+        return separator > 0
+            && Guid.TryParseExact(value[..separator], "N", out _)
+            && separator < value.Length - 1;
+    }
+
+    private static bool IsValidAssetFileName(string fileName)
+    {
+        return Path.GetFileName(fileName) == fileName
+            && Path.GetExtension(fileName).Equals(".glb", StringComparison.OrdinalIgnoreCase)
+            && Guid.TryParseExact(Path.GetFileNameWithoutExtension(fileName), "N", out _);
+    }
+
+    private static void WriteProjectAssetManifest(string manifestPath, IReadOnlyDictionary<string, string> assets)
+    {
+        string temporaryPath = $"{manifestPath}.{Guid.NewGuid():N}.tmp";
+        string json = JsonSerializer.Serialize(new
+        {
+            formatVersion = 1,
+            assets = assets.OrderBy(asset => asset.Key, StringComparer.Ordinal)
+                .Select(asset => new { uri = asset.Key, file = asset.Value })
+        }, ManifestOptions);
+        try
+        {
+            File.WriteAllText(temporaryPath, json);
+            File.Move(temporaryPath, manifestPath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+                File.Delete(temporaryPath);
+        }
+    }
+
+    private static bool FilesEqual(string leftPath, string rightPath)
+    {
+        var leftInfo = new FileInfo(leftPath);
+        var rightInfo = new FileInfo(rightPath);
+        if (leftInfo.Length != rightInfo.Length)
+            return false;
+        using FileStream left = File.OpenRead(leftPath);
+        using FileStream right = File.OpenRead(rightPath);
+        return CryptographicOperations.FixedTimeEquals(SHA256.HashData(left), SHA256.HashData(right));
+    }
 
     private static string GetString(JsonElement value, string propertyName)
     {
@@ -90,3 +352,4 @@ public sealed record RenderableEntry(string Uri, string PrefabPath, string[] Mod
         return new string(name.Where(char.IsAsciiLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
     }
 }
+

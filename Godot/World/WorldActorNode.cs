@@ -223,7 +223,7 @@ public partial class WorldActorNode : RigidBody3D
         if (renderable is null)
         {
             if (!string.IsNullOrEmpty(state.RenderableUri))
-                GD.PushWarning($"No built-in asset catalog entry for '{state.RenderableUri}' ({state.Name}).");
+                GD.PushWarning($"No asset catalog entry for '{state.RenderableUri}' ({state.Name}).");
             return;
         }
 
@@ -231,21 +231,12 @@ public partial class WorldActorNode : RigidBody3D
         if (modelPath is null)
             return;
 
-        PackedScene? packedScene = ResourceLoader.Load<PackedScene>(modelPath);
-        if (packedScene is null)
+        Node3D? modelRoot = LegacyRenderableCatalog.LoadModelInstance(modelPath);
+        if (modelRoot is null)
         {
-            GD.PushError($"Could not load converted model '{modelPath}' for '{state.RenderableUri}'.");
+            GD.PushError($"Could not load model '{modelPath}' for '{state.RenderableUri}'.");
             return;
         }
-
-        Node model = packedScene.Instantiate();
-        if (model is not Node3D modelRoot)
-        {
-            model.QueueFree();
-            GD.PushError($"Converted model '{modelPath}' is not a 3D scene.");
-            return;
-        }
-
         modelRoot.Name = "Renderable";
         modelRoot.Position = state.RenderableOffset;
         modelRoot.Quaternion = state.RenderableRotation;

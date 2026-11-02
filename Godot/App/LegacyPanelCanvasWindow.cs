@@ -13,6 +13,43 @@ public sealed partial class LegacyPanelCanvasWindow : Window
     private const string CustomCategory = "Custom";
     private const string DefaultBrainId = "__DEFAULT_BRAIN__";
     private sealed record CardChoice(string Value, string Label, Texture2D? Icon);
+    private sealed partial class CardLibraryItemList : ItemList
+    {
+        public override Variant _GetDragData(Vector2 atPosition)
+        {
+            int index = GetItemAtPosition(atPosition, true);
+            if (index < 0)
+                return default;
+
+            Variant payload = GetItemMetadata(index);
+            if (payload.VariantType != Variant.Type.String)
+                return default;
+            SetDragPreview(new Label { Text = GetItemText(index) });
+            return payload;
+        }
+    }
+
+    private sealed partial class CardDeckDropTarget : Button
+    {
+        private Func<string, bool>? _canDrop;
+        private Action<string>? _drop;
+
+        public void Configure(Func<string, bool> canDrop, Action<string> drop)
+        {
+            _canDrop = canDrop;
+            _drop = drop;
+        }
+
+        public override bool _CanDropData(Vector2 atPosition, Variant data)
+            => data.VariantType == Variant.Type.String && (_canDrop?.Invoke(data.AsString()) ?? false);
+
+        public override void _DropData(Vector2 atPosition, Variant data)
+        {
+            if (data.VariantType == Variant.Type.String)
+                _drop?.Invoke(data.AsString());
+        }
+    }
+
 
     private GraphNode? _customNode;
     private int _canvasBuildGeneration;
@@ -23,6 +60,16 @@ public sealed partial class LegacyPanelCanvasWindow : Window
     private readonly Action _createCustomCard;
     private readonly OptionButton _panelPicker = new();
     private readonly GraphEdit _canvas = new();
+    private readonly Button _cardLibraryToggle = new();
+    private readonly VBoxContainer _cardLibraryPanel = new();
+    private readonly LineEdit _cardLibrarySearch = new();
+    private readonly OptionButton _cardLibraryCategory = new();
+    private readonly CardLibraryItemList _cardLibraryItems = new();
+    private readonly TextureRect _cardLibraryPreview = new();
+    private readonly Label _cardLibraryDetails = new();
+    private readonly Label _cardLibraryCount = new();
+    private readonly HashSet<string> _assignedDeckCardIds = new(StringComparer.Ordinal);
+    private bool _refreshingCardLibrary;
     private readonly Label _status = new();
     private readonly Dictionary<string, JsonObject?> _builtinMetadata = new(StringComparer.Ordinal);
     private readonly List<(GraphNode Node, JsonObject Use)> _panelNodes = new();
@@ -55,6 +102,7 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         BuildInterface();
         PopulatePanelChoices();
         PopulateCanvas();
+        RefreshCardLibrary();
     }
 
     public override void _Ready()
@@ -124,7 +172,7 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         var toolbar = new HBoxContainer();
         toolbar.AddChild(new Label
         {
-            Text = "Arrange panels and notes, add or move cards between panel decks, and remove card uses here. Edit card properties and scripts in the behavior authoring window.",
+            Text = "Arrange panels and notes; drag cards from the library into compatible decks. Existing card uses move between decks.",
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             AutowrapMode = TextServer.AutowrapMode.Word
         });
@@ -137,6 +185,10 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         var center = new Button { Text = "Reset view" };
         center.Pressed += ResetCanvasView;
         toolbar.AddChild(center);
+        _cardLibraryToggle.Name = "ToggleCardLibrary";
+        _cardLibraryToggle.Text = "Show card library";
+        _cardLibraryToggle.Pressed += ToggleCardLibrary;
+        toolbar.AddChild(_cardLibraryToggle);
         layout.AddChild(toolbar);
 
         var panelLibrary = new HBoxContainer();
@@ -149,8 +201,14 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         panelLibrary.AddChild(addPanel);
         layout.AddChild(panelLibrary);
 
+        var workspace = new HSplitContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill
+        };
         _canvas.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         _canvas.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        _canvas.SizeFlagsStretchRatio = 3f;
         _canvas.ShowGrid = true;
         _canvas.SnappingEnabled = true;
         _canvas.SnappingDistance = 20;
@@ -160,10 +218,81 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         _canvas.ZoomMax = 1.5f;
         _canvas.ZoomStep = 1.2f;
         _canvas.EndNodeMove += SaveNodePositions;
-        layout.AddChild(_canvas);
+        workspace.AddChild(_canvas);
+        BuildCardLibraryPanel();
+        _cardLibraryPanel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        _cardLibraryPanel.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        _cardLibraryPanel.SizeFlagsStretchRatio = 1f;
+        workspace.AddChild(_cardLibraryPanel);
+        layout.AddChild(workspace);
         _status.AutowrapMode = TextServer.AutowrapMode.Word;
         layout.AddChild(_status);
     }
+
+    private void BuildCardLibraryPanel()
+    {
+        _cardLibraryPanel.Name = "CardLibraryPanel";
+        _cardLibraryPanel.Visible = false;
+        _cardLibraryPanel.CustomMinimumSize = new Vector2(280f, 0f);
+        _cardLibraryPanel.AddThemeConstantOverride("separation", 6);
+        _cardLibraryPanel.AddChild(new Label { Text = "Card library" });
+        _cardLibraryPanel.AddChild(new Label
+        {
+            Text = "Search by title or description, then drag a card onto a compatible deck. Existing uses move without changing their IDs or properties.",
+            AutowrapMode = TextServer.AutowrapMode.Word
+        });
+        var manageCards = new Button { Name = "ManageEmbeddedCards", Text = "Manage embedded cards…" };
+        manageCards.Pressed += OpenCardLibraryManager;
+        _cardLibraryPanel.AddChild(manageCards);
+
+        _cardLibrarySearch.Name = "CardLibrarySearch";
+        _cardLibrarySearch.PlaceholderText = "Search cards";
+        _cardLibrarySearch.TextChanged += _ => RefreshCardLibrary();
+        _cardLibraryPanel.AddChild(_cardLibrarySearch);
+
+        _cardLibraryCategory.Name = "CardLibraryCategory";
+        _cardLibraryCategory.ItemSelected += _ => RefreshCardLibrary();
+        _cardLibraryPanel.AddChild(_cardLibraryCategory);
+
+        _cardLibraryItems.Name = "CardLibraryItems";
+        _cardLibraryItems.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        _cardLibraryItems.FixedIconSize = new Vector2I(44, 44);
+        _cardLibraryItems.ItemSelected += OnCardLibraryItemSelected;
+        _cardLibraryPanel.AddChild(_cardLibraryItems);
+
+        _cardLibraryCount.Name = "CardLibraryCount";
+        _cardLibraryPanel.AddChild(_cardLibraryCount);
+        var previewRow = new HBoxContainer();
+        _cardLibraryPreview.Name = "CardLibraryPreview";
+        _cardLibraryPreview.CustomMinimumSize = new Vector2(64f, 64f);
+        _cardLibraryPreview.ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize;
+        _cardLibraryPreview.StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered;
+        previewRow.AddChild(_cardLibraryPreview);
+        _cardLibraryDetails.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        _cardLibraryDetails.AutowrapMode = TextServer.AutowrapMode.Word;
+        _cardLibraryDetails.Text = "Select a card to preview its description.";
+        previewRow.AddChild(_cardLibraryDetails);
+        _cardLibraryPanel.AddChild(previewRow);
+    }
+
+    private void ToggleCardLibrary()
+    {
+        _cardLibraryPanel.Visible = !_cardLibraryPanel.Visible;
+        _cardLibraryToggle.Text = _cardLibraryPanel.Visible ? "Hide card library" : "Show card library";
+        if (_cardLibraryPanel.Visible)
+            RefreshCardLibrary();
+    }
+    private void OpenCardLibraryManager()
+    {
+        var manager = new LegacyCardLibraryManagerWindow(_document, () =>
+        {
+            _onChanged();
+            RebuildCanvas();
+        });
+        AddChild(manager);
+        manager.PopupCentered(new Vector2I(1100, 680));
+    }
+
 
     private void PopulateCanvas()
     {
@@ -200,7 +329,7 @@ public sealed partial class LegacyPanelCanvasWindow : Window
                     usesById.TryAdd(id, use);
             }
 
-            var assignedCardIds = new HashSet<string>(StringComparer.Ordinal);
+            _assignedDeckCardIds.Clear();
             int panelIndex = 0;
             foreach (JsonNode? node in uses)
             {
@@ -212,13 +341,13 @@ public sealed partial class LegacyPanelCanvasWindow : Window
                 if (panelData is null || !LegacySaveDocument.ReadBool(panelData["isPanel"]))
                     continue;
 
-                GraphNode graphNode = CreatePanelNode(use, panelData, usesById, assignedCardIds, panelIndex);
+                GraphNode graphNode = CreatePanelNode(use, panelData, usesById, _assignedDeckCardIds, panelIndex);
                 _canvas.AddChild(graphNode);
                 _panelNodes.Add((graphNode, use));
                 panelIndex++;
             }
 
-            GraphNode customNode = CreateCustomNode(uses, assignedCardIds, panelIndex);
+            GraphNode customNode = CreateCustomNode(uses, _assignedDeckCardIds, panelIndex);
             _canvas.AddChild(customNode);
             _customNode = customNode;
             JsonObject brainMetadata = ParseObjectString(brain["metadataJson"], "behavior brain metadata");
@@ -449,7 +578,20 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         addRow.AddChild(picker);
         addRow.AddChild(add);
         editor.AddChild(addRow);
+        var dropTarget = new CardDeckDropTarget
+        {
+            Name = $"CardLibraryDrop_{panelUseId}_{propertyName}",
+            Text = "Drop a matching library card here",
+            CustomMinimumSize = new Vector2(0f, 38f),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            FocusMode = Control.FocusModeEnum.None
+        };
+        dropTarget.Configure(
+            selected => CanDropCardIntoDeck(panelUseId, propertyName, category, selected),
+            selected => AssignCardToDeck(panelUseId, propertyName, category, selected, oneCardOnly));
+        editor.AddChild(dropTarget);
         return editor;
+    
     }
 
     private List<CardChoice> GetCardChoices(string category, IEnumerable<JsonObject> brainUses, HashSet<string> assignedIds)
@@ -491,6 +633,235 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         }
         return choices;
     }
+    private List<string> GetCardLibraryCategories()
+    {
+        var categories = new SortedSet<string>(StringComparer.OrdinalIgnoreCase) { CustomCategory };
+        var behaviorUris = new HashSet<string>(_builtinMetadata.Keys, StringComparer.Ordinal);
+        JsonObject? database = _document.BehaviorDatabase;
+        if (database?["behaviorIds"] is JsonArray behaviorIds)
+        {
+            foreach (JsonNode? node in behaviorIds)
+            {
+                string behaviorId = LegacySaveDocument.ReadString(node);
+                if (behaviorId.Length > 0)
+                    behaviorUris.Add($"embedded:{behaviorId}");
+            }
+        }
+
+        foreach (string uri in behaviorUris)
+        {
+            JsonObject? cardData = GetBehaviorMetadata(uri)?["cardSystemCardData"] as JsonObject;
+            if (!LegacySaveDocument.ReadBool(cardData?["isCard"]) || cardData?["categories"] is not JsonArray values)
+                continue;
+            foreach (JsonNode? node in values)
+            {
+                string category = LegacySaveDocument.ReadString(node);
+                if (!string.IsNullOrWhiteSpace(category))
+                    categories.Add(category);
+            }
+        }
+        return categories.ToList();
+    }
+
+    private List<CardChoice> GetCardLibraryChoices(string category)
+    {
+        if (_brain?["behaviorUses"] is not JsonArray uses)
+            return new List<CardChoice>();
+
+        var choices = new Dictionary<string, CardChoice>(StringComparer.Ordinal);
+        var noAssignedIds = new HashSet<string>(StringComparer.Ordinal);
+        IEnumerable<string> categories = category.Length == 0 ? GetCardLibraryCategories() : new[] { category };
+        foreach (string candidateCategory in categories)
+        {
+            foreach (CardChoice choice in GetCardChoices(candidateCategory, uses.OfType<JsonObject>(), noAssignedIds))
+                choices.TryAdd(choice.Value, choice);
+        }
+        return choices.Values.OrderBy(choice => choice.Label, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private string GetCardUriForChoice(string choice)
+    {
+        if (choice.StartsWith("behavior:", StringComparison.Ordinal))
+            return choice["behavior:".Length..];
+        if (choice.StartsWith("use:", StringComparison.Ordinal)
+            && _brain?["behaviorUses"] is JsonArray uses
+            && FindUse(uses, choice["use:".Length..]) is JsonObject use)
+            return LegacySaveDocument.ReadString(use["behaviorUri"]);
+        return "";
+    }
+
+    private JsonObject? GetCardMetadataForChoice(string choice)
+    {
+        string uri = GetCardUriForChoice(choice);
+        return uri.Length > 0 ? GetBehaviorMetadata(uri) : null;
+    }
+
+    private void RefreshCardLibrary()
+    {
+        if (_refreshingCardLibrary)
+            return;
+
+        _refreshingCardLibrary = true;
+        int selectedItemIndex = -1;
+        try
+        {
+            string selectedChoice = _cardLibraryItems.GetSelectedItems().Length > 0
+                ? _cardLibraryItems.GetItemMetadata(_cardLibraryItems.GetSelectedItems()[0]).AsString()
+                : "";
+            string selectedCategory = _cardLibraryCategory.Selected >= 0
+                ? _cardLibraryCategory.GetItemMetadata(_cardLibraryCategory.Selected).AsString()
+                : "";
+
+            _cardLibraryCategory.Clear();
+            _cardLibraryCategory.AddItem("All categories");
+            _cardLibraryCategory.SetItemMetadata(0, "");
+            foreach (string category in GetCardLibraryCategories())
+            {
+                _cardLibraryCategory.AddItem(category);
+                _cardLibraryCategory.SetItemMetadata(_cardLibraryCategory.ItemCount - 1, category);
+            }
+            int categoryIndex = 0;
+            for (int index = 0; index < _cardLibraryCategory.ItemCount; index++)
+            {
+                if (_cardLibraryCategory.GetItemMetadata(index).AsString() == selectedCategory)
+                {
+                    categoryIndex = index;
+                    break;
+                }
+            }
+            _cardLibraryCategory.Select(categoryIndex);
+
+            string filter = _cardLibrarySearch.Text.Trim();
+            _cardLibraryItems.Clear();
+            foreach (CardChoice choice in GetCardLibraryChoices(selectedCategory))
+            {
+                JsonObject? cardData = GetCardMetadataForChoice(choice.Value)?["cardSystemCardData"] as JsonObject;
+                string description = LegacySaveDocument.ReadString(cardData?["description"]);
+                if (filter.Length > 0
+                    && !choice.Label.Contains(filter, StringComparison.OrdinalIgnoreCase)
+                    && !description.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                _cardLibraryItems.AddItem(choice.Label, choice.Icon);
+                int index = _cardLibraryItems.ItemCount - 1;
+                _cardLibraryItems.SetItemMetadata(index, choice.Value);
+                if (choice.Value == selectedChoice)
+                    selectedItemIndex = index;
+            }
+            _cardLibraryCount.Text = $"{_cardLibraryItems.ItemCount} card(s)";
+            if (selectedItemIndex < 0 && _cardLibraryItems.ItemCount > 0)
+                selectedItemIndex = 0;
+            if (selectedItemIndex >= 0)
+                _cardLibraryItems.Select(selectedItemIndex);
+        }
+        finally
+        {
+            _refreshingCardLibrary = false;
+        }
+
+        if (selectedItemIndex >= 0)
+            OnCardLibraryItemSelected(selectedItemIndex);
+        else
+        {
+            _cardLibraryPreview.Texture = null;
+            _cardLibraryPreview.Visible = false;
+            _cardLibraryDetails.Text = "No matching cards.";
+        }
+    }
+
+    private void OnCardLibraryItemSelected(long index)
+    {
+        if (_refreshingCardLibrary || index < 0 || index >= _cardLibraryItems.ItemCount)
+            return;
+        string choice = _cardLibraryItems.GetItemMetadata((int)index).AsString();
+        string uri = GetCardUriForChoice(choice);
+        JsonObject? metadata = GetCardMetadataForChoice(choice);
+        JsonObject? cardData = metadata?["cardSystemCardData"] as JsonObject;
+        _cardLibraryPreview.Texture = GetCardIcon(metadata);
+        _cardLibraryPreview.Visible = _cardLibraryPreview.Texture is not null;
+        string description = LegacySaveDocument.ReadString(
+            cardData?["description"],
+            LegacySaveDocument.ReadString(metadata?["description"]));
+        string displayName = GetCardDisplayName(uri, metadata);
+        _cardLibraryDetails.Text = description.Length > 0
+            ? $"{displayName}\n{description}"
+            : displayName;
+    }
+
+    private bool CanDropCardIntoDeck(string panelUseId, string propertyName, string category, string selected)
+    {
+        if (_brain?["behaviorUses"] is not JsonArray uses
+            || FindUse(uses, panelUseId) is not JsonObject panelUse)
+            return false;
+        JsonArray currentCards = ReadAssignedValue(panelUse, propertyName) as JsonArray ?? new JsonArray();
+
+        if (selected.StartsWith("use:", StringComparison.Ordinal))
+        {
+            string useId = selected["use:".Length..];
+            if (useId.Length == 0
+                || currentCards.Any(node => LegacySaveDocument.ReadString(node) == useId)
+                || FindUse(uses, useId) is not JsonObject cardUse)
+                return false;
+            return IsCardInCategory(LegacySaveDocument.ReadString(cardUse["behaviorUri"]), category);
+        }
+
+        return selected.StartsWith("behavior:", StringComparison.Ordinal)
+            && IsAvailableCardInCategory(selected["behavior:".Length..], category);
+    }
+
+    private void DropCardToCustom(string selected)
+    {
+        try
+        {
+            JsonObject brain = EnsureWritableBrain();
+            if (brain["behaviorUses"] is not JsonArray uses)
+                throw new InvalidDataException("This behavior brain has no assigned uses.");
+
+            string useId;
+            if (selected.StartsWith("behavior:", StringComparison.Ordinal))
+            {
+                string uri = selected["behavior:".Length..];
+                if (!IsAvailableCardInCategory(uri, CustomCategory))
+                    throw new InvalidDataException("The selected card is not available in the Custom category.");
+                useId = NewUseId(uses);
+                uses.Add(CreateBehaviorUse(useId, uri));
+            }
+            else if (selected.StartsWith("use:", StringComparison.Ordinal))
+            {
+                useId = selected["use:".Length..];
+                if (!_assignedDeckCardIds.Contains(useId)
+                    || FindUse(uses, useId) is not JsonObject cardUse
+                    || !IsCardInCategory(LegacySaveDocument.ReadString(cardUse["behaviorUri"]), CustomCategory))
+                    throw new InvalidDataException("Only an assigned Custom-category card can be moved here.");
+                RemoveUseFromDecks(uses, useId);
+            }
+            else
+            {
+                throw new InvalidDataException("The selected card choice is invalid.");
+            }
+
+            ApplyCardDeckChange();
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidDataException or FormatException or OverflowException)
+        {
+            _status.Text = exception.Message;
+        }
+    }
+
+    private bool CanDropCardIntoCustom(string selected)
+    {
+        if (selected.StartsWith("behavior:", StringComparison.Ordinal))
+            return IsAvailableCardInCategory(selected["behavior:".Length..], CustomCategory);
+        if (!selected.StartsWith("use:", StringComparison.Ordinal))
+            return false;
+
+        string useId = selected["use:".Length..];
+        return _assignedDeckCardIds.Contains(useId)
+            && _brain?["behaviorUses"] is JsonArray uses
+            && FindUse(uses, useId) is JsonObject use
+            && IsCardInCategory(LegacySaveDocument.ReadString(use["behaviorUri"]), CustomCategory);
+    }
+
 
     private void AssignCardToDeck(string panelUseId, string propertyName, string category, string selected, bool oneCardOnly)
     {
@@ -965,6 +1336,7 @@ public sealed partial class LegacyPanelCanvasWindow : Window
             _building = false;
         }
         PopulateCanvas();
+        RefreshCardLibrary();
     }
 
     private JsonObject EnsureWritableBrain()
@@ -1196,6 +1568,16 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         var createCustomCard = new Button { Name = "CreateCustomCard", Text = "Create custom card" };
         createCustomCard.Pressed += CreateCustomCard;
         graphNode.AddChild(createCustomCard);
+        var customDropTarget = new CardDeckDropTarget
+        {
+            Name = "CustomCardLibraryDropTarget",
+            Text = "Drop a Custom card here",
+            CustomMinimumSize = new Vector2(0f, 38f),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            FocusMode = Control.FocusModeEnum.None
+        };
+        customDropTarget.Configure(CanDropCardIntoCustom, DropCardToCustom);
+        graphNode.AddChild(customDropTarget);
         int count = 0;
         foreach (JsonNode? node in uses)
         {

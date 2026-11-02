@@ -70,19 +70,14 @@ public sealed partial class LegacyAssetPreviewControl : VBoxContainer
         CurrentUri = entry.Uri;
         _assetName.Text = entry.Uri;
         string? modelPath = entry.SelectPrimaryModel();
-        PackedScene? modelScene = modelPath is null ? null : ResourceLoader.Load<PackedScene>(modelPath);
-        Node? modelInstance = modelScene?.Instantiate();
-        if (modelInstance is Node3D modelRoot)
+        Node3D? modelRoot = modelPath is null ? null : LegacyRenderableCatalog.LoadModelInstance(modelPath);
+        if (modelRoot is not null)
         {
             if (ShowModel(modelRoot))
             {
                 _previewStatus.Text = $"3D model: {Path.GetFileName(modelPath)}";
                 return;
             }
-        }
-        else
-        {
-            modelInstance?.Free();
         }
         if (TryShowImage(entry))
             return;

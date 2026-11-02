@@ -51,6 +51,61 @@ public partial class LegacyTerrainNode : Node3D
 
     public bool TryGetCell(int x, int y, int z, out byte shape, out ushort style, out byte direction)
         => _data.TryGetCell(x, y, z, out shape, out style, out direction);
+    public bool TryGetCellForHit(Vector3 worldPosition, Vector3 worldNormal, out int x, out int y, out int z)
+    {
+        Vector3 localPoint = CoordinateSpace.ToLegacy(ToLocal(worldPosition));
+        Vector3 localNormal = CoordinateSpace.ToLegacy(GlobalBasis.Inverse() * worldNormal);
+        Vector3 centeredPoint = localPoint - new Vector3(0f, HalfHeight, 0f);
+        if (IsCellFace(centeredPoint.X / LegacyTerrainData.CellWidth)
+            || IsCellFace(centeredPoint.Y / LegacyTerrainData.CellHeight)
+            || IsCellFace(centeredPoint.Z / LegacyTerrainData.CellWidth))
+        {
+            localPoint -= localNormal * HalfHeight;
+            centeredPoint = localPoint - new Vector3(0f, HalfHeight, 0f);
+        }
+
+        x = Mathf.RoundToInt(centeredPoint.X / LegacyTerrainData.CellWidth) + _data.Width / 2;
+        y = Mathf.RoundToInt(centeredPoint.Y / LegacyTerrainData.CellHeight) - LegacyTerrainData.CellsYStart;
+        z = Mathf.RoundToInt(centeredPoint.Z / LegacyTerrainData.CellWidth) + _data.Depth / 2;
+        return IsCellInBounds(x, y, z);
+    }
+
+    public bool TryGetEmptyPlacementCell(Vector3 worldPosition, Vector3 worldNormal, out int x, out int y, out int z)
+    {
+        Vector3 localPoint = CoordinateSpace.ToLegacy(ToLocal(worldPosition));
+        Vector3 localNormal = CoordinateSpace.ToLegacy(GlobalBasis.Inverse() * worldNormal);
+        x = Mathf.RoundToInt(localPoint.X / LegacyTerrainData.CellWidth) + _data.Width / 2;
+        y = Mathf.RoundToInt(localPoint.Y / LegacyTerrainData.CellHeight) - LegacyTerrainData.CellsYStart;
+        z = Mathf.RoundToInt(localPoint.Z / LegacyTerrainData.CellWidth) + _data.Depth / 2;
+        if (!IsCellInBounds(x, y, z))
+            return false;
+        if (!_data.TryGetCell(x, y, z, out _, out _, out _))
+            return true;
+
+        Vector3 absoluteNormal = new(Mathf.Abs(localNormal.X), Mathf.Abs(localNormal.Y), Mathf.Abs(localNormal.Z));
+        if (absoluteNormal == Vector3.Zero)
+            return false;
+        if (absoluteNormal.X > absoluteNormal.Y)
+        {
+            if (absoluteNormal.X > absoluteNormal.Z)
+                x += localNormal.X < 0f ? -1 : 1;
+            else
+                z += localNormal.Z < 0f ? -1 : 1;
+        }
+        else if (absoluteNormal.Y > absoluteNormal.Z)
+        {
+            y += localNormal.Y < 0f ? -1 : 1;
+        }
+        else
+        {
+            z += localNormal.Z < 0f ? -1 : 1;
+        }
+        return IsCellInBounds(x, y, z) && !_data.TryGetCell(x, y, z, out _, out _, out _);
+    }
+
+    private bool IsCellInBounds(int x, int y, int z)
+        => (uint)x < (uint)_data.Width && (uint)y < (uint)_data.Height && (uint)z < (uint)_data.Depth;
+
 
     public int GetStyleAtLegacyContact(Vector3 legacyPoint, Vector3 legacyNormal)
     {

@@ -23,7 +23,7 @@ public partial class GameBuilderApp : Node3D
     private LegacyAssetPreviewControl _assetPreview = null!;
     private OptionButton _samplePicker = null!;
     private SpinBox[] _positionFields = Array.Empty<SpinBox>();
-    private SpinBox _yawField = null!;
+    private SpinBox[] _rotationFields = Array.Empty<SpinBox>();
     private Control _welcome = null!;
     private Control _editor = null!;
     private Label _status = null!;
@@ -31,10 +31,18 @@ public partial class GameBuilderApp : Node3D
     private Button _playButton = null!;
     private FileDialog _openDialog = null!;
     private FileDialog _saveDialog = null!;
+    private FileDialog _importModelDialog = null!;
     private AcceptDialog _errorDialog = null!;
     private WorldActorNode? _selectedActor;
 
     private LegacyTerrainNode? _terrain;
+    private MeshInstance3D? _stageGroundMesh;
+    private StaticBody3D? _stageGroundBody;
+    private LegacyTerrainEditorWindow? _terrainEditorWindow;
+    private readonly Dictionary<Vector3I, TerrainCellSnapshot> _terrainStrokeBefore = new();
+    private bool _terrainStrokeActive;
+    private bool _terrainStrokeCreatedTerrain;
+    private readonly record struct TerrainCellSnapshot(int Shape, int Style, int Direction);
     private bool _updatingInspector;
     private bool _playMode;
     private float _cameraYaw = Mathf.DegToRad(35f);
@@ -86,6 +94,8 @@ public partial class GameBuilderApp : Node3D
         {
             ShowWelcome();
         }
+        if (commandLineArgs.Contains("--smoke-card-library", StringComparer.Ordinal))
+            RunCardLibrarySmoke();
     }
 
     public override void _Process(double delta)
@@ -133,7 +143,19 @@ public partial class GameBuilderApp : Node3D
             if (mouseButton.ButtonIndex == MouseButton.Right)
                 Input.MouseMode = mouseButton.Pressed ? Input.MouseModeEnum.Captured : Input.MouseModeEnum.Visible;
             if (mouseButton.ButtonIndex == MouseButton.Left && mouseButton.Pressed && !_playMode)
-                SelectActorAt(mouseButton.Position);
+            {
+                if (IsTerrainBrushActive)
+                {
+                    BeginTerrainStroke();
+                    ApplyTerrainBrush(mouseButton.Position);
+                }
+                else
+                {
+                    SelectActorAt(mouseButton.Position);
+                }
+            }
+            if (mouseButton.ButtonIndex == MouseButton.Left && !mouseButton.Pressed)
+                EndTerrainStroke();
             if (mouseButton.Pressed && mouseButton.ButtonIndex is MouseButton.WheelUp or MouseButton.WheelDown)
             {
                 float wheelDelta = 0.1f * mouseButton.Factor;
@@ -145,12 +167,17 @@ public partial class GameBuilderApp : Node3D
                 _cameraDistance = Mathf.Min(220f, _cameraDistance * 1.12f);
             UpdateOrbitCamera();
         }
-        else if (@event is InputEventMouseMotion motion && Input.MouseMode == Input.MouseModeEnum.Captured)
+        else if (@event is InputEventMouseMotion motion)
         {
-            _cameraYaw -= motion.Relative.X * 0.004f;
-            _cameraPitch = Mathf.Clamp(_cameraPitch - motion.Relative.Y * 0.004f, -1.35f, 0.15f);
-            _lookAxes += new Vector2(-motion.Relative.X * 0.004f, -motion.Relative.Y * 0.004f);
-            UpdateOrbitCamera();
+            if (IsTerrainBrushActive && Input.IsMouseButtonPressed(MouseButton.Left))
+                ApplyTerrainBrush(motion.Position);
+            if (Input.MouseMode == Input.MouseModeEnum.Captured)
+            {
+                _cameraYaw -= motion.Relative.X * 0.004f;
+                _cameraPitch = Mathf.Clamp(_cameraPitch - motion.Relative.Y * 0.004f, -1.35f, 0.15f);
+                _lookAxes += new Vector2(-motion.Relative.X * 0.004f, -motion.Relative.Y * 0.004f);
+                UpdateOrbitCamera();
+            }
         }
         else if (@event is InputEventKey key && key.Pressed && !key.Echo)
         {
@@ -252,6 +279,17 @@ public partial class GameBuilderApp : Node3D
         _saveDialog.AddFilter("*.voos", "Game Builder project");
         _saveDialog.FileSelected += SaveProjectAs;
         root.AddChild(_saveDialog);
+        _importModelDialog = new FileDialog
+        {
+            Title = "Import a 3D model",
+            FileMode = FileDialog.FileModeEnum.OpenFile,
+            Access = FileDialog.AccessEnum.Filesystem,
+            UseNativeDialog = true
+        };
+        _importModelDialog.AddFilter("*.glb", "Binary glTF model");
+        _importModelDialog.AddFilter("*.gltf", "glTF scene with external resources");
+        _importModelDialog.FileSelected += ImportModelFromPath;
+        root.AddChild(_importModelDialog);
 
         _errorDialog = new AcceptDialog { Title = "GBNG" };
         root.AddChild(_errorDialog);
@@ -327,6 +365,7 @@ public partial class GameBuilderApp : Node3D
         _playButton = new Button { Text = "Play", CustomMinimumSize = new Vector2(84f, 36f) };
         _playButton.Pressed += () => SetPlayMode(!_playMode);
         toolbar.AddChild(_playButton);
+        AddToolbarButton(toolbar, "Terrain", OpenTerrainEditor);
         AddToolbarButton(toolbar, "Reset", ResetActors);
         _undoButton = new Button { Text = "Undo", CustomMinimumSize = new Vector2(70f, 36f), Disabled = true };
         _undoButton.Pressed += UndoEdit;
@@ -351,7 +390,10 @@ public partial class GameBuilderApp : Node3D
         _actorList = new ItemList { SizeFlagsVertical = Control.SizeFlags.ExpandFill, SelectMode = ItemList.SelectModeEnum.Single };
         _actorList.ItemSelected += SelectActorByIndex;
         left.AddChild(_actorList);
-        left.AddChild(CreateLabel("Add built-in asset", 14));
+        left.AddChild(CreateLabel("Add asset", 14));
+        var importGlb = new Button { Text = "Import 3D model…" };
+        importGlb.Pressed += OpenModelImportDialog;
+        left.AddChild(importGlb);
         _assetSearch = new LineEdit { PlaceholderText = "Search assets by name or path…" };
         _assetSearch.TextChanged += _ => PopulateAssetPicker();
         left.AddChild(_assetSearch);
@@ -428,10 +470,19 @@ public partial class GameBuilderApp : Node3D
             _positionFields[axis] = field;
             inspector.AddChild(row);
         }
-        inspector.AddChild(CreateLabel("Yaw (degrees)", 14));
-        _yawField = CreateSpinBox();
-        _yawField.ValueChanged += value => UpdateSelectedYaw((float)value);
-        inspector.AddChild(_yawField);
+        inspector.AddChild(CreateLabel("World rotation (degrees)", 14));
+        _rotationFields = new SpinBox[3];
+        for (int axis = 0; axis < 3; axis++)
+        {
+            var row = new HBoxContainer();
+            row.AddChild(CreateLabel(axes[axis], 14));
+            SpinBox field = CreateSpinBox();
+            int index = axis;
+            field.ValueChanged += value => UpdateSelectedRotation(index, (float)value);
+            row.AddChild(field);
+            _rotationFields[axis] = field;
+            inspector.AddChild(row);
+        }
         inspector.AddChild(CreateLabel("Local scale", 14));
         _scaleFields = new SpinBox[3];
         for (int axis = 0; axis < 3; axis++)
@@ -584,6 +635,25 @@ public partial class GameBuilderApp : Node3D
         AddChild(window);
         window.PopupCentered();
     }
+    private void OpenTerrainEditor()
+    {
+        if (_terrainEditorWindow is null)
+        {
+            _terrainEditorWindow = new LegacyTerrainEditorWindow();
+            _terrainEditorWindow.ActiveChanged += active =>
+            {
+                if (!active)
+                    EndTerrainStroke();
+                _status.Text = active ? "Terrain brush active — click or drag in the viewport." : "Terrain brush disabled.";
+            };
+            AddChild(_terrainEditorWindow);
+        }
+        _terrainEditorWindow.PopupCentered(new Vector2I(380, 560));
+    }
+
+    private bool IsTerrainBrushActive
+        => !_playMode && _terrainEditorWindow is { Visible: true, IsBrushActive: true };
+
 
     private void OnBehaviorDataChanged()
     {
@@ -781,11 +851,14 @@ public partial class GameBuilderApp : Node3D
 
     private void LoadProject(string path)
     {
+        _terrainEditorWindow?.SetBrushActive(false);
+        EndTerrainStroke();
         try
         {
             LegacySaveDocument document = LegacySaveDocument.Load(path);
             ClearWorld();
             _document = document;
+            _catalog.LoadProjectAssets(path);
             ClearHistory();
             LegacyTerrainData? terrainData = LegacyTerrainData.Decode(document.GridState);
             if (terrainData is not null)
@@ -853,6 +926,11 @@ public partial class GameBuilderApp : Node3D
         _behaviorUi?.SetCommands(new JsonArray());
         foreach (Node child in _world.GetChildren())
             child.QueueFree();
+        _terrain = null;
+        _stageGroundMesh = null;
+        _stageGroundBody = null;
+        _terrainStrokeBefore.Clear();
+        _terrainStrokeActive = false;
         _actors.Clear();
         _selectedActor = null;
         _actorList?.Clear();
@@ -893,6 +971,163 @@ public partial class GameBuilderApp : Node3D
         };
         body.AddChild(shape);
         _world.AddChild(body);
+        _stageGroundMesh = mesh;
+        _stageGroundBody = body;
+    }
+
+    private void BeginTerrainStroke()
+    {
+        if (_document is null || _playMode || _terrainStrokeActive)
+            return;
+        _terrainStrokeBefore.Clear();
+        _terrainStrokeCreatedTerrain = _terrain is null;
+        _terrainStrokeActive = true;
+    }
+
+    private void ApplyTerrainBrush(Vector2 screenPosition)
+    {
+        if (!IsTerrainBrushActive || !_terrainStrokeActive || _document is null)
+            return;
+
+        Vector3 rayOrigin = _camera.ProjectRayOrigin(screenPosition);
+        Vector3 rayEnd = rayOrigin + _camera.ProjectRayNormal(screenPosition) * 1000f;
+        PhysicsRayQueryParameters3D query = PhysicsRayQueryParameters3D.Create(rayOrigin, rayEnd, 2u);
+        query.CollideWithAreas = false;
+        query.CollideWithBodies = true;
+        Godot.Collections.Dictionary hit = _world.GetWorld3D().DirectSpaceState.IntersectRay(query);
+        if (hit.Count == 0 || hit["collider"].AsGodotObject() is not Node collider)
+            return;
+
+        bool terrainHit = IsTerrainCollider(collider);
+        LegacyTerrainBrush brush = _terrainEditorWindow!.Brush;
+        if (brush.Mode != LegacyTerrainBrushMode.Create && !terrainHit)
+            return;
+        if (brush.Mode == LegacyTerrainBrushMode.Create && !terrainHit && collider != _stageGroundBody)
+            return;
+
+        Vector3 hitPosition = hit["position"].AsVector3();
+        Vector3 hitNormal = hit["normal"].AsVector3();
+        if (_terrain is null && brush.Mode == LegacyTerrainBrushMode.Create)
+            EnsureTerrain();
+        if (_terrain is null)
+            return;
+
+        int x;
+        int y;
+        int z;
+        if (brush.Mode == LegacyTerrainBrushMode.Create)
+        {
+            if (!_terrain.TryGetEmptyPlacementCell(hitPosition, hitNormal, out x, out y, out z))
+                return;
+        }
+        else if (!_terrain.TryGetCellForHit(hitPosition, hitNormal, out x, out y, out z))
+        {
+            return;
+        }
+
+        var cell = new Vector3I(x, y, z);
+        TerrainCellSnapshot previous = ReadTerrainCell(cell);
+        TerrainCellSnapshot next = brush.Mode switch
+        {
+            LegacyTerrainBrushMode.Create when previous.Shape < 0
+                => new TerrainCellSnapshot(brush.Shape, brush.Style, brush.Direction),
+            LegacyTerrainBrushMode.Dig when previous.Shape >= 0
+                => new TerrainCellSnapshot(-1, 0, 0),
+            LegacyTerrainBrushMode.Paint when previous.Shape >= 0 && previous.Style != brush.Style
+                => previous with { Style = brush.Style },
+            _ => previous
+        };
+        if (previous == next)
+            return;
+
+        _terrainStrokeBefore.TryAdd(cell, previous);
+        if (!_terrain.SetCell(cell.X, cell.Y, cell.Z, next.Shape, next.Style, next.Direction))
+        {
+            _terrainStrokeBefore.Remove(cell);
+            return;
+        }
+        _status.Text = $"{brush.Mode} terrain cell ({x - _terrain.Width / 2}, {y + LegacyTerrainData.CellsYStart}, {z - _terrain.Depth / 2}).";
+    }
+
+    private bool IsTerrainCollider(Node collider)
+    {
+        for (Node? current = collider; current is not null; current = current.GetParent())
+        {
+            if (current == _terrain)
+                return true;
+        }
+        return false;
+    }
+
+    private void EnsureTerrain()
+    {
+        if (_terrain is not null)
+            return;
+        _terrain = LegacyTerrainNode.Create(LegacyTerrainData.CreateEmpty());
+        _world.AddChild(_terrain);
+        if (_stageGroundMesh is not null)
+            _stageGroundMesh.Visible = false;
+    }
+
+    private void RemoveTerrainCreatedByStroke()
+    {
+        if (_terrain is null)
+            return;
+        _world.RemoveChild(_terrain);
+        _terrain.QueueFree();
+        _terrain = null;
+        if (_stageGroundMesh is not null)
+            _stageGroundMesh.Visible = true;
+    }
+
+    private TerrainCellSnapshot ReadTerrainCell(Vector3I cell)
+    {
+        if (_terrain is null)
+            return new TerrainCellSnapshot(-1, 0, 0);
+        bool occupied = _terrain.TryGetCell(cell.X, cell.Y, cell.Z, out byte shape, out ushort style, out byte direction);
+        return occupied ? new TerrainCellSnapshot(shape, style, direction) : new TerrainCellSnapshot(-1, 0, 0);
+    }
+
+    private void EndTerrainStroke()
+    {
+        if (!_terrainStrokeActive)
+            return;
+        _terrainStrokeActive = false;
+        _terrain?.FlushUpdates();
+        if (_terrainStrokeBefore.Count == 0)
+        {
+            if (_terrainStrokeCreatedTerrain)
+                RemoveTerrainCreatedByStroke();
+            _terrainStrokeCreatedTerrain = false;
+            return;
+        }
+
+        var before = new Dictionary<Vector3I, TerrainCellSnapshot>(_terrainStrokeBefore);
+        var after = new Dictionary<Vector3I, TerrainCellSnapshot>(before.Count);
+        foreach (Vector3I cell in before.Keys)
+            after.Add(cell, ReadTerrainCell(cell));
+        bool createdTerrain = _terrainStrokeCreatedTerrain;
+        _terrainStrokeBefore.Clear();
+        _terrainStrokeCreatedTerrain = false;
+        RecordHistory("Edit terrain",
+            () => ApplyTerrainSnapshots(before, createdTerrain, terrainShouldExist: !createdTerrain),
+            () => ApplyTerrainSnapshots(after, createdTerrain, terrainShouldExist: true));
+    }
+
+    private void ApplyTerrainSnapshots(
+        IReadOnlyDictionary<Vector3I, TerrainCellSnapshot> snapshots,
+        bool createdTerrain,
+        bool terrainShouldExist)
+    {
+        if (createdTerrain && !terrainShouldExist)
+        {
+            RemoveTerrainCreatedByStroke();
+            return;
+        }
+        EnsureTerrain();
+        foreach ((Vector3I cell, TerrainCellSnapshot value) in snapshots)
+            _terrain!.SetCell(cell.X, cell.Y, cell.Z, value.Shape, value.Style, value.Direction);
+        _terrain!.FlushUpdates();
     }
 
     private void PopulateAssetPicker()
@@ -905,13 +1140,16 @@ public partial class GameBuilderApp : Node3D
         int selectedIndex = -1;
         foreach (RenderableEntry entry in _catalog.Entries.OrderBy(entry => entry.Uri, StringComparer.Ordinal))
         {
-            if (filter.Length > 0 && !entry.Uri.Contains(filter, StringComparison.OrdinalIgnoreCase))
+            if (filter.Length > 0
+                && !entry.Uri.Contains(filter, StringComparison.OrdinalIgnoreCase))
                 continue;
             int separator = entry.Uri.LastIndexOf('/');
             string name = separator >= 0 ? entry.Uri[(separator + 1)..] : entry.Uri;
             string parent = separator >= 0 ? entry.Uri[..separator] : "";
             int parentSeparator = parent.LastIndexOf('/');
-            string group = parentSeparator >= 0 ? parent[(parentSeparator + 1)..] : parent;
+            string group = entry.Uri.StartsWith("custom:", StringComparison.Ordinal)
+                ? "Imported"
+                : parentSeparator >= 0 ? parent[(parentSeparator + 1)..] : parent;
             _assetPicker.AddItem(group.Length > 0 ? $"{name} · {group}" : name);
             _assetPicker.SetItemMetadata(_assetPicker.ItemCount - 1, entry.Uri);
             if (entry.Uri == selectedUri)
@@ -941,6 +1179,48 @@ public partial class GameBuilderApp : Node3D
         string uri = _assetPicker.GetItemMetadata(_assetPicker.Selected).AsString();
         _catalog.TryGet(uri, out RenderableEntry? entry);
         _assetPreview.ShowAsset(entry);
+    }
+
+    private void OpenModelImportDialog()
+    {
+        if (_document is null)
+        {
+            ShowError("Open a .voos project before importing a model.");
+            return;
+        }
+        if (_document.SourcePath.StartsWith("res://", StringComparison.Ordinal))
+        {
+            ShowError("Save a writable .voos copy before importing a model.");
+            return;
+        }
+        _importModelDialog.PopupCentered(new Vector2I(1000, 700));
+    }
+
+    private void ImportModelFromPath(string path)
+    {
+        if (_document is null)
+            return;
+        try
+        {
+            RenderableEntry entry = _catalog.ImportProjectModel(_document.SourcePath, path);
+            bool clearedSearch = _assetSearch.Text.Length > 0;
+            _assetSearch.Text = "";
+            if (!clearedSearch)
+                PopulateAssetPicker();
+            for (int index = 0; index < _assetPicker.ItemCount; index++)
+            {
+                if (_assetPicker.GetItemMetadata(index).AsString() != entry.Uri)
+                    continue;
+                _assetPicker.Select(index);
+                ShowSelectedAssetPreview();
+                break;
+            }
+            _status.Text = $"Imported {Path.GetFileName(path)} into this project.";
+        }
+        catch (Exception exception)
+        {
+            ShowError($"Could not import model:\n{exception.Message}");
+        }
     }
 
     private void AddActor()
@@ -1152,8 +1432,11 @@ public partial class GameBuilderApp : Node3D
             _positionFields[axis].Value = hasActor ? actor!.GlobalPosition[axis] : 0d;
             _scaleFields[axis].Value = hasActor ? actor!.Scale[axis] : 1d;
         }
-        _yawField.Editable = hasActor && !_playMode;
-        _yawField.Value = hasActor ? actor!.GlobalRotationDegrees.Y : 0d;
+        for (int axis = 0; axis < 3; axis++)
+        {
+            _rotationFields[axis].Editable = hasActor && !_playMode;
+            _rotationFields[axis].Value = hasActor ? actor!.GlobalRotationDegrees[axis] : 0d;
+        }
         Color tint = hasActor ? actor!.State.Tint : Colors.White;
         _tintFields[0].Value = tint.R;
         _tintFields[1].Value = tint.G;
@@ -1183,14 +1466,14 @@ public partial class GameBuilderApp : Node3D
             () => SetActorTransform(actorName, newTransform));
     }
 
-    private void UpdateSelectedYaw(float degrees)
+    private void UpdateSelectedRotation(int axis, float degrees)
     {
         if (_updatingInspector || _playMode || _selectedActor is null)
             return;
         string actorName = _selectedActor.LegacyName;
         Transform3D oldTransform = _selectedActor.GlobalTransform;
         Vector3 rotation = _selectedActor.GlobalRotationDegrees;
-        rotation.Y = degrees;
+        rotation[axis] = degrees;
         _selectedActor.GlobalRotationDegrees = rotation;
         Transform3D newTransform = _selectedActor.GlobalTransform;
         RecordHistory($"Rotate {_selectedActor.State.DisplayName}",
@@ -1207,6 +1490,11 @@ public partial class GameBuilderApp : Node3D
             ShowError($"Behavior runtime cannot start:\n{_behaviorRuntimeError ?? "the project has not loaded successfully."}");
             return;
         }
+        if (enabled)
+        {
+            _terrainEditorWindow?.SetBrushActive(false);
+            EndTerrainStroke();
+        }
         _playMode = enabled;
         Input.MouseMode = Input.MouseModeEnum.Visible;
         foreach (WorldActorNode actor in _actors)
@@ -1217,7 +1505,8 @@ public partial class GameBuilderApp : Node3D
         _positionFields[0].Editable = !enabled && _selectedActor is not null;
         _positionFields[1].Editable = !enabled && _selectedActor is not null;
         _positionFields[2].Editable = !enabled && _selectedActor is not null;
-        _yawField.Editable = !enabled && _selectedActor is not null;
+        foreach (SpinBox rotationField in _rotationFields)
+            rotationField.Editable = !enabled && _selectedActor is not null;
         SetInspectorInputsEnabled(!enabled && _selectedActor is not null);
         _behaviorEditorButton.Disabled = enabled || _selectedActor is null;
         UpdateHistoryButtons();
@@ -1269,7 +1558,10 @@ public partial class GameBuilderApp : Node3D
                 _terrain.FlushUpdates();
                 _document.SaveTerrainPayload(_terrain.Encode());
             }
+            _catalog.CopyProjectAssets(_document.SourcePath, path);
             _document.SaveTo(path);
+            _catalog.LoadProjectAssets(path);
+            PopulateAssetPicker();
             _status.Text = $"Saved {Path.GetFileName(path)} — {_actors.Count} actors.";
         }
         catch (Exception exception)

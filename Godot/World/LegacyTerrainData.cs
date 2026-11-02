@@ -35,6 +35,9 @@ public sealed class LegacyTerrainData
     public int Depth { get; }
     public int CellCount => _shapes.Length;
 
+    public static LegacyTerrainData CreateEmpty()
+        => new(BlockSizeX, BlockSizeY, BlockSizeZ);
+
     public static LegacyTerrainData? Decode(JsonObject? gridState)
     {
         string encoded = LegacySaveDocument.ReadString(gridState?["v2Data"]);
