@@ -19,6 +19,7 @@ public sealed partial class LegacyPanelCanvasWindow : Window
     private readonly LegacyActorData _actor;
     private readonly Action _onChanged;
     private readonly Func<string, JsonArray?> _getPropertyDefinitions;
+    private readonly Action _createCustomCard;
     private readonly GraphEdit _canvas = new();
     private readonly Label _status = new();
     private readonly Dictionary<string, JsonObject?> _builtinMetadata = new(StringComparer.Ordinal);
@@ -37,12 +38,14 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         LegacySaveDocument document,
         LegacyActorData actor,
         Action onChanged,
-        Func<string, JsonArray?> getPropertyDefinitions)
+        Func<string, JsonArray?> getPropertyDefinitions,
+        Action createCustomCard)
     {
         _document = document;
         _actor = actor;
         _onChanged = onChanged;
         _getPropertyDefinitions = getPropertyDefinitions;
+        _createCustomCard = createCustomCard;
         Title = $"Behavior panels — {actor.DisplayName}";
         Size = new Vector2I(1100, 760);
         CloseRequested += CloseCanvas;
@@ -339,6 +342,13 @@ public sealed partial class LegacyPanelCanvasWindow : Window
                     SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
                     AutowrapMode = TextServer.AutowrapMode.Word
                 });
+                if (usesById.TryGetValue(cardId, out JsonObject? customCardUse)
+                    && IsCustomPanelCard(LegacySaveDocument.ReadString(customCardUse["behaviorUri"])))
+                {
+                    var returnToCustom = new Button { Name = $"ReturnToCustom_{cardId}", Text = "Return to Custom" };
+                    returnToCustom.Pressed += () => ReturnCardToCustom(cardId);
+                    row.AddChild(returnToCustom);
+                }
                 var remove = new Button { Name = $"RemoveCard_{cardId}", Text = "Remove" };
                 remove.Pressed += () => RemoveCardFromDeck(LegacySaveDocument.ReadString(panelUse["id"]), propertyName, cardId);
                 row.AddChild(remove);
@@ -620,6 +630,62 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         }
     }
 
+    private void CreateCustomCard()
+    {
+        try
+        {
+            _createCustomCard();
+            _layoutDirty = true;
+            RebuildCanvas();
+            _status.Text = "Custom card created in memory. Use Save in GBNG to persist the project.";
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidDataException or FormatException or OverflowException)
+        {
+            _status.Text = exception.Message;
+        }
+    }
+
+    private void ReturnCardToCustom(string cardUseId)
+    {
+        try
+        {
+            JsonObject brain = EnsureWritableBrain();
+            if (brain["behaviorUses"] is not JsonArray uses)
+                throw new InvalidDataException("This behavior brain has no assigned uses.");
+            JsonObject cardUse = FindUse(uses, cardUseId)
+                ?? throw new InvalidDataException("The selected card use no longer exists.");
+            if (!IsCustomPanelCard(LegacySaveDocument.ReadString(cardUse["behaviorUri"])))
+                throw new InvalidDataException("Only Custom-category cards can be returned to the Custom panel.");
+            RemoveUseFromDecks(uses, cardUseId);
+            ApplyCardDeckChange();
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidDataException or FormatException or OverflowException)
+        {
+            _status.Text = exception.Message;
+        }
+    }
+
+    private void RemoveCustomCard(string cardUseId)
+    {
+        try
+        {
+            JsonObject brain = EnsureWritableBrain();
+            if (brain["behaviorUses"] is not JsonArray uses)
+                throw new InvalidDataException("This behavior brain has no assigned uses.");
+            JsonObject cardUse = FindUse(uses, cardUseId)
+                ?? throw new InvalidDataException("The selected card use no longer exists.");
+            if (!IsCustomPanelCard(LegacySaveDocument.ReadString(cardUse["behaviorUri"])))
+                throw new InvalidDataException("The selected use is not a Custom-category card.");
+            RemoveUseFromDecks(uses, cardUseId);
+            RemoveBehaviorUse(uses, cardUseId);
+            ApplyCardDeckChange();
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidDataException or FormatException or OverflowException)
+        {
+            _status.Text = exception.Message;
+        }
+    }
+
     private void RebuildCanvas()
     {
         _building = true;
@@ -748,6 +814,17 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         return categories.Any(node => LegacySaveDocument.ReadString(node) == category);
     }
 
+    private bool IsCustomPanelCard(string uri)
+    {
+        JsonObject? metadata = GetBehaviorMetadata(uri);
+        if (LegacySaveDocument.ReadBool((metadata?["cardSystemPanelData"] as JsonObject)?["isPanel"]))
+            return false;
+        JsonObject? cardData = metadata?["cardSystemCardData"] as JsonObject;
+        if (cardData is not null && !LegacySaveDocument.ReadBool(cardData["isCard"], true))
+            return false;
+        return HasCustomCategory(cardData);
+    }
+
     private string GetCardDisplayName(string uri)
     {
         string title = GetCardTitle(uri);
@@ -809,6 +886,9 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         applyTitle.Pressed += () => SaveCustomPanelTitle(graphNode, customTitle);
         titleRow.AddChild(applyTitle);
         graphNode.AddChild(titleRow);
+        var createCustomCard = new Button { Name = "CreateCustomCard", Text = "Create custom card" };
+        createCustomCard.Pressed += CreateCustomCard;
+        graphNode.AddChild(createCustomCard);
         int count = 0;
         foreach (JsonNode? node in uses)
         {
@@ -818,15 +898,21 @@ public sealed partial class LegacyPanelCanvasWindow : Window
             string uri = LegacySaveDocument.ReadString(use["behaviorUri"]);
             if (id.Length == 0 || id == "__DEFAULT_BRAIN__" || uri == "builtin:Default Behavior" || assignedCardIds.Contains(id))
                 continue;
-            JsonObject? metadata = GetBehaviorMetadata(uri);
-            if (LegacySaveDocument.ReadBool((metadata?["cardSystemPanelData"] as JsonObject)?["isPanel"]))
+            if (!IsCustomPanelCard(uri))
                 continue;
-            JsonObject? cardData = metadata?["cardSystemCardData"] as JsonObject;
-            if (cardData is not null && !LegacySaveDocument.ReadBool(cardData["isCard"], true))
-                continue;
-            if (!HasCustomCategory(cardData))
-                continue;
-            graphNode.AddChild(CreateCanvasLabel($"  {LegacySaveDocument.ReadString(cardData?["title"], uri)}", id));
+            JsonObject? cardData = GetBehaviorMetadata(uri)?["cardSystemCardData"] as JsonObject;
+            var row = new HBoxContainer();
+            row.AddChild(new Label
+            {
+                Text = $"  {LegacySaveDocument.ReadString(cardData?["title"], uri)}",
+                TooltipText = id,
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                AutowrapMode = TextServer.AutowrapMode.Word
+            });
+            var removeCard = new Button { Name = $"RemoveCustomCard_{id}", Text = "Remove" };
+            removeCard.Pressed += () => RemoveCustomCard(id);
+            row.AddChild(removeCard);
+            graphNode.AddChild(row);
             count++;
         }
         if (count == 0)

@@ -218,7 +218,7 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
         var openCanvas = new Button { Text = "Open visual panel canvas" };
         openCanvas.Pressed += () =>
         {
-            var canvas = new LegacyPanelCanvasWindow(_document, _actor, _onChanged, _getPropertyDefinitions);
+            var canvas = new LegacyPanelCanvasWindow(_document, _actor, _onChanged, _getPropertyDefinitions, CreateCustomBehavior);
             AddChild(canvas);
             canvas.PopupCentered(new Vector2I(1100, 760));
         };
