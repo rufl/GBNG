@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using GBNG.Assets;
 using GBNG.Behaviors;
 using GBNG.Domain;
 using Godot;
@@ -11,7 +12,7 @@ public sealed partial class LegacyPanelCanvasWindow : Window
     private const string BuiltinBehaviorRoot = "res://Assets/StreamingAssets/BehaviorLibrary";
     private const string CustomCategory = "Custom";
     private const string DefaultBrainId = "__DEFAULT_BRAIN__";
-    private sealed record CardChoice(string Value, string Label);
+    private sealed record CardChoice(string Value, string Label, Texture2D? Icon);
 
     private GraphNode? _customNode;
     private int _canvasBuildGeneration;
@@ -354,10 +355,25 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         string panelUseId = LegacySaveDocument.ReadString(panelUse["id"]);
         foreach ((string cardId, int deckIndex) in assignedEntries)
         {
-            string title = usesById.TryGetValue(cardId, out JsonObject? cardUse)
-                ? GetCardDisplayName(LegacySaveDocument.ReadString(cardUse["behaviorUri"]))
+            string cardUri = usesById.TryGetValue(cardId, out JsonObject? cardUse)
+                ? LegacySaveDocument.ReadString(cardUse["behaviorUri"])
+                : "";
+            JsonObject? cardMetadata = cardUri.Length > 0 ? GetBehaviorMetadata(cardUri) : null;
+            string title = cardUri.Length > 0
+                ? GetCardDisplayName(cardUri, cardMetadata)
                 : $"Missing use · {cardId}";
             var row = new HBoxContainer();
+            if (GetCardIcon(cardMetadata) is Texture2D cardIcon)
+            {
+                row.AddChild(new TextureRect
+                {
+                    Name = $"CardImage_{cardId}",
+                    Texture = cardIcon,
+                    CustomMinimumSize = new Vector2(40f, 40f),
+                    ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+                    StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered
+                });
+            }
             row.AddChild(new Label
             {
                 Text = title,
@@ -408,7 +424,10 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         List<CardChoice> choices = GetCardChoices(category, usesById.Values, assignedIds);
         foreach (CardChoice choice in choices)
         {
-            picker.AddItem(choice.Label);
+            if (choice.Icon is Texture2D icon)
+                picker.AddIconItem(icon, choice.Label);
+            else
+                picker.AddItem(choice.Label);
             picker.SetItemMetadata(picker.ItemCount - 1, choice.Value);
         }
         var add = new Button
@@ -439,8 +458,9 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         var seenUris = new HashSet<string>(StringComparer.Ordinal);
         foreach (string uri in _builtinMetadata.Keys.OrderBy(value => value, StringComparer.Ordinal))
         {
-            if (IsAvailableCardInCategory(uri, category) && seenUris.Add(uri))
-                choices.Add(new CardChoice($"behavior:{uri}", GetCardDisplayName(uri)));
+            JsonObject? metadata = GetBehaviorMetadata(uri);
+            if (IsCardInCategory(metadata, uri, category, excludeHidden: true) && seenUris.Add(uri))
+                choices.Add(new CardChoice($"behavior:{uri}", GetCardDisplayName(uri, metadata), GetCardIcon(metadata)));
         }
 
         JsonObject? database = _document.BehaviorDatabase;
@@ -451,8 +471,11 @@ public sealed partial class LegacyPanelCanvasWindow : Window
             {
                 string behaviorId = LegacySaveDocument.ReadString(behaviorIds[index]);
                 string uri = $"embedded:{behaviorId}";
-                if (behaviorId.Length > 0 && IsAvailableCardInCategory(uri, category) && seenUris.Add(uri))
-                    choices.Add(new CardChoice($"behavior:{uri}", GetCardDisplayName(uri)));
+                JsonObject? metadata = behaviorId.Length > 0 ? GetBehaviorMetadata(uri) : null;
+                if (behaviorId.Length > 0
+                    && IsCardInCategory(metadata, uri, category, excludeHidden: true)
+                    && seenUris.Add(uri))
+                    choices.Add(new CardChoice($"behavior:{uri}", GetCardDisplayName(uri, metadata), GetCardIcon(metadata)));
             }
         }
 
@@ -460,10 +483,11 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         {
             string id = LegacySaveDocument.ReadString(use["id"]);
             string uri = LegacySaveDocument.ReadString(use["behaviorUri"]);
+            JsonObject? metadata = uri.Length > 0 ? GetBehaviorMetadata(uri) : null;
             if (id.Length == 0 || id == DefaultBrainId || uri == "builtin:Default Behavior"
-                || assignedIds.Contains(id) || !IsCardInCategory(uri, category))
+                || assignedIds.Contains(id) || !IsCardInCategory(metadata, uri, category, excludeHidden: false))
                 continue;
-            choices.Add(new CardChoice($"use:{id}", $"{GetCardDisplayName(uri)} (move)"));
+            choices.Add(new CardChoice($"use:{id}", $"{GetCardDisplayName(uri, metadata)} (move)", GetCardIcon(metadata)));
         }
         return choices;
     }
@@ -1074,8 +1098,10 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         => IsCardInCategory(uri, category, excludeHidden: true);
 
     private bool IsCardInCategory(string uri, string category, bool excludeHidden)
+        => IsCardInCategory(GetBehaviorMetadata(uri), uri, category, excludeHidden);
+
+    private static bool IsCardInCategory(JsonObject? metadata, string uri, string category, bool excludeHidden)
     {
-        JsonObject? metadata = GetBehaviorMetadata(uri);
         if (metadata is null)
             return uri.StartsWith("embedded:", StringComparison.Ordinal) && category == CustomCategory;
         if (metadata["cardSystemCardData"] is not JsonObject cardData
@@ -1097,9 +1123,18 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         return HasCustomCategory(cardData);
     }
 
-    private string GetCardDisplayName(string uri)
+    private static Texture2D? GetCardIcon(JsonObject? metadata)
     {
-        string title = GetCardTitle(uri);
+        JsonObject? cardData = metadata?["cardSystemCardData"] as JsonObject;
+        return LegacyBehaviorImages.LoadCardIcon(LegacySaveDocument.ReadString(cardData?["imageResourcePath"]));
+    }
+
+    private string GetCardDisplayName(string uri)
+        => GetCardDisplayName(uri, GetBehaviorMetadata(uri));
+
+    private string GetCardDisplayName(string uri, JsonObject? metadata)
+    {
+        string title = LegacySaveDocument.ReadString((metadata?["cardSystemCardData"] as JsonObject)?["title"], uri);
         if (title.Length > 0 && title != uri)
             return title;
         if (uri.StartsWith("builtin:", StringComparison.Ordinal))

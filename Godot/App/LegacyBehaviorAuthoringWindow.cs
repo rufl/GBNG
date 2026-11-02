@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using GBNG.Assets;
 using GBNG.Behaviors;
 using GBNG.Domain;
 using GBNG.World;
@@ -36,6 +37,8 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
     private readonly LineEdit _metadataTitle = new();
     private readonly LineEdit _metadataCategories = new();
     private readonly TextEdit _metadataDescription = new();
+    private readonly LineEdit _metadataImagePath = new();
+    private readonly TextureRect _metadataImagePreview = new();
     private readonly Button _applyCardMetadataButton = new();
     private readonly Dictionary<string, string> _builtinSources = new(StringComparer.Ordinal);
     private bool _refreshing;
@@ -239,6 +242,17 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
         _metadataCategories.Name = "CardMetadataCategories";
         _metadataCategories.PlaceholderText = "Custom";
         _metadataEditor.AddChild(_metadataCategories);
+        _metadataEditor.AddChild(new Label { Text = "Image resource path" });
+        _metadataImagePath.Name = "CardMetadataImagePath";
+        _metadataImagePath.PlaceholderText = "BuiltinAssets/CardImages/placeholder";
+        _metadataImagePath.TextChanged += UpdateCardImagePreview;
+        _metadataEditor.AddChild(_metadataImagePath);
+        _metadataImagePreview.Name = "CardMetadataImagePreview";
+        _metadataImagePreview.CustomMinimumSize = new Vector2(0f, 72f);
+        _metadataImagePreview.ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize;
+        _metadataImagePreview.StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered;
+        _metadataImagePreview.Visible = false;
+        _metadataEditor.AddChild(_metadataImagePreview);
         _metadataEditor.AddChild(new Label { Text = "Description" });
         _metadataDescription.Name = "CardMetadataDescription";
         _metadataDescription.CustomMinimumSize = new Vector2(0f, 56f);
@@ -410,6 +424,8 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
             _metadataCategories.Text = "";
             _metadataCategories.Visible = true;
             _metadataDescription.Text = "";
+            _metadataImagePath.Text = "";
+            UpdateCardImagePreview("");
         }
         bool hasSource = embeddedBehavior is not null
             || (_selectedUri.StartsWith("builtin:", StringComparison.Ordinal) && _builtinSources.ContainsKey(_selectedUri));
@@ -510,7 +526,14 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
             : "";
         _metadataCategories.Visible = cardData is null || LegacySaveDocument.ReadBool(cardData["isCard"], true);
         _metadataDescription.Text = LegacySaveDocument.ReadString(cardData?["description"]);
+        _metadataImagePath.Text = LegacySaveDocument.ReadString(cardData?["imageResourcePath"]);
+        UpdateCardImagePreview(_metadataImagePath.Text);
         return true;
+    }
+    private void UpdateCardImagePreview(string imageResourcePath)
+    {
+        _metadataImagePreview.Texture = LegacyBehaviorImages.LoadCardIcon(imageResourcePath);
+        _metadataImagePreview.Visible = _metadataImagePreview.Texture is not null;
     }
 
     private void ApplyCardMetadata()
@@ -557,6 +580,7 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
         }
         cardData["title"] = _metadataTitle.Text;
         cardData["description"] = _metadataDescription.Text;
+        cardData["imageResourcePath"] = _metadataImagePath.Text;
         if (LegacySaveDocument.ReadBool(cardData["isCard"], true))
         {
             var categories = new JsonArray();

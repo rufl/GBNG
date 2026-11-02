@@ -35,6 +35,8 @@ The canvas duplicates panels with fresh panel and card-use IDs, preserved proper
 
 Assigned cards can move up or down within their deck; reordering persists in the .voos deck list without changing card-use IDs or properties. Card pickers exclude built-in and embedded definitions marked `hidden`; existing hidden uses remain visible and movable between compatible decks.
 
+Legacy card icons resolve from `Assets/Resources/BuiltinAssets/CardImages` and appear in deck choices and assigned-card rows. Embedded card metadata editing previews and persists `imageResourcePath`; missing icon assets use the legacy placeholder.
+
 ## Prerequisites
 
 * [Unity Editor 6000.6.6f1](https://unity.com/releases/editor/whats-new/6000.6.6f1). This fork is pinned to that editor release.
