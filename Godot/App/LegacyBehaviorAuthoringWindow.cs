@@ -652,6 +652,14 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
                     picker.Color = Colors.White;
                 }
                 return picker;
+            case "Sound":
+                return CreateSojoPicker("SoundEffect", stringValue);
+            case "ParticleEffect":
+                return CreateSojoPicker("ParticleEffect", stringValue);
+            case "Image":
+                return CreateSojoPicker("Image", stringValue);
+            case "Prefab":
+                return CreateSojoPicker("ActorPrefab", stringValue);
             case "CardDeck":
                 return CreateCardDeckEditor(definition, value);
             case "Actor":
@@ -717,6 +725,28 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
             AddPickerOption(picker, $"Actor · {actor.DisplayName} · {actor.Name}", actor.Name, selectedValue);
 
         AddUnknownPickerOption(picker, selectedValue);
+        return picker;
+    }
+
+    private OptionButton CreateSojoPicker(string contentType, string selectedId)
+    {
+        var picker = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        AddPickerOption(picker, "(none)", "", selectedId);
+        if (_document.Root["sojoDatabase"] is JsonObject database && database["sojos"] is JsonArray sojos)
+        {
+            foreach (JsonNode? node in sojos)
+            {
+                if (node is not JsonObject sojo
+                    || LegacySaveDocument.ReadString(sojo["contentType"]) != contentType)
+                    continue;
+                string id = LegacySaveDocument.ReadString(sojo["id"]);
+                if (id.Length == 0)
+                    continue;
+                string label = LegacySaveDocument.ReadString(sojo["name"], id);
+                AddPickerOption(picker, label, id, selectedId);
+            }
+        }
+        AddUnknownPickerOption(picker, selectedId);
         return picker;
     }
 
