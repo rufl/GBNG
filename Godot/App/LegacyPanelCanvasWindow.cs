@@ -650,10 +650,13 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         string uri = _panelPicker.GetItemMetadata(_panelPicker.Selected).AsString();
         var addedUseIds = new List<string>();
         JsonArray? targetUses = null;
+        string originalBrainId = _actor.BrainName;
+        JsonObject? originalBrain = _brain;
+        bool previousLayoutDirty = _layoutDirty;
         try
         {
             JsonObject? panelData = GetBehaviorMetadata(uri)?["cardSystemPanelData"] as JsonObject;
-            if (!LegacySaveDocument.ReadBool(panelData?["isPanel"]) || LegacySaveDocument.ReadBool(panelData?["hidden"]))
+            if (!LegacySaveDocument.ReadBool(panelData?["isPanel"]) || IsHiddenPanel(panelData))
                 throw new InvalidDataException("The selected behavior is not an available built-in panel.");
 
             JsonObject brain = EnsureWritableBrain();
@@ -702,9 +705,27 @@ public sealed partial class LegacyPanelCanvasWindow : Window
             {
                 for (int index = addedUseIds.Count - 1; index >= 0; index--)
                     RemoveBehaviorUse(targetUses, addedUseIds[index]);
-                if (addedUseIds.Count > 0)
-                    _onChanged();
             }
+            bool brainWasCloned = originalBrainId == DefaultBrainId && _actor.BrainName != originalBrainId;
+            if (brainWasCloned)
+            {
+                if (_document.BehaviorDatabase is JsonObject database
+                    && database["brainIds"] is JsonArray brainIds
+                    && database["brains"] is JsonArray brains)
+                {
+                    int cloneIndex = FindStringIndex(brainIds, _actor.BrainName);
+                    if (cloneIndex >= 0 && cloneIndex < brains.Count)
+                    {
+                        brainIds.RemoveAt(cloneIndex);
+                        brains.RemoveAt(cloneIndex);
+                    }
+                }
+                _actor.Data["brainName"] = originalBrainId;
+                _brain = originalBrain;
+            }
+            if (addedUseIds.Count > 0 || brainWasCloned)
+                _onChanged();
+            _layoutDirty = previousLayoutDirty;
             _status.Text = $"Could not add panel: {exception.Message}";
         }
     }
@@ -1231,7 +1252,7 @@ public sealed partial class LegacyPanelCanvasWindow : Window
             .OrderBy(item => LegacySaveDocument.ReadString((item.Value?["cardSystemPanelData"] as JsonObject)?["title"], item.Key), StringComparer.OrdinalIgnoreCase))
         {
             JsonObject? panelData = entry.Value?["cardSystemPanelData"] as JsonObject;
-            if (!LegacySaveDocument.ReadBool(panelData?["isPanel"]) || LegacySaveDocument.ReadBool(panelData?["hidden"]))
+            if (!LegacySaveDocument.ReadBool(panelData?["isPanel"]) || IsHiddenPanel(panelData))
                 continue;
             string title = LegacySaveDocument.ReadString(panelData?["title"], entry.Key);
             _panelPicker.AddItem(title);
@@ -1240,6 +1261,18 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         _panelPicker.Disabled = _panelPicker.ItemCount == 0;
         if (_panelPicker.ItemCount > 0)
             _panelPicker.Select(0);
+    }
+
+    private static bool IsHiddenPanel(JsonObject? panelData)
+    {
+        JsonNode? hiddenNode = panelData?["hidden"];
+        if (hiddenNode is null)
+            return false;
+        if (hiddenNode is JsonValue value && value.TryGetValue(out bool hidden))
+            return hidden;
+        if (bool.TryParse(LegacySaveDocument.ReadString(hiddenNode), out bool legacyHidden))
+            return legacyHidden;
+        throw new InvalidDataException("Panel hidden metadata must be a boolean.");
     }
 
     private JsonObject? GetBehaviorMetadata(string uri)

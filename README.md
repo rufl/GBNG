@@ -29,6 +29,8 @@ Bundled examples are read-only project resources; use **Save as…** to create a
 
 The Custom panel creates embedded cards, returns Custom-category cards from decks without deleting their actor uses, and removes card uses while retaining reusable embedded behavior data.
 
+The visual panel canvas also adds visible built-in panels with their legacy default card uses; hidden panels remain excluded from the library.
+
 ## Prerequisites
 
 * [Unity Editor 6000.6.6f1](https://unity.com/releases/editor/whats-new/6000.6.6f1). This fork is pinned to that editor release.
