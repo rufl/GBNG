@@ -82,14 +82,17 @@ public sealed class LegacySaveDocument
         }
     }
 
-    public LegacyActorData AddActor(JsonObject data)
+    public LegacyActorData AddActor(JsonObject data) => InsertActor(data, _actors.Count);
+
+    public LegacyActorData InsertActor(JsonObject data, int index)
     {
         var actor = new LegacyActorData(data);
         if (string.IsNullOrWhiteSpace(actor.Name) || _actors.Any(existing => existing.Name == actor.Name))
             throw new InvalidDataException($"Cannot add actor with missing or duplicate name '{actor.Name}'.");
 
-        ((JsonArray)EngineState["actors"]!).Add(data);
-        _actors.Add(actor);
+        int insertIndex = Math.Clamp(index, 0, _actors.Count);
+        ((JsonArray)EngineState["actors"]!).Insert(insertIndex, data);
+        _actors.Insert(insertIndex, actor);
         return actor;
     }
 

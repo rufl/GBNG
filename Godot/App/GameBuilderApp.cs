@@ -51,6 +51,16 @@ public partial class GameBuilderApp : Node3D
     private CheckBox _gravityField = null!;
     private CheckBox _playerField = null!;
     private OptionButton _brainField = null!;
+    private const int MaxHistoryItems = 50;
+    private readonly List<HistoryEntry> _history = new();
+    private int _historyPosition;
+    private bool _applyingHistory;
+    private (string ActorName, string Property, string Value)? _pendingTextEdit;
+    private Button _undoButton = null!;
+    private Button _redoButton = null!;
+    private sealed record HistoryEntry(string Label, Action Undo, Action Redo);
+    private sealed record ActorDeletionSnapshot(string Name, string DisplayName, string ActorJson, int Index, string[] ChildNames);
+    private readonly record struct ActorMotionSnapshot(Transform3D Transform, Vector3 Velocity, Vector3 AngularVelocity);
 
 
 
@@ -137,12 +147,24 @@ public partial class GameBuilderApp : Node3D
             _lookAxes += new Vector2(-motion.Relative.X * 0.004f, -motion.Relative.Y * 0.004f);
             UpdateOrbitCamera();
         }
-        else if (@event is InputEventKey key && key.Pressed && !key.Echo && key.Keycode == Key.Escape)
+        else if (@event is InputEventKey key && key.Pressed && !key.Echo)
         {
-            if (_playMode)
-                SetPlayMode(false);
-            else
-                Input.MouseMode = Input.MouseModeEnum.Visible;
+            Control? focusedControl = GetViewport().GuiGetFocusOwner();
+            bool editingText = focusedControl is LineEdit or TextEdit;
+            if (!_playMode && !editingText && (key.CtrlPressed || key.MetaPressed))
+            {
+                if (key.Keycode == Key.Y || (key.Keycode == Key.Z && key.ShiftPressed))
+                    RedoEdit();
+                else if (key.Keycode == Key.Z)
+                    UndoEdit();
+            }
+            else if (key.Keycode == Key.Escape)
+            {
+                if (_playMode)
+                    SetPlayMode(false);
+                else
+                    Input.MouseMode = Input.MouseModeEnum.Visible;
+            }
         }
     }
 
@@ -301,6 +323,12 @@ public partial class GameBuilderApp : Node3D
         _playButton.Pressed += () => SetPlayMode(!_playMode);
         toolbar.AddChild(_playButton);
         AddToolbarButton(toolbar, "Reset", ResetActors);
+        _undoButton = new Button { Text = "Undo", CustomMinimumSize = new Vector2(70f, 36f), Disabled = true };
+        _undoButton.Pressed += UndoEdit;
+        toolbar.AddChild(_undoButton);
+        _redoButton = new Button { Text = "Redo", CustomMinimumSize = new Vector2(70f, 36f), Disabled = true };
+        _redoButton.Pressed += RedoEdit;
+        toolbar.AddChild(_redoButton);
 
         var body = new HBoxContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill };
         layout.AddChild(body);
@@ -359,11 +387,15 @@ public partial class GameBuilderApp : Node3D
         inspector.AddChild(CreateLabel("Display name", 14));
         _displayNameField = new LineEdit();
         _displayNameField.TextChanged += UpdateSelectedDisplayName;
+        _displayNameField.FocusEntered += () => BeginTextEdit("displayName");
+        _displayNameField.FocusExited += EndTextEdit;
         inspector.AddChild(_displayNameField);
         _inspectorInputs.Add(_displayNameField);
         inspector.AddChild(CreateLabel("Description", 14));
         _descriptionField = new TextEdit { CustomMinimumSize = new Vector2(0f, 74f) };
         _descriptionField.TextChanged += UpdateSelectedDescription;
+        _descriptionField.FocusEntered += () => BeginTextEdit("description");
+        _descriptionField.FocusExited += EndTextEdit;
         inspector.AddChild(_descriptionField);
         _inspectorInputs.Add(_descriptionField);
         inspector.AddChild(CreateLabel("World position", 14));
@@ -515,60 +547,165 @@ public partial class GameBuilderApp : Node3D
         if (_updatingInspector || _playMode || _selectedActor is null || _document?.BehaviorDatabase is null)
             return;
         string brainName = _brainField.GetItemMetadata((int)index).AsString();
-        if (brainName.Length > 0)
-            _selectedActor.State.WriteString("brainName", brainName);
+        string actorName = _selectedActor.LegacyName;
+        string oldBrain = _selectedActor.State.BrainName;
+        if (brainName.Length == 0 || oldBrain == brainName)
+            return;
+        SetActorStringProperty(actorName, "brainName", brainName);
+        RecordHistory($"Assign brain to {_selectedActor.State.DisplayName}",
+            () => SetActorStringProperty(actorName, "brainName", oldBrain),
+            () => SetActorStringProperty(actorName, "brainName", brainName));
+    }
+
+    private void BeginTextEdit(string property)
+    {
+        if (_updatingInspector || _playMode || _selectedActor is null)
+            return;
+        string value = property == "displayName" ? _selectedActor.State.DisplayName : _selectedActor.State.Description;
+        _pendingTextEdit = (_selectedActor.LegacyName, property, value);
+    }
+
+    private void EndTextEdit()
+    {
+        if (_pendingTextEdit is not { } edit)
+            return;
+        _pendingTextEdit = null;
+        WorldActorNode? actor = FindActor(edit.ActorName);
+        if (actor is null)
+            return;
+        string newValue = edit.Property == "displayName" ? actor.State.DisplayName : actor.State.Description;
+        if (edit.Value == newValue)
+            return;
+        RecordHistory($"Edit {edit.Property} for {actor.State.DisplayName}",
+            () => SetActorStringProperty(edit.ActorName, edit.Property, edit.Value),
+            () => SetActorStringProperty(edit.ActorName, edit.Property, newValue));
     }
 
     private void UpdateSelectedDisplayName(string value)
     {
         if (_updatingInspector || _playMode || _selectedActor is null)
             return;
-        _selectedActor.State.WriteString("displayName", value);
-        _selectionTitle.Text = value.Length > 0 ? value : _selectedActor.LegacyName;
-        for (int index = 0; index < _actorList.ItemCount; index++)
-        {
-            if (_actorList.GetItemMetadata(index).AsString() == _selectedActor.LegacyName)
-            {
-                _actorList.SetItemText(index, value.Length > 0 ? value : _selectedActor.LegacyName);
-                break;
-            }
-        }
+        SetActorStringProperty(_selectedActor.LegacyName, "displayName", value);
     }
 
     private void UpdateSelectedDescription()
     {
         if (!_updatingInspector && !_playMode && _selectedActor is not null)
-            _selectedActor.State.WriteString("description", _descriptionField.Text);
+            SetActorStringProperty(_selectedActor.LegacyName, "description", _descriptionField.Text);
+    }
+
+    private void SetActorStringProperty(string actorName, string property, string value)
+    {
+        WorldActorNode? actor = FindActor(actorName);
+        if (actor is null)
+            return;
+        actor.State.WriteString(property, value);
+        if (property == "displayName")
+        {
+            string label = value.Length > 0 ? value : actor.LegacyName;
+            for (int index = 0; index < _actorList.ItemCount; index++)
+            {
+                if (_actorList.GetItemMetadata(index).AsString() == actor.LegacyName)
+                {
+                    _actorList.SetItemText(index, label);
+                    break;
+                }
+            }
+            if (_selectedActor == actor)
+                _selectionTitle.Text = label;
+        }
+        if (_selectedActor != actor)
+            return;
+        _updatingInspector = true;
+        if (property == "displayName" && _displayNameField.Text != value)
+            _displayNameField.Text = value;
+        else if (property == "description" && _descriptionField.Text != value)
+            _descriptionField.Text = value;
+        else if (property == "brainName")
+            RefreshBrainChoices();
+        _updatingInspector = false;
     }
 
     private void UpdateSelectedScale(int changedAxis)
     {
         if (_updatingInspector || _playMode || _selectedActor is null)
             return;
-        Vector3 scale = _selectedActor.Scale;
-        scale[changedAxis] = (float)_scaleFields[changedAxis].Value;
-        _selectedActor.Scale = scale;
-        _selectedActor.State.SetScale(scale);
+        string actorName = _selectedActor.LegacyName;
+        Vector3 oldScale = _selectedActor.Scale;
+        Vector3 newScale = oldScale;
+        newScale[changedAxis] = (float)_scaleFields[changedAxis].Value;
+        if (oldScale == newScale)
+            return;
+        SetActorScale(actorName, newScale);
+        RecordHistory($"Scale {_selectedActor.State.DisplayName}",
+            () => SetActorScale(actorName, oldScale),
+            () => SetActorScale(actorName, newScale));
+    }
+
+    private void SetActorScale(string actorName, Vector3 scale)
+    {
+        WorldActorNode? actor = FindActor(actorName);
+        if (actor is null)
+            return;
+        actor.Scale = scale;
+        actor.State.SetScale(scale);
+        if (_selectedActor == actor)
+            SelectActor(actor);
     }
 
     private void UpdateSelectedTint()
     {
         if (_updatingInspector || _playMode || _selectedActor is null)
             return;
-        _selectedActor.SetTint(new Color(
+        string actorName = _selectedActor.LegacyName;
+        Color oldTint = _selectedActor.State.Tint;
+        Color newTint = new(
             (float)_tintFields[0].Value,
             (float)_tintFields[1].Value,
             (float)_tintFields[2].Value,
-            (float)_tintFields[3].Value));
+            (float)_tintFields[3].Value);
+        if (oldTint == newTint)
+            return;
+        SetActorTint(actorName, newTint);
+        RecordHistory($"Tint {_selectedActor.State.DisplayName}",
+            () => SetActorTint(actorName, oldTint),
+            () => SetActorTint(actorName, newTint));
+    }
+
+    private void SetActorTint(string actorName, Color tint)
+    {
+        WorldActorNode? actor = FindActor(actorName);
+        if (actor is null)
+            return;
+        actor.SetTint(tint);
+        if (_selectedActor == actor)
+            SelectActor(actor);
     }
 
     private void UpdateSelectedBoolean(string property, bool value, bool refreshPhysics = false)
     {
         if (_updatingInspector || _playMode || _selectedActor is null)
             return;
-        _selectedActor.State.WriteBool(property, value);
+        string actorName = _selectedActor.LegacyName;
+        bool oldValue = LegacySaveDocument.ReadBool(_selectedActor.State.Data[property], property == "isSolid");
+        if (oldValue == value)
+            return;
+        SetActorBoolean(actorName, property, value, refreshPhysics);
+        RecordHistory($"Set {property} on {_selectedActor.State.DisplayName}",
+            () => SetActorBoolean(actorName, property, oldValue, refreshPhysics),
+            () => SetActorBoolean(actorName, property, value, refreshPhysics));
+    }
+
+    private void SetActorBoolean(string actorName, string property, bool value, bool refreshPhysics)
+    {
+        WorldActorNode? actor = FindActor(actorName);
+        if (actor is null)
+            return;
+        actor.State.WriteBool(property, value);
         if (refreshPhysics)
-            _selectedActor.ApplyLegacyPhysicsSettings();
+            actor.ApplyLegacyPhysicsSettings();
+        if (_selectedActor == actor)
+            SelectActor(actor);
     }
     private void ShowWelcome()
     {
@@ -585,6 +722,7 @@ public partial class GameBuilderApp : Node3D
             LegacySaveDocument document = LegacySaveDocument.Load(path);
             ClearWorld();
             _document = document;
+            ClearHistory();
             LegacyTerrainData? terrainData = LegacyTerrainData.Decode(document.GridState);
             if (terrainData is not null)
             {
@@ -712,7 +850,7 @@ public partial class GameBuilderApp : Node3D
 
     private void AddActor()
     {
-        if (_document is null || _assetPicker.Selected < 0)
+        if (_document is null || _assetPicker.Selected < 0 || _playMode)
             return;
 
         string uri = (string)_assetPicker.GetItemMetadata(_assetPicker.Selected);
@@ -753,33 +891,110 @@ public partial class GameBuilderApp : Node3D
             ["velocity"] = new JsonObject { ["x"] = 0f, ["y"] = 0f, ["z"] = 0f },
             ["angularVelocity"] = new JsonObject { ["x"] = 0f, ["y"] = 0f, ["z"] = 0f }
         };
-        LegacyActorData state = _document.AddActor(actorData);
-        _catalog.TryGet(uri, out RenderableEntry? renderable);
-        var actor = new WorldActorNode();
-        actor.Initialize(state, renderable);
-        actor.SetPlayMode(_playMode);
-        _world.AddChild(actor);
-        _actors.Add(actor);
+        int index = _document.Actors.Count;
+        string actorJson = actorData.ToJsonString();
+        LegacyActorData state = _document.InsertActor(actorData, index);
+        WorldActorNode actor = CreateActorNode(state, index);
         RefreshActorList();
         SelectActor(actor);
+        RecordHistory($"Add {state.DisplayName}",
+            () => RemoveActorFromWorld(name),
+            () => RestoreActorFromJson(actorJson, index));
     }
 
     private void RemoveSelectedActor()
     {
-        if (_document is null || _selectedActor is null)
+        if (_document is null || _selectedActor is null || _playMode)
             return;
         if (_selectedActor.LegacyName.StartsWith("builtin:", StringComparison.Ordinal))
         {
             ShowError($"Built-in actors such as {_selectedActor.State.DisplayName} cannot be deleted.");
             return;
         }
-        string name = _selectedActor.LegacyName;
-        _document.RemoveActor(name);
-        _actors.Remove(_selectedActor);
-        _selectedActor.QueueFree();
-        _selectedActor = null;
+        ActorDeletionSnapshot snapshot = CaptureActorDeletion(_selectedActor);
+        if (!RemoveActorFromWorld(snapshot.Name))
+            return;
+        RecordHistory($"Delete {snapshot.DisplayName}",
+            () => RestoreDeletedActor(snapshot),
+            () => RemoveActorFromWorld(snapshot.Name));
+    }
+    private ActorDeletionSnapshot CaptureActorDeletion(WorldActorNode actor)
+    {
+        actor.SaveTransform();
+        return new ActorDeletionSnapshot(
+            actor.LegacyName,
+            actor.State.DisplayName,
+            actor.State.Data.ToJsonString(),
+            _actors.IndexOf(actor),
+            actor.GetChildren().OfType<WorldActorNode>().Select(child => child.LegacyName).ToArray());
+    }
+
+    private bool RemoveActorFromWorld(string actorName)
+    {
+        if (_document is null)
+            return false;
+        WorldActorNode? actor = _actors.FirstOrDefault(candidate => candidate.LegacyName == actorName);
+        if (actor is null || actor.LegacyName.StartsWith("builtin:", StringComparison.Ordinal))
+            return false;
+        bool wasSelected = _selectedActor == actor;
+        if (!_document.RemoveActor(actorName))
+            return false;
+        foreach (WorldActorNode child in actor.GetChildren().OfType<WorldActorNode>().ToArray())
+        {
+            Transform3D globalTransform = child.GlobalTransform;
+            child.Reparent(_world, keepGlobalTransform: false);
+            child.GlobalTransform = globalTransform;
+        }
+        _actors.Remove(actor);
+        actor.QueueFree();
         RefreshActorList();
-        SelectActor(_actors.FirstOrDefault());
+        if (wasSelected)
+            SelectActor(_actors.FirstOrDefault());
+        return true;
+    }
+
+    private WorldActorNode RestoreActorFromJson(string actorJson, int index)
+    {
+        if (_document is null || JsonNode.Parse(actorJson) is not JsonObject actorData)
+            throw new InvalidDataException("The editor history contains an invalid actor snapshot.");
+        LegacyActorData state = _document.InsertActor(actorData, index);
+        WorldActorNode actor = CreateActorNode(state, index);
+        RefreshActorList();
+        SelectActor(actor);
+        return actor;
+    }
+
+    private void RestoreDeletedActor(ActorDeletionSnapshot snapshot)
+    {
+        WorldActorNode actor = RestoreActorFromJson(snapshot.ActorJson, snapshot.Index);
+        foreach (string childName in snapshot.ChildNames)
+        {
+            WorldActorNode? child = _actors.FirstOrDefault(candidate => candidate.LegacyName == childName);
+            if (child is null)
+                continue;
+            Transform3D globalTransform = child.GlobalTransform;
+            child.State.SetTransformParent(actor.LegacyName);
+            child.Reparent(actor, keepGlobalTransform: false);
+            child.GlobalTransform = globalTransform;
+        }
+    }
+
+    private WorldActorNode CreateActorNode(LegacyActorData state, int index)
+    {
+        _catalog.TryGet(state.RenderableUri, out RenderableEntry? renderable);
+        var actor = new WorldActorNode();
+        actor.Initialize(state, renderable);
+        actor.SetPlayMode(_playMode);
+        _world.AddChild(actor);
+        _actors.Insert(Math.Clamp(index, 0, _actors.Count), actor);
+        WorldActorNode? parent = _actors.FirstOrDefault(candidate => candidate.LegacyName == state.TransformParent);
+        if (parent is not null)
+        {
+            Transform3D globalTransform = actor.GlobalTransform;
+            actor.Reparent(parent, keepGlobalTransform: false);
+            actor.GlobalTransform = globalTransform;
+        }
+        return actor;
     }
     private void RefreshRuntimeActors()
     {
@@ -861,18 +1076,30 @@ public partial class GameBuilderApp : Node3D
     {
         if (_updatingInspector || _playMode || _selectedActor is null)
             return;
+        string actorName = _selectedActor.LegacyName;
+        Transform3D oldTransform = _selectedActor.GlobalTransform;
         Vector3 position = _selectedActor.GlobalPosition;
         position[axis] = value;
         _selectedActor.GlobalPosition = position;
+        Transform3D newTransform = _selectedActor.GlobalTransform;
+        RecordHistory($"Move {_selectedActor.State.DisplayName}",
+            () => SetActorTransform(actorName, oldTransform),
+            () => SetActorTransform(actorName, newTransform));
     }
 
     private void UpdateSelectedYaw(float degrees)
     {
         if (_updatingInspector || _playMode || _selectedActor is null)
             return;
+        string actorName = _selectedActor.LegacyName;
+        Transform3D oldTransform = _selectedActor.GlobalTransform;
         Vector3 rotation = _selectedActor.GlobalRotationDegrees;
         rotation.Y = degrees;
         _selectedActor.GlobalRotationDegrees = rotation;
+        Transform3D newTransform = _selectedActor.GlobalTransform;
+        RecordHistory($"Rotate {_selectedActor.State.DisplayName}",
+            () => SetActorTransform(actorName, oldTransform),
+            () => SetActorTransform(actorName, newTransform));
     }
 
     private void SetPlayMode(bool enabled)
@@ -891,6 +1118,7 @@ public partial class GameBuilderApp : Node3D
         _positionFields[2].Editable = !enabled && _selectedActor is not null;
         _yawField.Editable = !enabled && _selectedActor is not null;
         SetInspectorInputsEnabled(!enabled && _selectedActor is not null);
+        UpdateHistoryButtons();
         _status.Text = enabled
             ? "Play mode — WASD/arrows to move, Space to jump, Esc to return to editing."
             : "Edit mode — select an actor and change its transform.";
@@ -950,15 +1178,138 @@ public partial class GameBuilderApp : Node3D
 
     private void ResetActors()
     {
+        Dictionary<string, ActorMotionSnapshot> before = CaptureActorMotionStates();
         foreach (WorldActorNode actor in _actors)
         {
             actor.GlobalTransform = actor.State.GetWorldTransform();
             actor.LinearVelocity = actor.State.Velocity;
             actor.AngularVelocity = actor.State.AngularVelocity;
         }
+        Dictionary<string, ActorMotionSnapshot> after = CaptureActorMotionStates();
+        if (!MotionStatesEqual(before, after))
+            RecordHistory("Reset actors", () => ApplyActorMotionStates(before), () => ApplyActorMotionStates(after));
         if (_selectedActor is not null)
             SelectActor(_selectedActor);
     }
+
+    private Dictionary<string, ActorMotionSnapshot> CaptureActorMotionStates()
+    {
+        var states = new Dictionary<string, ActorMotionSnapshot>(_actors.Count, StringComparer.Ordinal);
+        foreach (WorldActorNode actor in _actors)
+            states.Add(actor.LegacyName, new ActorMotionSnapshot(actor.GlobalTransform, actor.LinearVelocity, actor.AngularVelocity));
+        return states;
+    }
+
+    private static bool MotionStatesEqual(
+        IReadOnlyDictionary<string, ActorMotionSnapshot> left,
+        IReadOnlyDictionary<string, ActorMotionSnapshot> right)
+    {
+        if (left.Count != right.Count)
+            return false;
+        foreach ((string actorName, ActorMotionSnapshot state) in left)
+        {
+            if (!right.TryGetValue(actorName, out ActorMotionSnapshot other) || state != other)
+                return false;
+        }
+        return true;
+    }
+
+    private void ApplyActorMotionStates(IReadOnlyDictionary<string, ActorMotionSnapshot> states)
+    {
+        foreach ((string actorName, ActorMotionSnapshot state) in states)
+        {
+            WorldActorNode? actor = _actors.FirstOrDefault(candidate => candidate.LegacyName == actorName);
+            if (actor is null)
+                continue;
+            actor.GlobalTransform = state.Transform;
+            actor.LinearVelocity = state.Velocity;
+            actor.AngularVelocity = state.AngularVelocity;
+        }
+        if (_selectedActor is not null)
+            SelectActor(_selectedActor);
+    }
+
+    private void SetActorTransform(string actorName, Transform3D transform)
+    {
+        WorldActorNode? actor = FindActor(actorName);
+        if (actor is null)
+            return;
+        actor.GlobalTransform = transform;
+        if (_selectedActor == actor)
+            SelectActor(actor);
+    }
+
+    private void RecordHistory(string label, Action undo, Action redo)
+    {
+        if (_applyingHistory || _playMode)
+            return;
+        if (_historyPosition < _history.Count)
+            _history.RemoveRange(_historyPosition, _history.Count - _historyPosition);
+        _history.Add(new HistoryEntry(label, undo, redo));
+        if (_history.Count > MaxHistoryItems)
+        {
+            _history.RemoveAt(0);
+            _historyPosition--;
+        }
+        _historyPosition = _history.Count;
+        UpdateHistoryButtons();
+    }
+
+    private void UndoEdit()
+    {
+        if (_playMode || _historyPosition == 0)
+            return;
+        HistoryEntry entry = _history[--_historyPosition];
+        _applyingHistory = true;
+        try
+        {
+            entry.Undo();
+        }
+        finally
+        {
+            _applyingHistory = false;
+        }
+        _status.Text = $"Undid: {entry.Label}";
+        UpdateHistoryButtons();
+    }
+
+    private void RedoEdit()
+    {
+        if (_playMode || _historyPosition >= _history.Count)
+            return;
+        HistoryEntry entry = _history[_historyPosition++];
+        _applyingHistory = true;
+        try
+        {
+            entry.Redo();
+        }
+        finally
+        {
+            _applyingHistory = false;
+        }
+        _status.Text = $"Redid: {entry.Label}";
+        UpdateHistoryButtons();
+    }
+
+    private void ClearHistory()
+    {
+        _history.Clear();
+        _historyPosition = 0;
+        _pendingTextEdit = null;
+        UpdateHistoryButtons();
+    }
+
+    private void UpdateHistoryButtons()
+    {
+        if (_undoButton is null || _redoButton is null)
+            return;
+        bool enabled = _document is not null && !_playMode;
+        _undoButton.Disabled = !enabled || _historyPosition == 0;
+        _redoButton.Disabled = !enabled || _historyPosition >= _history.Count;
+    }
+
+    private WorldActorNode? FindActor(string actorName)
+        => _actors.FirstOrDefault(actor => actor.LegacyName == actorName);
 
     private WorldActorNode? GetPlayerActor()
     {
