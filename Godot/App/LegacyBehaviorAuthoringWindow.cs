@@ -25,6 +25,7 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
     private readonly ItemList _assignedUses = new();
     private readonly OptionButton _availableBehaviors = new();
     private readonly LegacyJavaScriptCodeEdit _scriptEditor = new();
+    private readonly Label _scriptDiagnostics = new() { Name = "BehaviorScriptDiagnostics", AutowrapMode = TextServer.AutowrapMode.Word, Modulate = new Color(1f, 0.55f, 0.55f) };
     private readonly TextEdit _assignmentsEditor = new();
     private readonly Button _removeUseButton = new();
     private readonly Button _copyBehaviorButton = new();
@@ -45,6 +46,7 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
     private string _selectedUseId = "";
     private string _selectedUri = "";
     private readonly Func<string, JsonArray?> _getPropertyDefinitions;
+    private readonly Func<string, string, string?> _validateBehaviorSource;
     private readonly ScrollContainer _propertiesScroll = new();
     private readonly VBoxContainer _propertiesContainer = new();
     private readonly CheckBox _rawAssignmentsMode = new();
@@ -161,12 +163,14 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
         LegacySaveDocument document,
         LegacyActorData actor,
         Action onChanged,
-        Func<string, JsonArray?> getPropertyDefinitions)
+        Func<string, JsonArray?> getPropertyDefinitions,
+        Func<string, string, string?> validateBehaviorSource)
     {
         _document = document;
         _actor = actor;
         _onChanged = onChanged;
         _getPropertyDefinitions = getPropertyDefinitions;
+        _validateBehaviorSource = validateBehaviorSource;
         Title = $"Behavior editor — {actor.DisplayName}";
         Size = new Vector2I(1000, 700);
         CloseRequested += () => QueueFree();
@@ -285,9 +289,14 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
         _applyScriptButton.Pressed += ApplyScript;
         scriptToolbar.AddChild(_applyScriptButton);
         right.AddChild(scriptToolbar);
+        _scriptDiagnostics.Visible = false;
+        _scriptDiagnostics.CustomMinimumSize = new Vector2(0f, 24f);
+        right.AddChild(_scriptDiagnostics);
+        _scriptEditor.Name = "BehaviorJavaScript";
         _scriptEditor.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
         _scriptEditor.CustomMinimumSize = new Vector2(0f, 250f);
         _scriptEditor.Editable = false;
+        _scriptEditor.TextChanged += ClearScriptDiagnostic;
         right.AddChild(_scriptEditor);
 
         var propertiesToolbar = new HBoxContainer();
@@ -658,11 +667,28 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
             _status.Text = "The embedded behavior no longer exists.";
             return;
         }
-        behavior["javascript"] = _scriptEditor.Text;
+        string source = _scriptEditor.Text;
+        string? diagnostic = _validateBehaviorSource(_selectedUri, source);
+        if (diagnostic is not null)
+        {
+            _scriptDiagnostics.Text = diagnostic;
+            _scriptDiagnostics.Visible = true;
+            _status.Text = "JavaScript syntax error. Fix the reported line before applying.";
+            return;
+        }
+
+        ClearScriptDiagnostic();
+        behavior["javascript"] = source;
         behavior["draftJavascript"] = "";
         NotifyChanged("Applied JavaScript. Save the project to persist it.");
         RefreshAvailableBehaviors();
         RefreshAssignedUses();
+    }
+
+    private void ClearScriptDiagnostic()
+    {
+        _scriptDiagnostics.Text = "";
+        _scriptDiagnostics.Visible = false;
     }
 
     private void SetRawAssignmentsMode(bool raw)

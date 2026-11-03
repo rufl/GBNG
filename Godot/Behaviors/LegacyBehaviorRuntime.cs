@@ -16,6 +16,7 @@ public sealed partial class LegacyBehaviorRuntime : IDisposable
 {
     private static readonly Regex GuidPattern = new(@"guid:\s*([0-9a-f]{32})", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Regex ExportPattern = new(@"(?m)^\s*export\s+(?=(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z_$][\w$]*))", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex JavaScriptLineColumn = new(@"(?<line>\d+):\d+\b", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private const string BuiltinBehaviorRoot = "res://Assets/StreamingAssets/BehaviorLibrary";
     private const string ScriptingSystemsPath = "res://Assets/Prefabs/Services/ScriptingSystems.prefab";
 
@@ -151,6 +152,52 @@ public sealed partial class LegacyBehaviorRuntime : IDisposable
         ExecuteScript("globalThis.__gbPropertyDefinitionsJson = JSON.stringify(getBehaviorProperties(__gbPropertyDefinitionsUri) || []);");
         return JsonNode.Parse(GetScriptString("__gbPropertyDefinitionsJson")) as JsonArray
             ?? throw new InvalidDataException($"Behavior property definitions for '{behaviorUri}' were not an array.");
+    }
+
+    public string? ValidateBehaviorSource(string behaviorUri, string source)
+        => ValidateBehaviorSource(_engine, behaviorUri, source);
+
+    public static string? ValidateBehaviorSourceWithoutRuntime(string behaviorUri, string source)
+    {
+        using var engine = new V8ScriptEngine();
+        return ValidateBehaviorSource(engine, behaviorUri, source);
+    }
+
+    private static string? ValidateBehaviorSource(V8ScriptEngine engine, string behaviorUri, string source)
+    {
+        string wrappedSource = $"function __gbValidateBehavior() {{\n{BuildModuleBody(source)}\n}}";
+        try
+        {
+            using V8Script compiled = engine.Compile(behaviorUri, wrappedSource);
+            return null;
+        }
+        catch (ScriptEngineException exception)
+        {
+            string details = exception.ErrorDetails ?? exception.Message;
+            int line = 0;
+            string locationPrefix = behaviorUri + ":";
+            int locationStart = details.IndexOf(locationPrefix, StringComparison.Ordinal);
+            if (locationStart >= 0)
+            {
+                Match match = JavaScriptLineColumn.Match(details, locationStart + locationPrefix.Length);
+                if (match.Success && int.TryParse(match.Groups["line"].Value, out int wrappedLine))
+                {
+                    int sourceLineCount = 1;
+                    foreach (char character in source)
+                    {
+                        if (character == '\n')
+                            sourceLineCount++;
+                    }
+                    line = Math.Clamp(wrappedLine - 1, 1, sourceLineCount);
+                }
+            }
+
+            string message = exception.Message;
+            int newline = message.IndexOf('\n');
+            if (newline >= 0)
+                message = message[..newline].TrimEnd('\r');
+            return line > 0 ? $"Line {line}: {message}" : message;
+        }
     }
 
     public void Dispose() => _engine.Dispose();
@@ -434,6 +481,13 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
 
     private void RegisterModule(string uri, string source)
     {
+        SetScriptValue("__gbModuleKey", uri);
+        SetScriptValue("__gbModuleBody", BuildModuleBody(source));
+        ExecuteScript("__gbRegisterModule(__gbModuleKey, __gbModuleBody);");
+    }
+
+    private static string BuildModuleBody(string source)
+    {
         MatchCollection exports = ExportPattern.Matches(source);
         var names = new List<string>(exports.Count + 1) { "PROPS" };
         foreach (Match export in exports)
@@ -445,10 +499,7 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
 
         string body = ExportPattern.Replace(source, "");
         string exportObject = string.Join(",", names.Select(name => $"{name}: (typeof {name} === 'undefined' ? undefined : {name})"));
-        body += $"\nreturn {{{exportObject}}};\n";
-        SetScriptValue("__gbModuleKey", uri);
-        SetScriptValue("__gbModuleBody", body);
-        ExecuteScript("__gbRegisterModule(__gbModuleKey, __gbModuleBody);");
+        return body + $"\nreturn {{{exportObject}}};\n";
     }
 
     private void ConfigureBehaviorDatabase()

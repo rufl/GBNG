@@ -376,10 +376,68 @@ public partial class GameBuilderApp
     {
         int exitCode = 0;
         LegacyCardLibraryManagerWindow? manager = null;
+        LegacyBehaviorAuthoringWindow? behaviorEditor = null;
         try
         {
+            LegacySaveDocument document = _document ?? throw new InvalidOperationException("The code-editor smoke project did not load.");
+            behaviorEditor = new LegacyBehaviorAuthoringWindow(
+                document,
+                document.Actors[0],
+                () => { },
+                _ => null,
+                ValidateBehaviorSourceForEditor);
+            AddChild(behaviorEditor);
+            behaviorEditor.PopupCentered(new Vector2I(1000, 700));
+            await WaitForUiFrames(2);
+            InvokeSmoke(behaviorEditor, "CreateCustomBehavior");
+            JsonObject selectedUse = (JsonObject)InvokeSmoke(behaviorEditor, "GetSelectedUse")!;
+            string behaviorUri = LegacySaveDocument.ReadString(selectedUse["behaviorUri"]);
+            if (!behaviorUri.StartsWith("embedded:", StringComparison.Ordinal))
+                throw new InvalidOperationException("The behavior editor smoke did not create an embedded behavior.");
+            string behaviorValidationId = behaviorUri["embedded:".Length..];
+            string originalSource = LegacySaveDocument.ReadString(FindEmbeddedBehaviorSmoke(behaviorValidationId)?["javascript"]);
+            var behaviorCode = (LegacyJavaScriptCodeEdit)behaviorEditor.FindChild("BehaviorJavaScript", true, false);
+            behaviorCode.Text = "export function onCollision(msg) {\n  const broken = ;\n}";
+            InvokeSmoke(behaviorEditor, "ApplyScript");
+            var diagnostics = (Label)behaviorEditor.FindChild("BehaviorScriptDiagnostics", true, false);
+            if (!diagnostics.Visible || !diagnostics.Text.Contains("Line 2:", StringComparison.Ordinal))
+                throw new InvalidOperationException($"Invalid JavaScript did not produce a line-numbered editor diagnostic: '{diagnostics.Text}'.");
+            if (LegacySaveDocument.ReadString(FindEmbeddedBehaviorSmoke(behaviorValidationId)?["javascript"]) != originalSource)
+                throw new InvalidOperationException("Invalid JavaScript replaced the last valid embedded behavior source.");
+            await WaitForUiFrames(1);
+            string diagnosticScreenshot = ProjectSettings.GlobalizePath("res://.godot/behavior-diagnostics-smoke.png");
+            if (GetViewport().GetTexture().GetImage().SavePng(diagnosticScreenshot) != Error.Ok)
+                throw new InvalidOperationException("Could not save the line-numbered JavaScript diagnostic screenshot.");
+
+            const string validBehaviorSource = "export function onCollision(msg) { broadcast('EditorDiagnosticsSmoke'); }";
+            int textLengthBeforeEdit = behaviorCode.Text.Length;
+            behaviorCode.GrabFocus();
+            Input.ParseInputEvent(new InputEventKey
+            {
+                Keycode = Key.X,
+                Unicode = 'x',
+                Pressed = true
+            });
+            await WaitForUiFrames(1);
+            Input.ParseInputEvent(new InputEventKey
+            {
+                Keycode = Key.X,
+                Unicode = 'x',
+                Pressed = false
+            });
+            if (behaviorCode.Text.Length != textLengthBeforeEdit + 1 || diagnostics.Visible || diagnostics.Text.Length != 0)
+                throw new InvalidOperationException("Typing in the JavaScript editor did not update the source and clear its stale diagnostic.");
+
+            behaviorCode.Text = validBehaviorSource;
+            InvokeSmoke(behaviorEditor, "ApplyScript");
+            if (LegacySaveDocument.ReadString(FindEmbeddedBehaviorSmoke(behaviorValidationId)?["javascript"]) != validBehaviorSource)
+                throw new InvalidOperationException("Valid JavaScript was not applied after fixing the syntax error.");
+            behaviorEditor.QueueFree();
+            behaviorEditor = null;
+            await WaitForUiFrames(1);
+
             manager = new LegacyCardLibraryManagerWindow(
-                _document ?? throw new InvalidOperationException("The code-editor smoke project did not load."),
+                document,
                 () => { });
             AddChild(manager);
             manager.PopupCentered(new Vector2I(1100, 680));
@@ -440,7 +498,7 @@ public partial class GameBuilderApp
             string screenshot = ProjectSettings.GlobalizePath("res://.godot/code-editor-smoke.png");
             if (GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
                 throw new InvalidOperationException("Could not save the native code-editor screenshot.");
-            GD.Print($"CODE_EDITOR_SMOKE_OK completion=myself applied=true screenshot={screenshot}");
+            GD.Print($"CODE_EDITOR_SMOKE_OK completion=myself syntaxDiagnostics=true applied=true diagnosticsScreenshot={diagnosticScreenshot} screenshot={screenshot}");
         }
         catch (Exception exception)
         {
@@ -450,6 +508,7 @@ public partial class GameBuilderApp
         finally
         {
             manager?.QueueFree();
+            behaviorEditor?.QueueFree();
             await WaitForUiFrames(1);
             GetTree().Quit(exitCode);
         }

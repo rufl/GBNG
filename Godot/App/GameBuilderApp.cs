@@ -729,9 +729,18 @@ public partial class GameBuilderApp : Node3D
             _document,
             _selectedActor.State,
             OnBehaviorDataChanged,
-            uri => _behaviorRuntimeError is null ? _behaviorRuntime?.GetBehaviorPropertyDefinitions(uri) : null);
+            uri => _behaviorRuntimeError is null ? _behaviorRuntime?.GetBehaviorPropertyDefinitions(uri) : null,
+            ValidateBehaviorSourceForEditor);
         AddChild(window);
         window.PopupCentered();
+    }
+
+    private string? ValidateBehaviorSourceForEditor(string behaviorUri, string source)
+    {
+        LegacyBehaviorRuntime? runtime = _behaviorRuntime;
+        return runtime is null
+            ? LegacyBehaviorRuntime.ValidateBehaviorSourceWithoutRuntime(behaviorUri, source)
+            : runtime.ValidateBehaviorSource(behaviorUri, source);
     }
     private void OpenTerrainEditor()
     {
