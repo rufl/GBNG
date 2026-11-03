@@ -77,14 +77,14 @@ The catalog lists license evidence and marks files without a located notice as u
 # Optional integrations
 
 The `unity` branch runs without Unity Asset Store plugins. Built-in 2D drawing,
-local OBJ model loading, the built-in and saved actor libraries, and in-app
+local OBJ/FBX model loading, the built-in and saved actor libraries, and in-app
 project saving are part of the baseline. Optional integrations below may
 require separate plugins, accounts, or API keys.
 
-The free 2D renderer uses the project's bundled Assailand TrueType font for
-script-generated text. It matches the rest of the UI's typeface without the
-paid Shaper package; rasterization and glyph metrics still differ from Shaper's
-original bitmap atlas.
+The free 2D renderer now uses the original ProggyCleanTT BMFont metrics and
+bitmap atlas from the archived release; those font assets are distributed under
+the font's MIT license. The in-tree Unity GL renderer reads the BMFont XML
+directly, with no Shaper plugin dependency.
 
 ## Common instructions
 
@@ -100,24 +100,50 @@ original bitmap atlas.
   * Restart Unity
 
 
-## Importing a local OBJ model
+## Importing local 3D models
 
 1. Select an actor in Build mode.
 1. Open the in-game command console and run:
 
    ```text
-   renderuri localfbx:C:/path/to/model.obj
+   renderuri localfbx:C:/path/to/model.fbx
    ```
 
-   Use an absolute path. Paths containing spaces may be quoted.
-1. Wavefront OBJ geometry and adjacent MTL files are supported. MTL diffuse
-   color/alpha and `map_Kd` textures load from files in the OBJ directory or
-   its subdirectories. The OBJ, MTL, and texture files remain external; they
-   are not embedded in a saved project.
+   Use an absolute path. Paths containing spaces may be quoted. OBJ files use
+   the in-tree Wavefront loader; MTL diffuse color/alpha and `map_Kd` textures
+   load from the OBJ directory or its subdirectories.
+1. FBX and other Assimp-supported model files use the pinned
+   `com.donghok.meshimporter` package (UnityMeshImporter and AssimpNet are MIT;
+   Assimp is BSD). It imports static/skinned mesh hierarchies, diffuse
+   materials, external diffuse textures, and legacy transform animation clips
+   without TriLib. Missing textures fall back to material color. Animation clips
+   loop from the first clip; mesh and sidecar files remain external and are not
+   embedded in a saved project.
 
-The legacy URI scheme is named `localfbx:` for save compatibility. This
-plugin-free importer supports OBJ only; FBX and animated formats still need
-TriLib.
+The full MIT/BSD notices ship with the application at
+`StreamingAssets/third_party/UnityMeshImporter-LICENSE.md`.
+
+The legacy URI scheme is named `localfbx:` for save compatibility.
+
+## Direct offline save/load
+
+The in-game console can save or load a `.voos` file by absolute path without a
+file-browser plugin:
+
+```text
+save "C:/path/to/project.voos"
+load "C:/path/to/project.voos"
+```
+
+The normal Save menu continues to store projects in Game Builder's local
+library.
+
+## Behavior code editor
+
+The built-in multiline editor works without a paid embedded-browser plugin. It
+supports code editing, read-only mode, error display, scroll restoration, and
+zoom. Monaco's syntax highlighting, completions, and system-source navigation
+are not part of this offline editor.
 
 ## Optional integrations available for free
 
@@ -189,20 +215,9 @@ the `renderuri` command above. No Poly API key or SDK setup is available.
 
 ## Optional integrations that still need plugins
 
-* Steam Workshop requires the Steam Workshop integration and `USE_STEAMWORKS`.
-  Import/export of FBX assets also requires TriLib.
+* Steam Workshop requires the Steam Workshop integration. Local model import
+  uses the free runtime importer and does not require TriLib.
 
-* [TriLib](https://assetstore.unity.com/packages/tools/modeling/trilib-model-loader-package-91777)
-  - Enables local FBX loading and animated FBX assets. OBJ import does not
-    require TriLib.
-  - Define the directive `USE_TRILIB`.
-
-* [Embedded Browser](https://assetstore.unity.com/packages/tools/gui/embedded-browser-55459)
-
-  This plugin renders HTML inside Game Builder, enabling the Monaco-based code
-  editor. Without it, the built-in plain-text code editor remains available.
-  - Define the directive `USE_ZFBROWSER`
-  - Run `bash tools/integrations/setup-browser-assets.sh`.
 
 ## Archival Build
 

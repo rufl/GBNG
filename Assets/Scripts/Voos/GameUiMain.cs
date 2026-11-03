@@ -42,7 +42,8 @@ using UnityEngine;
 
 public class GameUiMain : MonoBehaviour
 {
-  [SerializeField] Font scriptUiFont;
+  [SerializeField] Texture2D bitmapFontImage;
+  [SerializeField] TextAsset bitmapFontXml;
 
   private SimpleRichTextParser simpleRichTextParser = new SimpleRichTextParser();
   private IDraw2D draw2D;
@@ -224,7 +225,7 @@ public class GameUiMain : MonoBehaviour
 
   private void Awake()
   {
-    draw2D = new Draw2DUnityImpl(scriptUiFont);
+    draw2D = new Draw2DUnityImpl(bitmapFontXml, bitmapFontImage);
     Util.FindIfNotSet(this, ref engine);
     Util.FindIfNotSet(this, ref imageSystem);
     Util.FindIfNotSet(this, ref imageLoader);

@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -24,11 +23,17 @@ public class BasicCodeBrowser : MonoBehaviour, ICodeBrowser
   [SerializeField] TMPro.TMP_Text statusText;
   [SerializeField] TMPro.TMP_Text errorText;
   [SerializeField] GameObject errorPanel;
-
-  private List<int> lineStartPos = new List<int>();
+  private readonly List<int> lineStartPos = new List<int>();
   private string oldText = "";
   private int curLine, curCol;
+  private float defaultFontSize;
+  private float zoom;
 
+  void Start()
+  {
+    defaultFontSize = inputField.textComponent.fontSize;
+    ApplyZoom();
+  }
   void Awake()
   {
     errorPanel.gameObject.SetActive(false);
@@ -51,6 +56,11 @@ public class BasicCodeBrowser : MonoBehaviour, ICodeBrowser
 
   public void SetScrollTop(int scrollTop)
   {
+    if (inputField.verticalScrollbar == null) return;
+    float maxScroll = GetMaxScrollTop();
+    inputField.verticalScrollbar.value = maxScroll <= 0f
+      ? 1f
+      : 1f - Mathf.Clamp(scrollTop, 0f, maxScroll) / maxScroll;
   }
 
   public void SetReadOnly(bool readOnly)
@@ -63,10 +73,6 @@ public class BasicCodeBrowser : MonoBehaviour, ICodeBrowser
     callback.Invoke(true);
   }
 
-  public void AddSystemSource(string contents, string fileName)
-  {
-  }
-
   public void GetCodeAsync(System.Action<string> callback)
   {
     callback.Invoke(inputField.text);
@@ -74,7 +80,12 @@ public class BasicCodeBrowser : MonoBehaviour, ICodeBrowser
 
   public void GetScrollTopAsync(System.Action<int> callback, System.Action onError)
   {
-    callback.Invoke(0);
+    if (inputField.verticalScrollbar == null)
+    {
+      onError.Invoke();
+      return;
+    }
+    callback.Invoke(Mathf.RoundToInt((1f - inputField.verticalScrollbar.value) * GetMaxScrollTop()));
   }
 
   public void AddError(int baseOneLineNumber, string message)
@@ -91,19 +102,36 @@ public class BasicCodeBrowser : MonoBehaviour, ICodeBrowser
 
   public void ZoomIn()
   {
+    SetZoom(zoom + 1f);
   }
 
   public void ZoomOut()
   {
+    SetZoom(zoom - 1f);
   }
 
   public float GetZoom()
   {
-    return 1;
+    return zoom;
   }
 
   public void SetZoom(float newZoom)
   {
+    zoom = Mathf.Clamp(newZoom, -8f, 16f);
+    ApplyZoom();
+  }
+
+  private void ApplyZoom()
+  {
+    if (inputField != null && inputField.textComponent != null && defaultFontSize > 0f)
+    {
+      inputField.textComponent.fontSize = defaultFontSize * Mathf.Pow(1.1f, zoom);
+    }
+  }
+
+  private float GetMaxScrollTop()
+  {
+    return Mathf.Max(0f, inputField.textComponent.preferredHeight - inputField.textViewport.rect.height);
   }
 
   void Update()

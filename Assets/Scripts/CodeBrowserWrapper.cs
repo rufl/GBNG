@@ -14,16 +14,9 @@
  * limitations under the License.
  */
 
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
-// This is an abstraction layer that wraps the code browser implementations so that
-// the rest of the app can interact with it without knowing about which concrete implementation
-// is being used.
-//
-// If the USE_ZFBROWSER symbol is defined, this class will use ZFBrowser for the implementation;
-// otherwise, it uses a basic text box implementation.
+// This abstraction exposes the built-in code editor to the rest of the app.
 public class CodeBrowserWrapper : MonoBehaviour
 {
   bool initialized;
@@ -34,24 +27,9 @@ public class CodeBrowserWrapper : MonoBehaviour
   {
     Debug.Assert(basicCodeBrowser != null, "basicCodeBrowser property not set in CodeBrowserWrapper");
     initialized = true;
-#if USE_ZFBROWSER
-    basicCodeBrowser.gameObject.SetActive(false);
-    ZenFulcrum.EmbeddedBrowser.Browser zfBrowser = gameObject.AddComponent<ZenFulcrum.EmbeddedBrowser.Browser>();
-    zfBrowser.Url = "localGame://gamebuilder/js-editor.html";
-    zfBrowser.allowContextMenuOn = ZenFulcrum.EmbeddedBrowser.BrowserNative.ContextMenuOrigin.Editable;
-    ZenFulcrum.EmbeddedBrowser.PointerUIGUI pointerScript = gameObject.AddComponent<ZenFulcrum.EmbeddedBrowser.PointerUIGUI>();
-    pointerScript.enableMouseInput = true;
-    pointerScript.enableTouchInput = true;
-    pointerScript.enableInput = true;
-    pointerScript.automaticResize = true;
-    codeBrowser = new ZfBrowserImpl(zfBrowser);
-#else
     codeBrowser = basicCodeBrowser;
-    // Don't do this:
-    //   basicCodeBrowser.gameObject.SetActive(true);
-    // Because this causes the code browser to appear onscreen during init,
-    // which we don't want.
-#endif
+    // The editor is initially hidden by its owning UI controller. Activating it here
+    // would make it appear onscreen during initialization.
   }
 
   public ICodeBrowser GetCodeBrowser()
@@ -72,7 +50,6 @@ public interface ICodeBrowser
   void SetScrollTop(int scrollTop);
   void SetReadOnly(bool readOnly);
   void CheckIsReadyAsync(System.Action<bool> callback);
-  void AddSystemSource(string contents, string fileName);
   void GetCodeAsync(System.Action<string> callback);
   void GetScrollTopAsync(System.Action<int> scrollTop, System.Action onError);
   void AddError(int baseOneLineNumber, string message);
@@ -82,95 +59,3 @@ public interface ICodeBrowser
   float GetZoom();
   void SetZoom(float zoom);
 }
-
-#if USE_ZFBROWSER
-class ZfBrowserImpl : ICodeBrowser
-{
-  ZenFulcrum.EmbeddedBrowser.Browser browser;
-  ZenFulcrum.EmbeddedBrowser.PointerUIGUI browserUI;
-
-  public ZfBrowserImpl(ZenFulcrum.EmbeddedBrowser.Browser browser)
-  {
-    this.browser = browser;
-    browserUI = browser.GetComponentInChildren<ZenFulcrum.EmbeddedBrowser.PointerUIGUI>();
-  }
-
-  public void Show(bool show)
-  {
-  }
-
-  public bool KeyboardHasFocus()
-  {
-    return browserUI.KeyboardHasFocus;
-  }
-
-  public void SetCode(string liveCode)
-  {
-    browser.CallFunction("setCode", liveCode);
-  }
-
-  public void SetScrollTop(int scrollTop)
-  {
-    browser.CallFunction("setScrollTop", scrollTop);
-  }
-
-  public void SetReadOnly(bool readOnly)
-  {
-    browser.CallFunction("setReadOnly", readOnly);
-  }
-
-  public void CheckIsReadyAsync(System.Action<bool> callback)
-  {
-    browser.CallFunction("isReady").Then(value => callback.Invoke((bool)value));
-  }
-
-  public void AddSystemSource(string contents, string fileName)
-  {
-    browser.CallFunction("addSystemSource", contents, fileName);
-  }
-
-  public void GetCodeAsync(System.Action<string> callback)
-  {
-    browser.CallFunction("getCode").Then(value => callback.Invoke((string)value));
-  }
-
-  public void GetScrollTopAsync(System.Action<int> callback, System.Action onError)
-  {
-    browser.CallFunction("getScrollTop").Then(value => callback.Invoke((int)value)).Catch(unused => onError.Invoke());
-  }
-
-  public void AddError(int baseOneLineNumber, string message)
-  {
-    ZenFulcrum.EmbeddedBrowser.JSONNode[] args = new ZenFulcrum.EmbeddedBrowser.JSONNode[] {
-      new ZenFulcrum.EmbeddedBrowser.JSONNode((double)baseOneLineNumber),
-      new ZenFulcrum.EmbeddedBrowser.JSONNode(message)
-    };
-    browser.CallFunction("addError", args);
-  }
-
-  public void ClearErrors()
-  {
-    browser.CallFunction("clearErrors");
-  }
-
-  public void ZoomIn()
-  {
-    browser.Zoom++;
-  }
-
-  public void ZoomOut()
-  {
-    browser.Zoom--;
-  }
-
-  public float GetZoom()
-  {
-    return browser.Zoom;
-  }
-
-  public void SetZoom(float newZoom)
-  {
-    browser.Zoom = newZoom;
-  }
-}
-#endif

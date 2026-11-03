@@ -29,7 +29,6 @@ public class CodeEditorController : MonoBehaviour, IPointerEnterHandler, IPointe
   // Per instance state
 
   VoosEngine voosEngine;
-  BehaviorSystem behaviorSystem;
   CursorManager cursorManager;
 
   public bool isEditorReady { get; private set; }
@@ -54,11 +53,10 @@ public class CodeEditorController : MonoBehaviour, IPointerEnterHandler, IPointe
     Util.FindIfNotSet(this, ref codeBrowserWrapper);
     Util.FindIfNotSet(this, ref voosEngine);
     Util.FindIfNotSet(this, ref cursorManager);
-    Util.FindIfNotSet(this, ref behaviorSystem);
 
     browser = codeBrowserWrapper.GetCodeBrowser();
     isEditorReady = false;
-    InitializeJsEditor();
+    InitializeCodeEditor();
   }
 
   void OnEnable()
@@ -81,7 +79,7 @@ public class CodeEditorController : MonoBehaviour, IPointerEnterHandler, IPointe
 
   private void OnBehaviorException(VoosEngine.BehaviorLogItem item)
   {
-    AddErrorToMonaco(item.lineNum, item.message);
+    AddEditorError(item.lineNum, item.message);
   }
 
   // TODO do we need this anymore, given everything is synchronous now?
@@ -112,7 +110,7 @@ public class CodeEditorController : MonoBehaviour, IPointerEnterHandler, IPointe
       // Not relevant to this behavior. Don't bother.
       return;
     }
-    AddErrorToMonaco(lineNumber, message);
+    AddEditorError(lineNumber, message);
   }
 
   public void Set(UnassignedBehavior target, VoosEngine.BehaviorLogItem? error = null)
@@ -141,7 +139,7 @@ public class CodeEditorController : MonoBehaviour, IPointerEnterHandler, IPointe
 
     if (error.HasValue)
     {
-      AddErrorToMonaco(error.Value.lineNum, error.Value.message);
+      AddEditorError(error.Value.lineNum, error.Value.message);
     }
   }
 
@@ -172,50 +170,14 @@ public class CodeEditorController : MonoBehaviour, IPointerEnterHandler, IPointe
     browser.SetCode("");
   }
 
-  void InitializeJsEditor()
+  void InitializeCodeEditor()
   {
     if (isEditorReady)
     {
       return;
     }
 
-    browser.CheckIsReadyAsync(value =>
-    {
-      if ((bool)value)
-      {
-        isEditorReady = true;
-
-        // Load all typings
-        foreach (var entry in behaviorSystem.typings)
-        {
-          string path = entry.GetAbsolute();
-          if (!System.IO.File.Exists(path))
-          {
-            Debug.LogError($"Bad typings path: {path}");
-          }
-          else
-          {
-            string contents = System.IO.File.ReadAllText(path);
-            browser.AddSystemSource(contents, System.IO.Path.GetFileName(path));
-          }
-        }
-
-        int count = 0;
-        foreach (TextAsset jsSource in behaviorSystem.ForSystemSources())
-        {
-          // Only include the ones marked as visible to Monaco.
-          if (jsSource.text.Contains("// VISIBLE_TO_MONACO"))
-          {
-            browser.AddSystemSource(jsSource.text, $"voos_{count++}-{jsSource.name}.js");
-          }
-        }
-      }
-      else
-      {
-        // Call again.
-        InitializeJsEditor();
-      }
-    });
+    browser.CheckIsReadyAsync(value => isEditorReady = value);
   }
 
   public void RequestCodeCompile()
@@ -323,7 +285,7 @@ public class CodeEditorController : MonoBehaviour, IPointerEnterHandler, IPointe
     }
   }
 
-  void AddErrorToMonaco(int baseOneLineNumber, string message)
+  void AddEditorError(int baseOneLineNumber, string message)
   {
     browser.AddError(baseOneLineNumber, message);
   }

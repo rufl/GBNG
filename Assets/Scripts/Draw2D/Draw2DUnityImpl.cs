@@ -14,6 +14,10 @@
  * limitations under the License.
  */
 
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Xml;
 using UnityEngine;
 
 /// <summary>Immediate-mode renderer using Unity's built-in OnGUI and GL APIs.</summary>
@@ -23,15 +27,32 @@ public class Draw2DUnityImpl : IDraw2D
   private const int MAX_CIRCLE_SIDES = 256;
 
   private readonly Material material;
-  private readonly GUIStyle textStyle;
+  private readonly Texture2D bitmapFontAtlas;
+  private readonly Dictionary<char, BitmapGlyph> glyphs = new Dictionary<char, BitmapGlyph>();
 
-  public Draw2DUnityImpl() : this(null) { }
-
-  public Draw2DUnityImpl(Font textFont)
+  private struct BitmapGlyph
   {
-    Shader shader = Shader.Find("Hidden/Internal-Colored");
-    if (shader == null) shader = Shader.Find("UI/Default");
-    if (shader == null) shader = Shader.Find("Sprites/Default");
+    public float xOffset;
+    public float yOffset;
+    public float width;
+    public float height;
+    public float xAdvance;
+    public float uLeft;
+    public float vTop;
+    public float uRight;
+    public float vBottom;
+  }
+
+  public Draw2DUnityImpl(TextAsset fontConfig, Texture2D fontAtlas)
+  {
+    if (fontConfig == null) throw new ArgumentNullException(nameof(fontConfig));
+    if (fontAtlas == null) throw new ArgumentNullException(nameof(fontAtlas));
+
+    bitmapFontAtlas = fontAtlas;
+    bitmapFontAtlas.filterMode = FilterMode.Bilinear;
+    bitmapFontAtlas.wrapMode = TextureWrapMode.Clamp;
+
+    Shader shader = Shader.Find("UI/Default") ?? Shader.Find("Sprites/Default") ?? Shader.Find("Hidden/Internal-Colored");
     if (shader == null) Debug.LogError("No Unity shader is available for the built-in 2D renderer.");
     if (shader != null)
     {
@@ -43,13 +64,60 @@ public class Draw2DUnityImpl : IDraw2D
       material.SetInt("_ZWrite", 0);
       material.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.Always);
     }
-    textStyle = new GUIStyle
+
+    XmlDocument document = new XmlDocument();
+    document.LoadXml(fontConfig.text);
+    XmlElement root = document.DocumentElement;
+    if (root == null || root.Name != "font")
+      throw new InvalidOperationException("The bitmap font config must have a <font> root.");
+
+    XmlElement info = root.SelectSingleNode("info") as XmlElement;
+    XmlElement common = root.SelectSingleNode("common") as XmlElement;
+    XmlNodeList pages = root.SelectNodes("pages/page");
+    XmlNodeList characters = root.SelectNodes("chars/char");
+    int fontSize = ReadFontMetric(info, "size");
+    if (fontSize <= 0)
+      throw new InvalidOperationException("The bitmap font size must be positive.");
+    if (ReadFontMetric(common, "scaleW") != bitmapFontAtlas.width ||
+      ReadFontMetric(common, "scaleH") != bitmapFontAtlas.height)
+      throw new InvalidOperationException("The bitmap font atlas dimensions do not match its config.");
+    if (pages == null || pages.Count != 1 || ReadFontMetric(pages[0] as XmlElement, "id") != 0)
+      throw new InvalidOperationException("The bitmap font must use one atlas page with id 0.");
+    if (characters == null)
+      throw new InvalidOperationException("The bitmap font config has no character table.");
+
+    float atlasWidth = bitmapFontAtlas.width;
+    float atlasHeight = bitmapFontAtlas.height;
+    foreach (XmlNode characterNode in characters)
     {
-      font = textFont,
-      wordWrap = false,
-      richText = false,
-      alignment = TextAnchor.UpperLeft
-    };
+      XmlElement character = characterNode as XmlElement;
+      if (character == null) continue;
+      int x = ReadFontMetric(character, "x");
+      int y = ReadFontMetric(character, "y");
+      int width = ReadFontMetric(character, "width");
+      int height = ReadFontMetric(character, "height");
+      glyphs.Add(Convert.ToChar(ReadFontMetric(character, "id")), new BitmapGlyph
+      {
+        xOffset = ReadFontMetric(character, "xoffset") / (float)fontSize,
+        yOffset = ReadFontMetric(character, "yoffset") / (float)fontSize,
+        width = width / (float)fontSize,
+        height = height / (float)fontSize,
+        xAdvance = ReadFontMetric(character, "xadvance") / (float)fontSize,
+        uLeft = x / atlasWidth,
+        vTop = 1f - y / atlasHeight,
+        uRight = (x + width) / atlasWidth,
+        vBottom = 1f - (y + height) / atlasHeight
+      });
+    }
+  }
+
+  private static int ReadFontMetric(XmlElement element, string attribute)
+  {
+    XmlAttribute value = element != null ? element.GetAttributeNode(attribute) : null;
+    int metric;
+    if (value == null || !int.TryParse(value.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out metric))
+      throw new InvalidOperationException("The bitmap font config has an invalid '" + attribute + "' value.");
+    return metric;
   }
 
   public Draw2DMode GetDraw2DMode() { return Draw2DMode.OnGui; }
@@ -74,6 +142,7 @@ public class Draw2DUnityImpl : IDraw2D
   }
 
   private static void Vertex(Vector2 point) { GL.Vertex3(point.x, point.y, 0); }
+  private static void Vertex(float x, float y) { GL.Vertex3(x, y, 0); }
 
   private static void End()
   {
@@ -135,15 +204,50 @@ public class Draw2DUnityImpl : IDraw2D
 
   public void DrawText(string text, float x, float y, float rotationDegs, float worldSizePixels, Color color)
   {
-    if (string.IsNullOrEmpty(text) || Event.current == null || Event.current.type != EventType.Repaint ||
-      float.IsNaN(x) || float.IsNaN(y)) return;
-    textStyle.normal.textColor = color;
-    textStyle.fontSize = Mathf.Clamp(Mathf.RoundToInt(worldSizePixels), 1, 512);
-    Matrix4x4 oldMatrix = GUI.matrix;
-    if (!float.IsNaN(rotationDegs) && !Mathf.Approximately(rotationDegs, 0))
-      GUIUtility.RotateAroundPivot(rotationDegs, new Vector2(x, y));
-    GUI.Label(new Rect(x, y, Mathf.Max(Screen.width - x, 1), Screen.height), text, textStyle);
-    GUI.matrix = oldMatrix;
+    if (string.IsNullOrEmpty(text) || !CanDraw() || float.IsNaN(x) || float.IsNaN(y) ||
+      float.IsNaN(worldSizePixels) || float.IsInfinity(worldSizePixels) || worldSizePixels <= 0) return;
+
+    if (float.IsNaN(rotationDegs)) rotationDegs = 0;
+    float axisXX = 1, axisXY = 0, axisYX = 0, axisYY = 1;
+    if (!Mathf.Approximately(rotationDegs, 0))
+    {
+      float radians = rotationDegs * Mathf.Deg2Rad;
+      float cosine = Mathf.Cos(radians);
+      float sine = Mathf.Sin(radians);
+      axisXX = cosine;
+      axisXY = sine;
+      axisYX = -sine;
+      axisYY = cosine;
+    }
+
+    float cursorX = x, cursorY = y;
+    Begin(color, bitmapFontAtlas);
+    for (int i = 0; i < text.Length; i++)
+    {
+      if (!glyphs.TryGetValue(text[i], out BitmapGlyph glyph)) continue;
+      float left = cursorX + axisXX * glyph.xOffset * worldSizePixels + axisYX * glyph.yOffset * worldSizePixels;
+      float top = cursorY + axisXY * glyph.xOffset * worldSizePixels + axisYY * glyph.yOffset * worldSizePixels;
+      float rightX = left + axisXX * glyph.width * worldSizePixels;
+      float rightY = top + axisXY * glyph.width * worldSizePixels;
+      float bottomLeftX = left + axisYX * glyph.height * worldSizePixels;
+      float bottomLeftY = top + axisYY * glyph.height * worldSizePixels;
+      float bottomRightX = rightX + axisYX * glyph.height * worldSizePixels;
+      float bottomRightY = rightY + axisYY * glyph.height * worldSizePixels;
+
+      if (glyph.width > 0 && glyph.height > 0)
+      {
+        GL.TexCoord2(glyph.uLeft, glyph.vTop); Vertex(left, top);
+        GL.TexCoord2(glyph.uLeft, glyph.vBottom); Vertex(bottomLeftX, bottomLeftY);
+        GL.TexCoord2(glyph.uRight, glyph.vBottom); Vertex(bottomRightX, bottomRightY);
+        GL.TexCoord2(glyph.uLeft, glyph.vTop); Vertex(left, top);
+        GL.TexCoord2(glyph.uRight, glyph.vBottom); Vertex(bottomRightX, bottomRightY);
+        GL.TexCoord2(glyph.uRight, glyph.vTop); Vertex(rightX, rightY);
+      }
+
+      cursorX += axisXX * glyph.xAdvance * worldSizePixels;
+      cursorY += axisXY * glyph.xAdvance * worldSizePixels;
+    }
+    End();
   }
 
   public void DrawTexture(Rect rect, Color color, Texture2D texture)

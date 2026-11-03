@@ -54,14 +54,17 @@ public class GameBuilderConsoleCommands : MonoBehaviour
 
   public static string JoinTailToPath(CommandArg[] args, int firstArg = 0)
   {
-    if (args.Length > firstArg)
-    {
-      return String.Join(" ", args.Select(arg => arg.String));
-    }
-    else
+    if (args.Length <= firstArg)
     {
       return null;
     }
+
+    string path = String.Join(" ", args.Skip(firstArg).Select(arg => arg.String));
+    if (path.Length >= 2 && path[0] == '"' && path[path.Length - 1] == '"')
+    {
+      path = path.Substring(1, path.Length - 2);
+    }
+    return path;
   }
 
   [RegisterCommand(Help = "List system info")]
@@ -217,13 +220,13 @@ public class GameBuilderConsoleCommands : MonoBehaviour
     }
   }
 
-  [RegisterCommand(Help = "For selected objects, set the renderable URI; local OBJ files use localfbx:<absolute-path>")]
+  [RegisterCommand(Help = "For selected objects, set the renderable URI; use localfbx:<absolute-path> for local OBJ or static model files")]
   static void CommandRenderUri(CommandArg[] args)
   {
     string uri = JoinTailToPath(args);
     if (uri == null)
     {
-      Log("Usage: renderuri localfbx:C:\\path\\to\\model.obj");
+      Log("Usage: renderuri localfbx:C:\\path\\to\\model.fbx");
       return;
     }
 
@@ -421,17 +424,13 @@ public class GameBuilderConsoleCommands : MonoBehaviour
 
   static string lastVoosFilePathUsed = null;
 
-  [RegisterCommand(Help = "Load a VOOS file directly. Optional: provide an absolute path as argument directly (spaces are OK).")]
+  [RegisterCommand(Help = "Load a VOOS file by absolute path; without a file picker, the path is required.")]
   static void CommandLoad(CommandArg[] args)
   {
     var scenes = FindObjectOfType<GameBuilderSceneController>();
     if (args.Length > 0)
     {
-      string path = "";
-      for (int i = 0; i < args.Length; i++)
-      {
-        path += args[i].String + " ";
-      }
+      string path = JoinTailToPath(args);
       if (!File.Exists(path))
       {
         Log($"ERROR: VOOS file '{path}' does not exist.");
@@ -445,34 +444,42 @@ public class GameBuilderConsoleCommands : MonoBehaviour
     else
     {
 #if USE_FILEBROWSER
-      string path = Crosstales.FB.FileBrowser.SaveFile("Save scene", "", "scene.voos", "voos");
+      string path = Crosstales.FB.FileBrowser.SaveFile("Load scene", "", "scene.voos", "voos");
       if (!path.IsNullOrEmpty())
       {
         Util.Log("Loading " + path);
         scenes.RestartAndLoad(path);
         lastVoosFilePathUsed = path;
       }
+#else
+      Log("Usage: load <absolute-path-to-file.voos>");
 #endif
     }
   }
 
 
-  [RegisterCommand(Help = "Save a VOOS file directly.")]
+  [RegisterCommand(Help = "Save a VOOS file to an absolute path; the file picker is optional.")]
   static void CommandSave(CommandArg[] args)
   {
     var saver = FindObjectOfType<SaveLoadController>();
+    string path = JoinTailToPath(args);
 #if USE_FILEBROWSER
-    var path = Crosstales.FB.FileBrowser.SaveFile("Save scene", "", "scene.voos", "voos");
-
-    if (!path.IsNullOrEmpty())
+    if (string.IsNullOrEmpty(path))
     {
-      saver.RequestSave(path, () =>
-      {
-        Util.Log($"OK saved to {path}");
-        lastVoosFilePathUsed = path;
-      });
+      path = Crosstales.FB.FileBrowser.SaveFile("Save scene", "", "scene.voos", "voos");
     }
 #endif
+    if (string.IsNullOrEmpty(path))
+    {
+      Log("Usage: save <absolute-path-to-file.voos>");
+      return;
+    }
+
+    saver.RequestSave(path, () =>
+    {
+      Util.Log($"OK saved to {path}");
+      lastVoosFilePathUsed = path;
+    });
   }
 
   [RegisterCommand(Help = "Re-load the last VOOS file loaded with 'load' or saved with 'save'.")]

@@ -18,8 +18,8 @@ using System.Collections;
 using System.Linq;
 using System.Collections.Generic;
 using System.IO;
-using UnityEngine;
 using System;
+using UnityEngine;
 
 // Asset cache for built-in, local, image, and legacy online assets.
 public class AssetCache : MonoBehaviour
@@ -101,28 +101,6 @@ public class AssetCache : MonoBehaviour
       this.cache = cache;
     }
 
-#if USE_TRILIB
-    static TriLib.AssetLoaderOptions triLibOpts = null;
-
-    static TriLib.AssetLoaderOptions GetTriLibOpts()
-    {
-      if (triLibOpts == null)
-      {
-        triLibOpts = TriLib.AssetLoaderOptions.CreateInstance();
-      }
-      var opts = triLibOpts;
-      opts.DontLoadCameras = true;
-      opts.DontLoadLights = true;
-      opts.UseLegacyAnimations = true;
-      opts.GenerateMeshColliders = false; // We'll do this ourselves later.
-
-      // Hmm support for alpha isn't great..the robot comes in clear if we do
-      // this. Deal with it later, possibly manually.
-      opts.DisableAlphaMaterials = true;
-
-      return opts;
-    }
-#endif
 
     public void Visit(PolyVoosAsset asset)
     {
@@ -262,29 +240,7 @@ public class AssetCache : MonoBehaviour
         return;
       }
 
-#if USE_TRILIB
-      LoadLocalFbx(asset.absoluteFilePath, gameObject =>
-      {
-        cache.CreateCacheEntry(asset.GetUri(), gameObject, null);
-
-        var watcher = new FileSystemWatcher();
-        watcher.Path = Path.GetDirectoryName(asset.absoluteFilePath);
-        watcher.Filter = Path.GetFileName(asset.absoluteFilePath);
-        watcher.NotifyFilter = NotifyFilters.LastWrite;
-        watcher.EnableRaisingEvents = true;
-        watcher.Changed += (_, e) =>
-        {
-          LoadLocalFbx(asset.absoluteFilePath, newGameObject =>
-          {
-            cache.UpdateCacheEntry(asset.GetUri(), newGameObject);
-          });
-        };
-      });
-#else
-      cache.StartCoroutine(CacheMissingAsset(
-        asset.GetUri(),
-        $"This build supports local OBJ models, not '{extension}' files (local path: {asset.absoluteFilePath})."));
-#endif
+      cache.StartCoroutine(LoadAndCacheLocalAssimpModel(asset.GetUri(), asset.absoluteFilePath));
     }
 
     private IEnumerator LoadLocalObjAsset(LocalFbxAsset asset)
@@ -303,6 +259,125 @@ public class AssetCache : MonoBehaviour
         imported = CreateMissingAssetPlaceholder();
       }
       cache.CreateCacheEntry(asset.GetUri(), imported, null);
+    }
+
+    private IEnumerator LoadAndCacheLocalAssimpModel(string uri, string path)
+    {
+      yield return null;
+      GameObject imported = null;
+      try
+      {
+        EnsureAssimpLibraryAvailable();
+        imported = AssimpModelLoader.Load(path);
+        if (imported == null)
+        {
+          throw new InvalidOperationException("The importer returned no model.");
+        }
+        PrepareImportedModel(imported);
+      }
+      catch (Exception e)
+      {
+        Util.LogError($"Could not load local model '{path}': {e.Message}");
+        if (imported != null) Destroy(imported);
+        imported = CreateMissingAssetPlaceholder();
+      }
+
+      cache.CreateCacheEntry(uri, imported, null);
+    }
+
+    private static void EnsureAssimpLibraryAvailable()
+    {
+      Assimp.Unmanaged.AssimpLibrary library = Assimp.Unmanaged.AssimpLibrary.Instance;
+      if (library.IsLibraryLoaded)
+      {
+        return;
+      }
+
+      string nativePath = GetAssimpNativePath();
+      if (!Directory.Exists(nativePath))
+      {
+        throw new DirectoryNotFoundException($"Assimp native library directory was not found: {nativePath}");
+      }
+
+      if (Application.platform == RuntimePlatform.OSXEditor ||
+          Application.platform == RuntimePlatform.OSXPlayer)
+      {
+        library.Resolver.SetOverrideLibraryName64(Path.ChangeExtension(library.DefaultLibraryName, ".bundle"));
+      }
+      else
+      {
+        library.Resolver.SetOverrideLibraryName64(null);
+      }
+
+      library.Resolver.SetProbingPaths64(nativePath);
+      library.ThrowOnLoadFailure = false;
+      bool loaded;
+      try
+      {
+        loaded = library.LoadLibrary();
+      }
+      finally
+      {
+        library.ThrowOnLoadFailure = true;
+      }
+
+      if (!loaded)
+      {
+        throw new DllNotFoundException($"Assimp could not load its native library from: {nativePath}");
+      }
+    }
+
+    private static string GetAssimpNativePath()
+    {
+      string nativeRoot;
+      if (Application.isEditor)
+      {
+        string packagePath = Path.GetFullPath(Path.Combine(
+          Application.dataPath, "..", "Packages", "com.donghok.meshimporter"));
+        if (!Directory.Exists(Path.Combine(packagePath, "Runtime", "Plugins", "AssimpNet", "Native")))
+        {
+          string packageCache = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Library", "PackageCache"));
+          if (Directory.Exists(packageCache))
+          {
+            foreach (string cachedPackage in Directory.GetDirectories(packageCache, "com.donghok.meshimporter@*"))
+            {
+              string cachedNative = Path.Combine(cachedPackage, "Runtime", "Plugins", "AssimpNet", "Native");
+              if (Directory.Exists(cachedNative))
+              {
+                packagePath = cachedPackage;
+                break;
+              }
+            }
+          }
+        }
+
+        nativeRoot = Path.Combine(packagePath, "Runtime", "Plugins", "AssimpNet", "Native");
+        if (Application.platform == RuntimePlatform.WindowsEditor)
+        {
+          return Path.Combine(nativeRoot, "win", "x86_64");
+        }
+        if (Application.platform == RuntimePlatform.LinuxEditor)
+        {
+          return Path.Combine(nativeRoot, "linux", "x86_64");
+        }
+        if (Application.platform == RuntimePlatform.OSXEditor)
+        {
+          return Path.Combine(nativeRoot, "osx", "x86_64");
+        }
+      }
+
+      string pluginsPath = Path.Combine(Application.dataPath, "Plugins");
+      if (Application.platform == RuntimePlatform.WindowsPlayer)
+      {
+        return Path.Combine(pluginsPath, "x86_64");
+      }
+      if (Application.platform == RuntimePlatform.LinuxPlayer ||
+          Application.platform == RuntimePlatform.OSXPlayer)
+      {
+        return pluginsPath;
+      }
+
+      throw new PlatformNotSupportedException($"Assimp is not configured for {Application.platform}.");
     }
 
     IEnumerator LoadAndCacheImage(ImageVoosAsset asset)
@@ -360,22 +435,9 @@ public class AssetCache : MonoBehaviour
       cache.CreateCacheEntry(uri, loadedAsset, thumbnail);
     }
 
-#if USE_TRILIB
-    static void LoadLocalFbx(string path, System.Action<GameObject> process)
-    {
-      var loader = new TriLib.AssetLoaderAsync();
-      TriLib.AssetLoaderOptions opts = GetTriLibOpts();
-      loader.LoadFromFileWithTextures(path, opts, null, gameObject =>
-      {
-        PrepareImportedModel(gameObject);
-        process(gameObject);
-      });
-    }
-#endif
 
     public void Visit(SteamWorkshopAsset asset)
     {
-#if USE_TRILIB
       cache.steamWorkshop.Get(asset.publishedId, maybePath =>
       {
         if (maybePath.IsEmpty())
@@ -387,20 +449,15 @@ public class AssetCache : MonoBehaviour
 
         foreach (string file in Directory.EnumerateFiles(maybePath.Value))
         {
-          if (Path.GetExtension(file).ToLowerInvariant() == ".fbx")
+          if (string.Equals(Path.GetExtension(file), ".fbx", StringComparison.OrdinalIgnoreCase))
           {
             Util.Log($"OK loading FBX downloaded from workshop at {file}");
-            LoadLocalFbx(file, imported => cache.CreateCacheEntry(asset.GetUri(), imported, null));
+            cache.StartCoroutine(LoadAndCacheLocalAssimpModel(asset.GetUri(), file));
             return;
           }
         }
         cache.CreateCacheEntry(asset.GetUri(), CreateMissingAssetPlaceholder(), null);
       });
-#else
-      cache.StartCoroutine(CacheMissingAsset(
-        asset.GetUri(),
-        $"This build does not support loading FBX assets (for workshop ID {asset.publishedId})."));
-#endif
     }
     private static Material missingAssetMaterial;
 
