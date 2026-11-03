@@ -162,9 +162,7 @@ public sealed class DirectHostSmokeObserver : MonoBehaviour
     Debug.Log($"DIRECT_HOST_SMOKE|{role}|player-state-check|tint={playerTintSynced}|sprint={sprintSynced}");
     TerrainManager terrainManager = FindObjectOfType<TerrainManager>();
     TerrainManager.Cell terrainCell = default;
-    TerrainManager.Cell remoteTerrainCell = default;
     bool foundEmptyTerrainCell = false;
-    bool foundRemoteTerrainCell = false;
     int terrainX = role == "host" ? 0 : 1;
     int remoteTerrainX = role == "host" ? 1 : 0;
     if (terrainManager != null)
@@ -177,23 +175,27 @@ public sealed class DirectHostSmokeObserver : MonoBehaviour
         foundEmptyTerrainCell = true;
         break;
       }
-      for (int y = 120; y >= 100; y--)
-      {
-        TerrainManager.Cell candidate = new TerrainManager.Cell(remoteTerrainX, y, 0);
-        if (terrainManager.GetCellValue(candidate).IsOccupied()) continue;
-        remoteTerrainCell = candidate;
-        foundRemoteTerrainCell = true;
-        break;
-      }
     }
     if (foundEmptyTerrainCell)
     {
       terrainManager.SetCellValue(terrainCell, new TerrainManager.CellValue(
-        TerrainManager.BlockShape.Full, TerrainManager.BlockDirection.North, TerrainManager.BlockStyle.SolidColor0));
+        TerrainManager.BlockShape.Corner, TerrainManager.BlockDirection.West, TerrainManager.BlockStyle.SolidColor15));
       yield return new WaitForSecondsRealtime(1f);
     }
-    bool terrainReplicated = foundRemoteTerrainCell
-      && terrainManager.GetCellValue(remoteTerrainCell).blockType == TerrainManager.BlockShape.Full;
+    bool terrainReplicated = false;
+    if (terrainManager != null)
+    {
+      for (int y = 120; y >= 100; y--)
+      {
+        TerrainManager.Cell candidate = new TerrainManager.Cell(remoteTerrainX, y, 0);
+        TerrainManager.CellValue value = terrainManager.GetCellValue(candidate);
+        if (value.blockType != TerrainManager.BlockShape.Corner
+          || value.direction != TerrainManager.BlockDirection.West
+          || value.style != TerrainManager.BlockStyle.SolidColor15) continue;
+        terrainReplicated = true;
+        break;
+      }
+    }
 
 
     localBody.transform.SetParent(originalParent, true);
