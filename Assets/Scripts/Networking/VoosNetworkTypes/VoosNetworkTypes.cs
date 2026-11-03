@@ -18,11 +18,14 @@ using System.Collections;
 using System.Collections.Generic;
 #if USE_PUN
 using ExitGames.Client.Photon;
+#endif
 using UnityEngine;
 using System.Runtime.InteropServices;
+
 public static class VoosNetworkTypes
 {
 
+#if USE_PUN
   private static short SerializeColor32(StreamBuffer outStream, object customobject)
   {
     Color32 color = (Color32)customobject;
@@ -69,6 +72,7 @@ public static class VoosNetworkTypes
     return color;
   }
 
+#endif
   [StructLayout(LayoutKind.Explicit)]
   public struct ShortToBytes
   {
@@ -161,6 +165,7 @@ public static class VoosNetworkTypes
     return ((int)data - 8388607) / 512.0f;
   }
   /// 24 bit vector3.  This is a trivial optimization, and not amazing in terms of commpression.
+#if USE_PUN
   private static short SerializeVector3Compressed(StreamBuffer outStream, object customobject)
   {
     Vector3 v = (Vector3)customobject;
@@ -207,5 +212,5 @@ public static class VoosNetworkTypes
     register(typeof(Color32), (byte)'C', SerializeColor32, DeserializeColor32);
     register(typeof(Vector3), (byte)'V', SerializeVector3Compressed, DeserializeVector3Compressed);
   }
-}
 #endif
+}

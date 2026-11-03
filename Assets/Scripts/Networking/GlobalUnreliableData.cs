@@ -95,7 +95,6 @@ public class GlobalUnreliableData : MonoBehaviour
   public static float AverageBytesPerSecond { get { return averageTraffic; } }
   public static int TotalBytesSent { get { return totalBytesSent; } }
 
-#if USE_PUN
   void LateUpdate()
   {
     /// Lets only send traffic if someone is listening
@@ -165,7 +164,7 @@ public class GlobalUnreliableData : MonoBehaviour
     }
   }
 
-  void OnPhotonPlayerConnected(PhotonPlayer player)
+  public void OnPhotonPlayerConnected(PhotonPlayer player)
   {
     Debug.Log("Player has joined, resending all actor data");
     ResetAllActorsToUnsent();
@@ -521,11 +520,9 @@ public class GlobalUnreliableData : MonoBehaviour
       }
     }  
   }
-#endif
 
   public void AddActor(VoosActor va)
   {
-#if USE_PUN
     if (va.reliablePhotonView == null)
     {
       throw new System.Exception("GlobalUnreliableData only accepts actors with reliablePhotonView (not local drafts)");
@@ -543,12 +540,10 @@ public class GlobalUnreliableData : MonoBehaviour
     na.lastTransformUpdateFrame = Time.frameCount;
     na.messagesSinceLastUpdate = 0;
     actors.Add((short)va.reliablePhotonView.viewID, na);
-#endif
   }
 
   public void RemoveActor(VoosActor va)
   {
-#if USE_PUN
     if (va.reliablePhotonView != null && actors.ContainsKey((short)va.reliablePhotonView.viewID))
     {
       actors.Remove((short)va.reliablePhotonView.viewID);
@@ -557,6 +552,5 @@ public class GlobalUnreliableData : MonoBehaviour
     {
       Util.LogError($"ignoring RemoveActor request of {va.name}");
     }
-#endif
   }
 }

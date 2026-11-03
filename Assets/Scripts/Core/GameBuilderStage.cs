@@ -443,6 +443,7 @@ public class GameBuilderStage : MonoBehaviour
     Shader.PropertyToID("_Color"),
     Shader.PropertyToID("_MainTint")
   };
+  static HashSet<string> UnsupportedGroundTintShadersLogged = new HashSet<string>();
 
   void UpdateGroundMaterialTint(Material ground)
   {
@@ -456,8 +457,11 @@ public class GameBuilderStage : MonoBehaviour
     }
 
     string shaderName = ground.shader == null ? "<missing shader>" : ground.shader.name;
-    Debug.LogWarning(
-      $"Ground material {ground.name} uses shader '{shaderName}' without a supported tint property; keeping its authored color.");
+    if (UnsupportedGroundTintShadersLogged.Add(shaderName))
+    {
+      Debug.LogWarning(
+        $"Ground material shader '{shaderName}' has no supported tint property; keeping its authored color.");
+    }
   }
 
   // TODO Should rename these generated functions to "OnGroundColorChanged"

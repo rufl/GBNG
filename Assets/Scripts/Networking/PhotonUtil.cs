@@ -14,10 +14,7 @@
  * limitations under the License.
  */
 
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Networking;
 
 public static class PhotonUtil
 {
@@ -26,14 +23,16 @@ public static class PhotonUtil
     return PhotonNetwork.connected && !PhotonNetwork.offlineMode;
   }
 
-  public static void SendColor(this PhotonStream stream, Color c)
+  public static void SendColor(this PhotonStream stream, Color color)
   {
 #if USE_PUN
     Debug.Assert(stream.isWriting);
-    stream.SendNext(c.r);
-    stream.SendNext(c.g);
-    stream.SendNext(c.b);
-    stream.SendNext(c.a);
+    stream.SendNext(color.r);
+    stream.SendNext(color.g);
+    stream.SendNext(color.b);
+    stream.SendNext(color.a);
+#else
+    stream.SendNext(color);
 #endif
   }
 
@@ -45,23 +44,24 @@ public static class PhotonUtil
       (float)stream.ReceiveNext(),
       (float)stream.ReceiveNext(),
       (float)stream.ReceiveNext());
+#else
+    return (Color)stream.ReceiveNext();
 #endif
-    return Color.white;
   }
 
   public static string GetPhotonStateString()
   {
 #if USE_PUN
-    var sb = new System.Text.StringBuilder();
-    if (PhotonNetwork.connected) sb.Append("C");
-    if (PhotonNetwork.connectedAndReady) sb.Append("D");
-    if (PhotonNetwork.inRoom) sb.Append("R");
-    if (PhotonNetwork.insideLobby) sb.Append("L");
-    if (PhotonNetwork.isMasterClient) sb.Append("M");
-    if (PhotonNetwork.offlineMode) sb.Append("O");
-    return sb.ToString();
+    var state = new System.Text.StringBuilder();
+    if (PhotonNetwork.connected) state.Append("C");
+    if (PhotonNetwork.connectedAndReady) state.Append("D");
+    if (PhotonNetwork.inRoom) state.Append("R");
+    if (PhotonNetwork.insideLobby) state.Append("L");
+    if (PhotonNetwork.isMasterClient) state.Append("M");
+    if (PhotonNetwork.offlineMode) state.Append("O");
+    return state.ToString();
 #else
-    return "";
+    return PhotonNetwork.offlineMode ? "O" : PhotonNetwork.isMasterClient ? "M" : "C";
 #endif
   }
 
@@ -73,11 +73,12 @@ public static class PhotonUtil
     }
   }
 
-  // Hacky, but mimicks NetworkingPeer.ResetPhotonViewsOnSerialize
   public static void ForceResendToAllPlayers(this PhotonView reliableView)
   {
 #if USE_PUN
     reliableView.lastOnSerializeDataSent = null;
+#else
+    DirectHostRpcRouter.ForceResend(reliableView);
 #endif
   }
 }

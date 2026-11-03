@@ -144,6 +144,9 @@ load "C:/path/to/project.voos"
 The normal Save menu continues to store projects in Game Builder's local
 library.
 
+Ground materials using shaders without recognized tint properties keep their
+authored color instead of aborting scene load.
+
 ## Behavior code editor
 
 The full Monaco behavior editor is supported in Windows x64 players using
@@ -169,10 +172,11 @@ Photon PUN nor a paid Unity service is required.
 
 - From the splash screen, open **Multiplayer** and choose **Host a game**.
 - Other players choose **Join by IP** and enter the host's IPv4 address, with
-  `:7777` optional. The in-game multiplayer panel shows the host address.
+  `:7777` optional. On the same LAN, the multiplayer panel shows the host's
+  LAN address.
 - The host listens on UDP port `7777`. For Internet play, the host must allow
   this port through the operating-system firewall and forward UDP `7777` on the
-  router. On a LAN, use the host's LAN address.
+  router; players outside the LAN must enter the host's public IPv4 address.
 - This is direct-connect only: no public room browser, Relay, matchmaking, or
   NAT traversal service.
 

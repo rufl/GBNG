@@ -37,9 +37,15 @@ public class NetworkingController : Photon.PunBehaviour
   static int MaximumPlayerInitKbs = 400;
   public const ushort DefaultDirectHostPort = 7777;
   const string DirectHostInitMessageName = "GB_DIRECT_HOST_INIT_V1";
+  const string DirectPlayerReadyMessageName = "GB_DIRECT_PLAYER_READY_V1";
+  const string DirectPlayerSpawnMessageName = "GB_DIRECT_PLAYER_SPAWN_V1";
+  const string DirectPlayerDespawnMessageName = "GB_DIRECT_PLAYER_DESPAWN_V1";
   NetworkManager directNetworkManager;
   UnityTransport directTransport;
+  DirectHostRpcRouter directRpcRouter;
   bool registeredDirectInitHandler;
+  bool registeredDirectPlayerHandlers;
+  string directHostShareAddress;
 
   public static string SteamIdPlayerProperty = "SteamID";
   public static string SteamProfileNamePlayerProperty = "SteamProfileName";
@@ -85,6 +91,7 @@ public class NetworkingController : Photon.PunBehaviour
   WorkshopAssetSource workshop;
 
   private GameObject localUserInstance;
+  readonly Dictionary<int, UserBody> directRemoteBodies = new Dictionary<int, UserBody>();
 
   public enum Mode
   {
@@ -164,7 +171,30 @@ public class NetworkingController : Photon.PunBehaviour
       return $"{options.joinAddress}:{(options.joinPort == 0 ? DefaultDirectHostPort : options.joinPort)}";
     }
 
+    if (!directHostShareAddress.IsNullOrEmpty())
+    {
+      return directHostShareAddress;
+    }
+
     string fallback = "127.0.0.1";
+    try
+    {
+      using (Socket routeSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp))
+      {
+        routeSocket.Connect(new IPEndPoint(IPAddress.Parse("1.1.1.1"), DefaultDirectHostPort));
+        IPAddress localAddress = ((IPEndPoint)routeSocket.LocalEndPoint).Address;
+        if (localAddress.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(localAddress))
+        {
+          directHostShareAddress = $"{localAddress}:{DefaultDirectHostPort}";
+          return directHostShareAddress;
+        }
+      }
+    }
+    catch (SocketException)
+    {
+      // Fall back to an interface address when there is no default route.
+    }
+
     foreach (NetworkInterface networkInterface in NetworkInterface.GetAllNetworkInterfaces())
     {
       if (networkInterface.OperationalStatus != OperationalStatus.Up)
@@ -193,12 +223,15 @@ public class NetworkingController : Photon.PunBehaviour
 
         if (hasGateway)
         {
-          return $"{address}:{DefaultDirectHostPort}";
+          directHostShareAddress = $"{address}:{DefaultDirectHostPort}";
+          return directHostShareAddress;
         }
         fallback = address.ToString();
       }
     }
-    return $"{fallback}:{DefaultDirectHostPort}";
+
+    directHostShareAddress = $"{fallback}:{DefaultDirectHostPort}";
+    return directHostShareAddress;
 #endif
   }
 
@@ -444,6 +477,7 @@ public class NetworkingController : Photon.PunBehaviour
     if (!options.playOptions.isMultiplayer)
     {
       mode = Mode.Offline;
+      PhotonNetwork.ClearDirectSession();
       StartCoroutine(NonPunStartRoutine(false));
       return;
     }
@@ -467,6 +501,7 @@ public class NetworkingController : Photon.PunBehaviour
         OnFatalError($"Could not connect to {options.joinAddress}:{port}.");
         return;
       }
+      directRpcRouter.Initialize(directNetworkManager);
       PhotonNetwork.isMasterClient = false;
       PhotonNetwork.offlineMode = false;
       RegisterDirectNetworkHandlers();
@@ -487,6 +522,7 @@ public class NetworkingController : Photon.PunBehaviour
         OnFatalError($"Could not start a direct-host server on UDP port {DefaultDirectHostPort}.");
         yield break;
       }
+      directRpcRouter.Initialize(directNetworkManager);
       RegisterDirectNetworkHandlers();
     }
   }
@@ -500,6 +536,7 @@ public class NetworkingController : Photon.PunBehaviour
       networkObject.SetActive(false);
       DontDestroyOnLoad(networkObject);
       directTransport = networkObject.AddComponent<UnityTransport>();
+      directRpcRouter = networkObject.AddComponent<DirectHostRpcRouter>();
       directNetworkManager = networkObject.AddComponent<NetworkManager>();
       directNetworkManager.NetworkConfig = new NetworkConfig
       {
@@ -515,7 +552,13 @@ public class NetworkingController : Photon.PunBehaviour
       {
         throw new InvalidOperationException("The existing NetworkManager has no UnityTransport.");
       }
+      directRpcRouter = directNetworkManager.GetComponent<DirectHostRpcRouter>();
+      if (directRpcRouter == null)
+      {
+        directRpcRouter = directNetworkManager.gameObject.AddComponent<DirectHostRpcRouter>();
+      }
     }
+    PhotonView.InitializeSceneViews();
   }
 
   void RegisterDirectNetworkHandlers()
@@ -531,12 +574,28 @@ public class NetworkingController : Photon.PunBehaviour
     directNetworkManager.CustomMessagingManager.RegisterNamedMessageHandler(
       DirectHostInitMessageName, OnDirectHostInitMessage);
     registeredDirectInitHandler = true;
+    if (registeredDirectPlayerHandlers)
+    {
+      directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerReadyMessageName);
+      directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerSpawnMessageName);
+      directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerDespawnMessageName);
+    }
+    directNetworkManager.CustomMessagingManager.RegisterNamedMessageHandler(DirectPlayerReadyMessageName, OnDirectPlayerReady);
+    directNetworkManager.CustomMessagingManager.RegisterNamedMessageHandler(DirectPlayerSpawnMessageName, OnDirectPlayerSpawn);
+    directNetworkManager.CustomMessagingManager.RegisterNamedMessageHandler(DirectPlayerDespawnMessageName, OnDirectPlayerDespawn);
+    registeredDirectPlayerHandlers = true;
   }
 
   void OnDirectClientConnected(ulong clientId)
   {
     if (!directNetworkManager.IsServer || clientId == directNetworkManager.LocalClientId)
     {
+      return;
+    }
+    if (clientId >= (ulong)PhotonNetwork.MaximumDirectPlayers)
+    {
+      Util.LogError($"Direct hosting supports at most {PhotonNetwork.MaximumDirectPlayers} player IDs.");
+      directNetworkManager.DisconnectClient(clientId);
       return;
     }
 
@@ -561,15 +620,239 @@ public class NetworkingController : Photon.PunBehaviour
       directNetworkManager.DisconnectClient(clientId);
     }
   }
+  void OnDirectPlayerReady(ulong senderClientId, FastBufferReader reader)
+  {
+    if (directNetworkManager == null || !directNetworkManager.IsServer || senderClientId == directNetworkManager.LocalClientId) return;
+    try
+    {
+      reader.ReadValueSafe(out int playerId);
+      reader.ReadValueSafe(out int viewId);
+      Vector3 position = ReadDirectVector3(ref reader);
+      Quaternion rotation = ReadDirectQuaternion(ref reader);
+      if (playerId != checked((int)senderClientId + 1) || !IsDirectAvatarViewIdValid(playerId, viewId)
+        || !IsFinite(position) || !IsFinite(rotation)) return;
+
+      UserBody localBody = localUserInstance != null ? localUserInstance.GetComponent<UserBody>() : null;
+      if (localBody != null) SendDirectPlayerSpawn(senderClientId, PhotonNetwork.player.ID, localBody);
+      foreach (KeyValuePair<int, UserBody> entry in directRemoteBodies)
+        if (entry.Key != playerId && entry.Value != null) SendDirectPlayerSpawn(senderClientId, entry.Key, entry.Value);
+
+      SpawnDirectRemotePlayer(playerId, viewId, position, rotation);
+      BroadcastDirectPlayerSpawn(playerId, viewId, position, rotation, senderClientId);
+      DirectHostRpcRouter.ForceResendAll();
+      Util.Log($"Direct player {playerId} is ready.");
+    }
+    catch (Exception e)
+    {
+      Util.LogError($"Invalid direct player-ready message from client {senderClientId}: {e}");
+      directNetworkManager.DisconnectClient(senderClientId);
+    }
+  }
+
+  static Vector3 ReadDirectVector3(ref FastBufferReader reader)
+  {
+    reader.ReadValueSafe(out float x);
+    reader.ReadValueSafe(out float y);
+    reader.ReadValueSafe(out float z);
+    return new Vector3(x, y, z);
+  }
+
+  static Quaternion ReadDirectQuaternion(ref FastBufferReader reader)
+  {
+    reader.ReadValueSafe(out float x);
+    reader.ReadValueSafe(out float y);
+    reader.ReadValueSafe(out float z);
+    reader.ReadValueSafe(out float w);
+    return new Quaternion(x, y, z, w);
+  }
+
+  static bool IsFinite(Vector3 value)
+  {
+    return IsFinite(value.x) && IsFinite(value.y) && IsFinite(value.z);
+  }
+
+  static bool IsFinite(Quaternion value)
+  {
+    float magnitude = value.x * value.x + value.y * value.y + value.z * value.z + value.w * value.w;
+    return IsFinite(value.x) && IsFinite(value.y) && IsFinite(value.z) && IsFinite(value.w)
+      && magnitude > 0.0001f;
+  }
+
+  static bool IsFinite(float value)
+  {
+    return !float.IsNaN(value) && !float.IsInfinity(value);
+  }
+
+  static bool IsDirectAvatarViewIdValid(int playerId, int viewId)
+  {
+    if (playerId <= 0 || viewId <= 0 || viewId > short.MaxValue) return false;
+    return (viewId - 1) / PhotonNetwork.DirectViewIdBlockSize + 1 == playerId;
+  }
+
+  void SendDirectPlayerReady()
+  {
+    if (directNetworkManager == null || !directNetworkManager.IsConnectedClient || directNetworkManager.IsServer) return;
+    UserBody body = localUserInstance != null ? localUserInstance.GetComponent<UserBody>() : null;
+    PhotonView view = body != null ? body.GetComponent<PhotonView>() : null;
+    if (view == null || !IsDirectAvatarViewIdValid(PhotonNetwork.player.ID, view.viewID)) return;
+    using (FastBufferWriter writer = new FastBufferWriter(64, Allocator.Temp))
+    {
+      writer.WriteValueSafe(PhotonNetwork.player.ID);
+      writer.WriteValueSafe(view.viewID);
+      WriteDirectTransform(writer, body.transform.position, body.transform.rotation);
+      directNetworkManager.CustomMessagingManager.SendNamedMessage(
+        DirectPlayerReadyMessageName, NetworkManager.ServerClientId, writer, NetworkDelivery.ReliableSequenced);
+    }
+    DirectHostRpcRouter.ForceResendAll();
+  }
+
+  static void WriteDirectTransform(FastBufferWriter writer, Vector3 position, Quaternion rotation)
+  {
+    writer.WriteValueSafe(position.x);
+    writer.WriteValueSafe(position.y);
+    writer.WriteValueSafe(position.z);
+    writer.WriteValueSafe(rotation.x);
+    writer.WriteValueSafe(rotation.y);
+    writer.WriteValueSafe(rotation.z);
+    writer.WriteValueSafe(rotation.w);
+  }
+
+  void SendDirectPlayerSpawn(ulong targetClientId, int playerId, UserBody body)
+  {
+    if (body == null || directNetworkManager == null || !directNetworkManager.IsServer) return;
+    PhotonView view = body.GetComponent<PhotonView>();
+    if (view == null || !IsDirectAvatarViewIdValid(playerId, view.viewID)) return;
+    using (FastBufferWriter writer = new FastBufferWriter(64, Allocator.Temp))
+    {
+      writer.WriteValueSafe(playerId);
+      writer.WriteValueSafe(view.viewID);
+      WriteDirectTransform(writer, body.transform.position, body.transform.rotation);
+      directNetworkManager.CustomMessagingManager.SendNamedMessage(
+        DirectPlayerSpawnMessageName, targetClientId, writer, NetworkDelivery.ReliableSequenced);
+    }
+  }
+
+  void BroadcastDirectPlayerSpawn(int playerId, int viewId, Vector3 position, Quaternion rotation, ulong excludedClientId)
+  {
+    foreach (ulong clientId in directNetworkManager.ConnectedClientsIds)
+    {
+      if (clientId == directNetworkManager.LocalClientId || clientId == excludedClientId) continue;
+      using (FastBufferWriter writer = new FastBufferWriter(64, Allocator.Temp))
+      {
+        writer.WriteValueSafe(playerId);
+        writer.WriteValueSafe(viewId);
+        WriteDirectTransform(writer, position, rotation);
+        directNetworkManager.CustomMessagingManager.SendNamedMessage(
+          DirectPlayerSpawnMessageName, clientId, writer, NetworkDelivery.ReliableSequenced);
+      }
+    }
+  }
+
+  void OnDirectPlayerSpawn(ulong senderClientId, FastBufferReader reader)
+  {
+    if (directNetworkManager == null || directNetworkManager.IsServer || senderClientId != NetworkManager.ServerClientId) return;
+    try
+    {
+      reader.ReadValueSafe(out int playerId);
+      reader.ReadValueSafe(out int viewId);
+      Vector3 position = ReadDirectVector3(ref reader);
+      Quaternion rotation = ReadDirectQuaternion(ref reader);
+      if (playerId == PhotonNetwork.player.ID || !IsDirectAvatarViewIdValid(playerId, viewId)
+        || !IsFinite(position) || !IsFinite(rotation)) return;
+      PhotonNetwork.RegisterDirectPeer(playerId);
+      SpawnDirectRemotePlayer(playerId, viewId, position, rotation);
+    }
+    catch (Exception e) { Util.LogError($"Invalid direct player spawn: {e}"); }
+  }
+
+  void SpawnDirectRemotePlayer(int playerId, int viewId, Vector3 position, Quaternion rotation)
+  {
+    if (playerId == PhotonNetwork.player.ID) return;
+    if (directRemoteBodies.TryGetValue(playerId, out UserBody existingBody) && existingBody != null)
+    {
+      PhotonView existingView = existingBody.GetComponent<PhotonView>();
+      if (existingView != null && existingView.viewID == viewId)
+      {
+        existingBody.SetDirectPose(position, rotation);
+        return;
+      }
+      Destroy(existingBody.gameObject);
+      directRemoteBodies.Remove(playerId);
+    }
+
+    PhotonView conflictingView = PhotonView.Find(viewId);
+    if (conflictingView != null) return;
+    GameObject instance = Instantiate(userBodyPrefab.gameObject, position, rotation);
+    UserBody body = instance.GetComponent<UserBody>();
+    PhotonView view = instance.GetComponent<PhotonView>();
+    view.viewID = viewId;
+    view.ApplyOwnership(playerId);
+    body.Setup(false);
+    body.SetDirectPose(position, rotation);
+    directRemoteBodies[playerId] = body;
+  }
+
+  void OnDirectPlayerDespawn(ulong senderClientId, FastBufferReader reader)
+  {
+    if (directNetworkManager == null || directNetworkManager.IsServer || senderClientId != NetworkManager.ServerClientId) return;
+    reader.ReadValueSafe(out int playerId);
+    if (playerId == PhotonNetwork.player.ID) return;
+    RemoveDirectRemotePlayer(playerId);
+    PhotonNetwork.RemoveDirectPeer(playerId);
+  }
+
+  void RemoveDirectRemotePlayer(int playerId)
+  {
+    if (!directRemoteBodies.TryGetValue(playerId, out UserBody body)) return;
+    directRemoteBodies.Remove(playerId);
+    if (body != null) Destroy(body.gameObject);
+  }
+
+  void BroadcastDirectPlayerDespawn(int playerId)
+  {
+    foreach (ulong clientId in directNetworkManager.ConnectedClientsIds)
+    {
+      if (clientId == directNetworkManager.LocalClientId) continue;
+      using (FastBufferWriter writer = new FastBufferWriter(sizeof(int), Allocator.Temp))
+      {
+        writer.WriteValueSafe(playerId);
+        directNetworkManager.CustomMessagingManager.SendNamedMessage(
+          DirectPlayerDespawnMessageName, clientId, writer, NetworkDelivery.ReliableSequenced);
+      }
+    }
+  }
+
+  void ReclaimDirectPlayerActors(int playerId)
+  {
+    foreach (VoosActor actor in voosEngine.EnumerateActors())
+      if (actor.reliablePhotonView != null && actor.reliablePhotonView.ownerId == playerId)
+        actor.reliablePhotonView.TransferOwnership(PhotonNetwork.player.ID);
+  }
+
 
   void OnDirectClientDisconnected(ulong clientId)
   {
-    if (directNetworkManager != null
-      && clientId == directNetworkManager.LocalClientId
-      && !receivedPlayerInitPayload
+    if (directNetworkManager == null) return;
+    if (directNetworkManager.IsServer && clientId != directNetworkManager.LocalClientId)
+    {
+      int playerId = checked((int)clientId + 1);
+      PhotonPlayer disconnectedPlayer = PhotonNetwork.FindPlayer(playerId);
+      RemoveDirectRemotePlayer(playerId);
+      BroadcastDirectPlayerDespawn(playerId);
+      ReclaimDirectPlayerActors(playerId);
+      PlayerLeftMessage message = new PlayerLeftMessage { id = playerId, nickName = disconnectedPlayer.NickName };
+      voosEngine.BroadcastMessage("PlayerLeft", message);
+      Util.Log($"Direct player {playerId} disconnected.");
+      return;
+    }
+
+    if (!directNetworkManager.IsServer
+      && (clientId == directNetworkManager.LocalClientId || clientId == NetworkManager.ServerClientId)
       && GameBuilderApplication.CurrentGameOptions.playOptions.isMultiplayer)
     {
-      OnFatalError("The host disconnected before sending the game state.");
+      OnFatalError(receivedPlayerInitPayload
+        ? "The host disconnected."
+        : "The host disconnected before sending the game state.");
     }
   }
 
@@ -677,8 +960,10 @@ public class NetworkingController : Photon.PunBehaviour
       yield return null;
     }
 
+    PhotonNetwork.SetDirectSession(directNetworkManager, Environment.UserName);
     SpawnLocalObjects();
-    StartCoroutine(LoadingSequence());
+    yield return StartCoroutine(LoadingSequence());
+    SendDirectPlayerReady();
   }
   void OnFatalError(string error, string errorForAnalytics = null)
   {
@@ -842,11 +1127,19 @@ public class NetworkingController : Photon.PunBehaviour
         directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectHostInitMessageName);
         registeredDirectInitHandler = false;
       }
+      if (registeredDirectPlayerHandlers && directNetworkManager.CustomMessagingManager != null)
+      {
+        directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerReadyMessageName);
+        directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerSpawnMessageName);
+        directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerDespawnMessageName);
+        registeredDirectPlayerHandlers = false;
+      }
       if (directNetworkManager.IsListening)
       {
         directNetworkManager.Shutdown();
       }
     }
+    PhotonNetwork.ClearDirectSession();
 #endif
   }
 
@@ -995,6 +1288,16 @@ public class NetworkingController : Photon.PunBehaviour
       localUserInstance = Instantiate(userBodyPrefab.gameObject, pos, Quaternion.identity);
 #endif
       UserBody localUserBody = localUserInstance.GetComponent<UserBody>();
+#if !USE_PUN
+      if (mode == Mode.Online)
+      {
+        if (directNetworkManager != null && directNetworkManager.IsListening)
+          PhotonNetwork.SetDirectSession(directNetworkManager, Environment.UserName);
+        PhotonView userView = localUserBody.GetComponent<PhotonView>();
+        userView.viewID = PhotonNetwork.AllocateViewID();
+        userView.ApplyOwnership(PhotonNetwork.player.ID);
+      }
+#endif
       localUserBody.Setup(true);
 
       using (Util.Profile("localPrefab"))
@@ -1280,7 +1583,7 @@ public class NetworkingController : Photon.PunBehaviour
   {
     // Hmm...I wonder if we can make this a hash of all the sub-parts' versions.
     // 9 is first version with diggable ground.
-    public static int CurrentVersion = 11;
+    public static int CurrentVersion = 12;
     public int version;
     public Behaviors.Database.Jsonable behaviorDatabase;
     public GameBuilderStage.Persisted stage;
@@ -1447,16 +1750,17 @@ public class NetworkingController : Photon.PunBehaviour
 
   public void TriggerTerrainReset()
   {
-#if USE_PUN
     photonView.RPC("TriggerTerrainResetRPC", PhotonTargets.AllViaServer);
-#else
-    TriggerTerrainResetRPC();
-#endif
   }
 
   public static bool CanDoMultiplayerMapSwitch()
   {
+#if USE_PUN
     return PhotonUtil.ActuallyConnected() && PhotonNetwork.inRoom && PhotonNetwork.isMasterClient;
+#else
+    // Direct-host peers cannot keep the session alive while reloading a map yet.
+    return false;
+#endif
   }
 
   internal void SendReportToMasterClient(string nickName, string description)

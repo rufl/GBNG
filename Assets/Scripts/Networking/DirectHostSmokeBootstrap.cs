@@ -1,3 +1,4 @@
+using Unity.Netcode;
 using System;
 using System.Collections;
 using UnityEngine;
@@ -11,9 +12,22 @@ public sealed class DirectHostSmokeBootstrap : MonoBehaviour
     string[] args = Environment.GetCommandLineArgs();
     foreach (string arg in args)
     {
+      if (arg == "--direct-offline-smoke")
+      {
+        Debug.Log("DIRECT_HOST_SMOKE|offline-requested");
+        StartObserver("offline");
+        FindObjectOfType<GameBuilderSceneController>().RestartAndLoadMinimalScene(
+          new GameBuilderApplication.GameOptions
+          {
+            playOptions = new GameBuilderApplication.PlayOptions { isMultiplayer = false }
+          });
+        yield break;
+      }
+
       if (arg == "--direct-host-smoke")
       {
         Debug.Log("DIRECT_HOST_SMOKE|host-requested");
+        StartObserver("host");
         FindObjectOfType<GameBuilderSceneController>().RestartAndLoadMinimalScene(
           new GameBuilderApplication.GameOptions
           {
@@ -32,6 +46,7 @@ public sealed class DirectHostSmokeBootstrap : MonoBehaviour
           yield break;
         }
         Debug.Log("DIRECT_HOST_SMOKE|client-requested");
+        StartObserver("client");
         FindObjectOfType<GameBuilderSceneController>().LoadMainSceneAsync(
           new GameBuilderApplication.GameOptions
           {
@@ -42,5 +57,118 @@ public sealed class DirectHostSmokeBootstrap : MonoBehaviour
         yield break;
       }
     }
+  }
+  void StartObserver(string role)
+  {
+    GameObject observerObject = new GameObject("DirectHostSmokeObserver");
+    DontDestroyOnLoad(observerObject);
+    DirectHostSmokeObserver observer = observerObject.AddComponent<DirectHostSmokeObserver>();
+    observer.role = role;
+  }
+  }
+public sealed class DirectHostSmokeObserver : MonoBehaviour
+{
+  public string role;
+
+  IEnumerator Start()
+  {
+    float timeoutAt = Time.realtimeSinceStartup + 90f;
+    NetworkManager manager = null;
+    UserBody localBody = null;
+    UserBody remoteBody = null;
+    bool ready = false;
+    while (Time.realtimeSinceStartup < timeoutAt)
+    {
+      manager = NetworkManager.Singleton;
+      localBody = FindBody(true);
+      remoteBody = FindBody(false);
+      bool networkReady = role == "offline"
+        ? manager == null || !manager.IsListening
+        : manager != null && manager.IsListening
+          && (role == "host" ? manager.IsHost : manager.IsConnectedClient);
+      bool playersReady = role == "offline" ? localBody != null : localBody != null && remoteBody != null;
+      if (networkReady && playersReady)
+      {
+        ready = true;
+        break;
+      }
+      yield return new WaitForSecondsRealtime(0.25f);
+    }
+
+    if (!ready)
+    {
+      bool listening = manager != null && manager.IsListening;
+      bool connected = manager != null && manager.IsConnectedClient;
+      bool hosting = manager != null && manager.IsHost;
+      Debug.Log($"DIRECT_HOST_SMOKE|{role}|fail|listening={listening}|connected={connected}|host={hosting}|local-body={localBody != null}|remote-body={remoteBody != null}");
+      QuitSmoke(1);
+      yield break;
+    }
+
+    if (role == "offline")
+    {
+      Debug.Log("DIRECT_HOST_SMOKE|offline|pass|no-network-session");
+      QuitSmoke(0);
+      yield break;
+    }
+
+    Vector3 avatarTarget = role == "host" ? new Vector3(5f, 1.5f, 3f) : new Vector3(-5f, 1.5f, 3f);
+    localBody.transform.position = avatarTarget;
+    yield return new WaitForSecondsRealtime(1.5f);
+    Vector3 remoteAvatarTarget = role == "host" ? new Vector3(-5f, 1.5f, 3f) : new Vector3(5f, 1.5f, 3f);
+    bool avatarPoseSynced = remoteBody != null
+      && Vector3.Distance(remoteBody.transform.position, remoteAvatarTarget) < 0.75f;
+
+    VoosEngine engine = FindObjectOfType<VoosEngine>();
+    string localActorName = "DirectSmoke_" + role;
+    Vector3 actorStart = role == "host" ? new Vector3(10f, 2f, 0f) : new Vector3(-10f, 2f, 0f);
+    Vector3 actorTarget = actorStart + new Vector3(3f, 0f, 0f);
+    VoosActor localActor = engine != null
+      ? engine.CreateActor(actorStart, Quaternion.identity, actor => { }, localActorName)
+      : null;
+    yield return new WaitForSecondsRealtime(1.5f);
+    if (localActor != null) localActor.SetPosition(actorTarget);
+
+    string remoteActorName = role == "host" ? "DirectSmoke_client" : "DirectSmoke_host";
+    Vector3 remoteActorTarget = role == "host" ? new Vector3(-7f, 2f, 0f) : new Vector3(13f, 2f, 0f);
+    VoosActor remoteActor = null;
+    float actorTimeoutAt = Time.realtimeSinceStartup + 10f;
+    while (Time.realtimeSinceStartup < actorTimeoutAt)
+    {
+      remoteActor = FindRemoteActor(remoteActorName);
+      if (remoteActor != null && Vector3.Distance(remoteActor.transform.position, remoteActorTarget) < 0.75f) break;
+      yield return new WaitForSecondsRealtime(0.1f);
+    }
+
+    bool actorReplicated = remoteActor != null
+      && Vector3.Distance(remoteActor.transform.position, remoteActorTarget) < 0.75f;
+    bool passed = avatarPoseSynced && actorReplicated;
+    Debug.Log($"DIRECT_HOST_SMOKE|{role}|{(passed ? "pass" : "fail")}|avatar-pose={avatarPoseSynced}|actor-state={actorReplicated}");
+    yield return new WaitForSecondsRealtime(2f);
+    QuitSmoke(passed ? 0 : 1);
+  }
+
+  static UserBody FindBody(bool local)
+  {
+    foreach (UserBody body in FindObjectsOfType<UserBody>(true))
+      if (body.GetIsLocalPlayer() == local) return body;
+    return null;
+  }
+
+  static VoosActor FindRemoteActor(string name)
+  {
+    foreach (VoosActor actor in FindObjectsOfType<VoosActor>(true))
+    {
+      if (actor.GetName() != name) continue;
+      PhotonView view = actor.GetComponent<PhotonView>();
+      if (view != null && !view.isMine) return actor;
+    }
+    return null;
+  }
+  static void QuitSmoke(int exitCode)
+  {
+    UserMain userMain = FindObjectOfType<UserMain>();
+    if (userMain != null) Application.wantsToQuit -= userMain.WantsToQuit;
+    Application.Quit(exitCode);
   }
 }

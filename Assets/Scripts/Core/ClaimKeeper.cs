@@ -86,33 +86,21 @@ public class ClaimKeeper : Photon.PunBehaviour
   // If this returns null, the claim failed.
   public IClaimToken Claim(string resourceId)
   {
-#if USE_PUN
     return DoClaim(resourceId) ? new ClaimToken(this, resourceId) : null;
-#else
-    return new ClaimToken(this, resourceId);
-#endif
   }
 
   public string GetEffectiveOwnerNickname(string resourceId)
   {
-#if USE_PUN
     int ownerId;
     if (!GetEffectiveOwner(resourceId, out ownerId)) return null;
     return PhotonPlayer.Find(ownerId).NickName;
-#else
-    return "NA";
-#endif
 
   }
 
   public bool IsMine(string resourceId)
   {
-#if USE_PUN
     int ownerId;
     return GetEffectiveOwner(resourceId, out ownerId) && ownerId == PhotonNetwork.player.ID;
-#else
-    return true;
-#endif
   }
 
   // END OF PUBLIC INTERFACE. Users of this class only call Claim.
@@ -143,16 +131,13 @@ public class ClaimKeeper : Photon.PunBehaviour
       {
         if (keeper != null)  // Could be null on app shutdown
         {
-#if USE_PUN
           keeper.DoUnclaim(resourceId);
-#endif
         }
         disposed = true;
       }
     }
   }
 
-#if USE_PUN
   private bool DoClaim(string resourceId, bool force = false)
   {
     int ownerId;
@@ -299,7 +284,6 @@ public class ClaimKeeper : Photon.PunBehaviour
   }
 #endif
 
-#endif
 
 }
 

@@ -40,6 +40,11 @@ public class CriticalFilesCheck : MonoBehaviour
     List<string> missingFiles = new List<string>();
     string appDirectory = Directory.GetParent(Application.dataPath).FullName;
     string manifestPath = Path.Combine(appDirectory, ManifestFile);
+    if (!File.Exists(manifestPath))
+    {
+      Util.LogWarning($"Critical-file manifest not found; skipping installation integrity check: {manifestPath}");
+      return;
+    }
 
     foreach (var line in File.ReadAllLines(manifestPath))
     {

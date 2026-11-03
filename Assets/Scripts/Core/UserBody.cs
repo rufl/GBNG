@@ -98,6 +98,12 @@ public class UserBody : Photon.MonoBehaviour, PlayerBody.EventHandler, IPunObser
 
   Vector3 velocityForMultiplayer = Vector3.zero;
   Vector3 lastPosForMultiplayer = Vector3.zero;
+#if !USE_PUN
+  Vector3 directTargetPosition;
+  Quaternion directTargetRotation;
+  bool hasDirectTargetPose;
+  float nextDirectPoseTime;
+#endif
 
   public void SetActiveTool(Tool tool)
   {
@@ -177,6 +183,24 @@ public class UserBody : Photon.MonoBehaviour, PlayerBody.EventHandler, IPunObser
 
   void Update()
   {
+#if !USE_PUN
+    if (isLocalPlayer)
+    {
+      if (!PhotonNetwork.offlineMode && Time.unscaledTime >= nextDirectPoseTime)
+      {
+        nextDirectPoseTime = Time.unscaledTime + 0.05f;
+        PhotonView view = GetComponent<PhotonView>();
+        if (view != null) DirectHostRpcRouter.SendUserBodyPose(view, transform.position, transform.rotation);
+      }
+    }
+    else if (hasDirectTargetPose)
+    {
+      float blend = 1f - Mathf.Exp(-18f * Time.unscaledDeltaTime);
+      transform.position = Vector3.Lerp(transform.position, directTargetPosition, blend);
+      transform.rotation = Quaternion.Slerp(transform.rotation, directTargetRotation, blend);
+    }
+#endif
+
     if (!isLocalPlayer)
     {
       //find velocity
@@ -363,7 +387,6 @@ public class UserBody : Photon.MonoBehaviour, PlayerBody.EventHandler, IPunObser
 
   void IPunObservable.OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info)
   {
-#if USE_PUN
     if (stream.isWriting)
     {
       stream.SendNext(inPlayMode);
@@ -410,7 +433,6 @@ public class UserBody : Photon.MonoBehaviour, PlayerBody.EventHandler, IPunObser
       // "Render enabled" field not present in earlier versions, defaults to true:
       SetPlayerVisible((bool)stream.ReceiveNext());
     }
-#endif
   }
 
   void DestroyToolEffectReplicant()
@@ -460,7 +482,6 @@ public class UserBody : Photon.MonoBehaviour, PlayerBody.EventHandler, IPunObser
 
   void LateUpdate()
   {
-#if USE_PUN
     if (!isLocalPlayer && toolEffectReplicant != null)
     {
       NetworkableToolEffect effect = toolEffectReplicant;
@@ -477,7 +498,6 @@ public class UserBody : Photon.MonoBehaviour, PlayerBody.EventHandler, IPunObser
       }
       effect.OnLateUpdate();
     }
-#endif
   }
 
   public void Setup(bool isLocalPlayer)
@@ -500,6 +520,14 @@ public class UserBody : Photon.MonoBehaviour, PlayerBody.EventHandler, IPunObser
       avatarAudioController.LaunchAsEditor();
     }
   }
+#if !USE_PUN
+  public void SetDirectPose(Vector3 position, Quaternion rotation)
+  {
+    directTargetPosition = position;
+    directTargetRotation = rotation;
+    hasDirectTargetPose = true;
+  }
+#endif
 
   public bool GetIsLocalPlayer()
   {

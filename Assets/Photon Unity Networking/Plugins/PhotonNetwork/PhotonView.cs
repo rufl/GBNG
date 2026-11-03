@@ -14,69 +14,107 @@
  * limitations under the License.
  */
 
-// This is a fake, stubbed version of PhotonView. If you actually install PUN
-// Classic, definitely overwrite this with the real one. We need to have it here
-// so references in our prefabs are preserved.
+// This lightweight PhotonView replacement bridges the existing game protocol
+// to the free Unity Transport backend when PUN is not installed.
+#if !USE_PUN
 
-using System.Reflection;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
 public class PhotonView : MonoBehaviour
 {
-  public bool isMine { get { return true; } }
+  static readonly List<PhotonView> views = new List<PhotonView>();
+
   public int viewID = 0;
-  public int ownerId = 0;
+  public int ownerId = 1;
   internal PhotonPlayer owner = PhotonNetwork.masterClient;
+
+  public bool isMine
+  {
+    get { return PhotonNetwork.offlineMode || ownerId == PhotonNetwork.player.ID; }
+  }
+
+  void Awake()
+  {
+    if (!views.Contains(this)) views.Add(this);
+  }
+
+  void OnDestroy()
+  {
+    views.Remove(this);
+  }
 
   public void RPC(string methodName, PhotonTargets target, params object[] rpcParams)
   {
-    switch (target)
-    {
-      case PhotonTargets.All:
-      case PhotonTargets.AllViaServer:
-      case PhotonTargets.MasterClient:
-        bool called = false;
-        foreach (MonoBehaviour behavior in this.gameObject.GetComponents<MonoBehaviour>())
-        {
-          if (behavior == null) continue;
-          System.Type behType = behavior.GetType();
-          MethodInfo rpcMethod = behType.GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Instance);
-          if (rpcMethod != null)
-          {
-            var invokeParams = new List<object>();
-            invokeParams.AddRange(rpcParams);
-
-            // If last expected arg is PhotonMessageInfo..
-            var methodParams = rpcMethod.GetParameters();
-            if (methodParams.Length > 0 && methodParams.GetLast().ParameterType == typeof(PhotonMessageInfo))
-            {
-              invokeParams.Add(new PhotonMessageInfo { sender = PhotonNetwork.masterClient });
-            }
-
-            Debug.Assert(methodParams.Length == invokeParams.Count);
-
-            rpcMethod.Invoke(behavior, invokeParams.ToArray());
-            called = true;
-            break;
-          }
-        }
-        Debug.Assert(called, $"Failed to call RPC method named: {methodName}");
-        break;
-      default:
-        break;
-    }
+    DirectHostRpcRouter.SendRpc(this, methodName, target, rpcParams);
   }
 
   public void RPC(string methodName, PhotonPlayer target, params object[] rest)
   {
-    if (target == PhotonNetwork.masterClient)
+    DirectHostRpcRouter.SendRpc(this, methodName, target, rest);
+  }
+
+  public static PhotonView Get(UnityEngine.MonoBehaviour behaviour)
+  {
+    return behaviour.gameObject.GetComponent<PhotonView>();
+  }
+
+  public static PhotonView Find(int id)
+  {
+    PhotonView[] all = GetAllViews();
+    for (int i = 0; i < all.Length; i++)
     {
-      this.RPC(methodName, PhotonTargets.MasterClient, rest);
+      if (all[i] != null && all[i].viewID == id) return all[i];
+    }
+    return null;
+  }
+
+  internal static PhotonView[] GetAllViews()
+  {
+    PhotonView[] found = UnityEngine.Object.FindObjectsOfType<PhotonView>(true);
+    for (int i = 0; i < found.Length; i++)
+    {
+      if (found[i] != null && !views.Contains(found[i])) views.Add(found[i]);
+    }
+    views.RemoveAll(view => view == null);
+    return views.ToArray();
+  }
+
+  internal static void InitializeSceneViews()
+  {
+    PhotonView[] sceneViews = UnityEngine.Object.FindObjectsOfType<PhotonView>(true);
+    Array.Sort(sceneViews, (a, b) => string.CompareOrdinal(GetStablePath(a.transform), GetStablePath(b.transform)));
+    int id = -1;
+    foreach (PhotonView view in sceneViews)
+    {
+      if (view == null || view.viewID != 0) continue;
+      view.viewID = id--;
+      view.ApplyOwnership(1);
     }
   }
 
-  public static PhotonView Get(UnityEngine.MonoBehaviour b) { return b.gameObject.GetComponent<PhotonView>(); }
+  static string GetStablePath(Transform transform)
+  {
+    string path = transform.gameObject.scene.name;
+    while (transform != null)
+    {
+      path = transform.GetSiblingIndex() + "/" + transform.name + "/" + path;
+      transform = transform.parent;
+    }
+    return path;
+  }
 
-  internal void TransferOwnership(int iD) { }
+  internal void ApplyOwnership(int newOwnerId)
+  {
+    ownerId = newOwnerId;
+    owner = PhotonNetwork.FindPlayer(newOwnerId);
+  }
+
+  internal void TransferOwnership(int newOwnerId)
+  {
+    ApplyOwnership(newOwnerId);
+    DirectHostRpcRouter.SendOwnership(viewID, newOwnerId);
+  }
 }
+#endif

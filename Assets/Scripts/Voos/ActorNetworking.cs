@@ -36,7 +36,6 @@ public class ActorNetworking : MonoBehaviour, IPunObservable
 
   public void OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info)
   {
-#if USE_PUN
     Debug.Assert(actor != null, $"No {typeof(VoosActor).Name} component on {gameObject.name}");
 
     // All fields here should be the only things needed to turn an actor into itself working off of Resources/Actor.prefab!
@@ -173,7 +172,6 @@ public class ActorNetworking : MonoBehaviour, IPunObservable
 
       actor.SetLockingOwnership_ONLY_FOR_ACTOR_NETWORKING((bool)stream.ReceiveNext());
     }
-#endif
   }
 
   public bool IsRemoteReplicant()

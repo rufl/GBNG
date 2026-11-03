@@ -470,7 +470,6 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
   [PunRPC]
   void RequestDestroyActorRPC(int viewId)
   {
-#if USE_PUN
     if (state != State.Init)
     {
       Util.Log($"Ignoring RequestDestroyActorRPC because not inited.");
@@ -485,7 +484,6 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
     {
       Util.LogWarning($"Got RequestDestroyActorRPC for bad viewId: {viewId}");
     }
-#endif
   }
 
   public void DestroyActorByName(string name)
@@ -540,14 +538,12 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
       photonView.RPC("RequestDestroyActorRPC", owner, viewId);
     }
   }
-#if USE_PUN
   VoosActor GetActorByViewId(int viewId)
   {
     // TODO does photon have a faster way of doing this maybe?
     PhotonView view = PhotonView.Find(viewId);
     return view?.GetComponent<VoosActor>();
   }
-#endif
 
   // Tell others to destory by viewID. There's a short period of time where
   // replicants don't have the right name yet, but they'll always have the
@@ -555,7 +551,6 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
   [PunRPC]
   void DestroyReplicantRPC(int viewId, PhotonMessageInfo info)
   {
-#if USE_PUN
     if (state != State.Init)
     {
       Util.Log($"Ignoring DestroyReplicantRPC because not inited.");
@@ -587,7 +582,6 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
       Util.LogError($"Exception during DestroyActorRPC, view ID {viewId}. Exception:\n{e.ToString()}");
       throw e;
     }
-#endif
   }
 
   void PushPlayerActorStateToSerialized(ref RuntimeState runtime, Dictionary<string, VoosActor> entsByName)
@@ -763,7 +757,6 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
 
   public void SetPlayerInitPayload(PlayerInitPayload payload)
   {
-#if USE_PUN
     Debug.Assert(state == State.Uninit, "SetPlayerInitPayload before init'd?");
     Debug.Assert(actorsByName.Count == 0, "There should be no actors before we're initialized!!");
 
@@ -789,7 +782,6 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
     SetIsRunningRPC(payload.isRunning);
 
     state = State.Init;
-#endif
   }
 
   TickRequest CreateTickRequest()
@@ -901,7 +893,6 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
   [PunRPC]
   void HandleMessagesToMyActorsRPC(string remoteMessagesJson)
   {
-#if USE_PUN
     if (state != State.Init)
     {
       Util.Log($"Ignoring HandleMessagesToMyActorsRPC because not inited.");
@@ -931,7 +922,6 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
         EnqueueMessage(new ActorMessage { fromRemote = true, name = msg.messageName, targetActor = target.GetName(), argsJson = msg.argsJson });
       }
     }
-#endif
   }
 
   List<RemoteMessage> remoteMessagesTemp = new List<RemoteMessage>();
@@ -1588,11 +1578,7 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
     {
       return;
     }
-#if USE_PUN
     photonView.RPC("SetIsRunningRPC", PhotonTargets.AllViaServer, running);
-#else
-    SetIsRunningRPC(running);
-#endif
   }
 
   void OnResetTriggeredByHandler()
@@ -1729,6 +1715,9 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
     Debug.Assert(behaviorSystem != null, "CreateLocalActor: behaviorSystem is null?");
     actor.Initialize(scene, this, assetCache, behaviorSystem);
     actor.reliablePhotonView.viewID = viewId;
+#if !USE_PUN
+    actor.reliablePhotonView.ApplyOwnership(PhotonNetwork.player.ID);
+#endif
     globalUnreliableData.AddActor(actor);
     return actor;
   }
@@ -1756,6 +1745,9 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
       RpcLog($"received CreateActorReplicateRPC, viewId {viewId}");
       VoosActor.PersistedState serialized = JsonUtility.FromJson<VoosActor.PersistedState>(serializedJson);
       VoosActor actor = CreateLocalActor(serialized.position, serialized.rotation, viewId);
+#if !USE_PUN
+      actor.reliablePhotonView.ApplyOwnership(info.sender.ID);
+#endif
       actor.SetName(serialized.name);
       actor.UpdateFrom(serialized);
       Debug.Assert(actor.GetNetworking().IsRemoteReplicant(), "CreateActorReplicateRPC: created actor is not a replicant?");
@@ -1867,7 +1859,6 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
 
   void IPunObservable.OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info)
   {
-#if USE_PUN
     if (stream.isWriting)
     {
       stream.SendNext(gameTime);
@@ -1876,7 +1867,6 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
     {
       gameTime = (float)stream.ReceiveNext();
     }
-#endif
   }
 
   public void HandleTouches(VoosActor unityEventReceiver, Collision collision, bool isEnterMessage)
@@ -2014,7 +2004,6 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
   [PunRPC]
   void RequestOwnershipRPC(int viewId, byte reasonByte, PhotonMessageInfo info)
   {
-#if USE_PUN
     if (state != State.Init)
     {
       Util.Log($"Ignoring RequestOwnershipRPC because not inited.");
@@ -2084,7 +2073,6 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
 
     view.TransferOwnership(requestingPlayer.ID);
     actor.OnOwnershipTransfered();
-#endif
   }
 
   public IEnumerable<VoosActor> EnumerateCopiesOf(VoosActor actor)
@@ -2712,6 +2700,7 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
     {
       int viewId = actor.reliablePhotonView.viewID;
       writer.Write(viewId);
+      writer.Write(actor.reliablePhotonView.ownerId);
       SaveActor(actor).Serialize(writer);
     }
 
@@ -2729,9 +2718,13 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
     for (int i = 0; i < numActors; i++)
     {
       int viewId = reader.ReadInt32();
+      int ownerId = reader.ReadInt32();
       var state = new VoosActor.PersistedState();
       state.Deserialize(reader);
       VoosActor actor = CreateLocalActor(state.position, state.rotation, viewId);
+#if !USE_PUN
+      actor.reliablePhotonView.ApplyOwnership(ownerId);
+#endif
       actor.SetName(state.name);
       actor.UpdateFrom(state);
     }
