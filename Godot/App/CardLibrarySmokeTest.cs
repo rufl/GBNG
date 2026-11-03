@@ -1058,6 +1058,7 @@ public partial class GameBuilderApp
             await WaitForUiFrames(2);
             if (!HasImportedActor(customUri))
                 throw new InvalidOperationException("Adding the imported asset did not create a rendered actor.");
+            string customImageUri = await RunCustomImageImportSmoke(temporaryDirectory);
             string sourceGltfPath = Path.Combine(temporaryDirectory, "smoke-model.gltf");
             var gltfRoot = new Node3D { Name = "ImportedGltfSmokeModel" };
             gltfRoot.AddChild(new MeshInstance3D
@@ -1133,8 +1134,8 @@ public partial class GameBuilderApp
                 throw new InvalidOperationException("Saving the project with imported models failed.");
             LoadProject(projectPath);
             await WaitForUiFrames(2);
-            if (!HasImportedActor(customUri) || !HasImportedActor(gltfUri) || !HasImportedActor(fbxUri))
-                throw new InvalidOperationException("Imported model references did not survive a .voos reload.");
+            if (!HasImportedActor(customUri) || !HasImportedActor(gltfUri) || !HasImportedActor(fbxUri) || !HasImportedImage(customImageUri))
+                throw new InvalidOperationException("Imported model or image references did not survive a .voos reload.");
 
             string copyPath = Path.Combine(temporaryDirectory, "asset-smoke-copy.voos");
             SaveTo(copyPath);
@@ -1143,13 +1144,13 @@ public partial class GameBuilderApp
                 throw new InvalidOperationException("Save As did not copy the imported model sidecar.");
             LoadProject(copyPath);
             await WaitForUiFrames(2);
-            if (!HasImportedActor(customUri) || !HasImportedActor(gltfUri) || !HasImportedActor(fbxUri))
-                throw new InvalidOperationException("Imported model references did not survive Save As and reload.");
+            if (!HasImportedActor(customUri) || !HasImportedActor(gltfUri) || !HasImportedActor(fbxUri) || !HasImportedImage(customImageUri))
+                throw new InvalidOperationException("Imported model or image references did not survive Save As and reload.");
 
             string screenshot = ProjectSettings.GlobalizePath("res://.godot/imported-asset-smoke.png");
             if (GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
                 throw new InvalidOperationException("Could not save the imported-asset browser screenshot.");
-            GD.Print($"CUSTOM_ASSET_SMOKE_OK glb={customUri} gltf={gltfUri} animatedFbx={fbxUri} import=preview=animation=actor=.voos=save-as screenshot={screenshot}");
+            GD.Print($"CUSTOM_ASSET_SMOKE_OK glb={customUri} gltf={gltfUri} animatedFbx={fbxUri} image={customImageUri} uiImage=uiImageSlice=assetStore=propImage=sidecar=save-as screenshot={screenshot}");
         }
         finally
         {
@@ -1164,6 +1165,171 @@ public partial class GameBuilderApp
     {
         WorldActorNode? actor = _actors.FirstOrDefault(candidate => candidate.RenderableUri == customUri);
         return actor is not null && actor.FindChildren("*", "MeshInstance3D", true, false).Count > 0;
+    }
+    private async System.Threading.Tasks.Task<string> RunCustomImageImportSmoke(string temporaryDirectory)
+    {
+        string sourceImagePath = Path.Combine(temporaryDirectory, "smoke-ui-image.png");
+        Image fixture = Image.CreateEmpty(2, 2, false, Image.Format.Rgba8);
+        for (int y = 0; y < 2; y++)
+        {
+            for (int x = 0; x < 2; x++)
+                fixture.SetPixel(x, y, new Color(0f, 1f, 0f, 1f));
+        }
+        if (fixture.SavePng(sourceImagePath) != Error.Ok)
+            throw new InvalidOperationException("Could not generate the local image-import smoke fixture.");
+
+        OpenAssetStore();
+        await WaitForUiFrames(2);
+        Button imageImportButton = (Button)_assetStoreWindow.FindChild("AssetStoreImportImage", true, false);
+        bool previousNativeDialog = _importImageDialog.UseNativeDialog;
+        _importImageDialog.UseNativeDialog = false;
+        try
+        {
+            imageImportButton.EmitSignal("pressed");
+            await WaitForUiFrames(2);
+            if (!_importImageDialog.Visible)
+                throw new InvalidOperationException("The store's local-image action did not open the image chooser.");
+        }
+        finally
+        {
+            _importImageDialog.Hide();
+            _importImageDialog.UseNativeDialog = previousNativeDialog;
+        }
+
+        HashSet<string> existingUris = _catalog.Entries.Select(entry => entry.Uri).ToHashSet(StringComparer.Ordinal);
+        ImportImageFromPath(sourceImagePath);
+        RenderableEntry importedImage = _catalog.Entries
+            .Single(entry => !existingUris.Contains(entry.Uri) && entry.ImagePaths.Length == 1 && entry.ModelPaths.Length == 0);
+        string imageUri = importedImage.Uri;
+        string imagePath = importedImage.ImagePaths[0];
+        string expectedAssetDirectory = Path.GetFullPath(Path.Combine(temporaryDirectory, "asset-smoke.assets"));
+        StringComparison pathComparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if (!File.Exists(imagePath) || !string.Equals(Path.GetDirectoryName(imagePath), expectedAssetDirectory, pathComparison))
+            throw new InvalidOperationException("The imported image was not stored as a local project asset.");
+        string manifestPath = Path.Combine(temporaryDirectory, "asset-smoke.assets", "manifest.json");
+        JsonObject? manifest = JsonNode.Parse(File.ReadAllText(manifestPath)) as JsonObject;
+        bool manifestContainsImage = manifest?["assets"] is JsonArray manifestAssets
+            && manifestAssets.OfType<JsonObject>().Any(asset =>
+                LegacySaveDocument.ReadString(asset["uri"]) == imageUri
+                && LegacySaveDocument.ReadString(asset["file"]) == Path.GetFileName(imagePath));
+        if (!manifestContainsImage)
+            throw new InvalidOperationException("The imported image was not recorded in the project sidecar manifest.");
+
+        OpenAssetStore();
+        await WaitForUiFrames(2);
+        LineEdit imageStoreSearch = (LineEdit)_assetStoreWindow.FindChild("AssetStoreSearch", true, false);
+        ItemList imageStoreItems = (ItemList)_assetStoreWindow.FindChild("AssetStoreItems", true, false);
+        Label imageStoreLicense = (Label)_assetStoreWindow.FindChild("AssetStoreLicenseDetails", true, false);
+        TextureRect imageStorePreview = (TextureRect)_assetStoreWindow.FindChild("AssetImagePreview", true, false);
+        Button addAsActor = (Button)_assetStoreWindow.FindChild("AssetStoreAddActor", true, false);
+        imageStoreSearch.Text = "smoke-ui-image";
+        _assetStoreWindow.RefreshCatalog();
+        await WaitForUiFrames(2);
+        int[] imageSelection = imageStoreItems.GetSelectedItems();
+        if (imageStoreItems.ItemCount != 1
+            || imageSelection.Length != 1
+            || imageStoreItems.GetItemMetadata(imageSelection[0]).AsString() != imageUri
+            || !imageStorePreview.Visible
+            || imageStorePreview.Texture is null
+            || !imageStoreLicense.Text.Contains("does not verify its license", StringComparison.Ordinal)
+            || !addAsActor.Disabled)
+            throw new InvalidOperationException("The imported image preview, license warning, or actor-ineligible state did not appear in the offline asset store.");
+
+        int actorCount = _document!.Actors.Count;
+        if (AddActor(imageUri) || _document.Actors.Count != actorCount)
+            throw new InvalidOperationException("An image-only asset was incorrectly added as a world actor.");
+        _assetStoreWindow.Hide();
+
+        LegacyBehaviorAuthoringWindow imageEditor = new(
+            _document,
+            _document.Actors[0],
+            () => { },
+            _ => null,
+            (_, _) => null,
+            _catalog);
+        AddChild(imageEditor);
+        SubViewport? viewport = null;
+        try
+        {
+            var imagePicker = (OptionButton)InvokeSmoke(
+                imageEditor,
+                "CreatePropertyEditor",
+                new JsonObject(),
+                "Image",
+                JsonValue.Create(imageUri)!)!;
+            int imageChoice = -1;
+            bool hasBundledImage = false;
+            for (int index = 0; index < imagePicker.ItemCount; index++)
+            {
+                string value = imagePicker.GetItemMetadata(index).AsString();
+                if (value == imageUri)
+                    imageChoice = index;
+                if (value.StartsWith("res://", StringComparison.Ordinal))
+                    hasBundledImage = true;
+            }
+            if (imageChoice < 0 || !hasBundledImage)
+                throw new InvalidOperationException("The Image behavior-property picker did not offer imported and built-in local images.");
+            imagePicker.Select(imageChoice);
+            JsonNode? assignedImage = InvokeSmoke(imageEditor, "ReadEditorValue", "image", "Image", imagePicker) as JsonNode;
+            if (LegacySaveDocument.ReadString(assignedImage) != imageUri)
+                throw new InvalidOperationException("Selecting an imported image did not persist its project-local URI as the Image property value.");
+
+            viewport = new SubViewport
+            {
+                Name = "CustomImageBehaviorUiSmokeViewport",
+                Size = new Vector2I(512, 256),
+                TransparentBg = true,
+                RenderTargetUpdateMode = SubViewport.UpdateMode.Always
+            };
+            AddChild(viewport);
+            var behaviorUi = new LegacyBehaviorUi(_catalog);
+            viewport.AddChild(behaviorUi);
+            behaviorUi.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+            JsonObject CreateImageCommand(int commandId, float x)
+            {
+                var command = new JsonObject
+                {
+                    ["cmd"] = commandId,
+                    ["imageId"] = imageUri,
+                    ["rect"] = new JsonObject { ["x"] = x, ["y"] = 20f, ["w"] = 50f, ["h"] = 50f }
+                };
+                if (commandId == 8)
+                    command["srcRect"] = new JsonObject { ["x"] = 0f, ["y"] = 0f, ["w"] = 2f, ["h"] = 2f };
+                return command;
+            }
+            behaviorUi.SetCommands(new JsonArray
+            {
+                CreateImageCommand(4, 50f),
+                CreateImageCommand(8, 200f)
+            });
+            await WaitForUiFrames(2);
+            Image rendered = viewport.GetTexture().GetImage();
+            Color imagePixel = rendered.GetPixel(22, 12);
+            Color slicePixel = rendered.GetPixel(70, 12);
+            static bool IsFixtureGreen(Color color) =>
+                color.G > 0.9f && color.R < 0.1f && color.B < 0.1f && color.A > 0.9f;
+            if (!IsFixtureGreen(imagePixel) || !IsFixtureGreen(slicePixel))
+                throw new InvalidOperationException($"Project-local image rendering failed: uiImage={imagePixel}, uiImageSlice={slicePixel}.");
+            string screenshot = ProjectSettings.GlobalizePath("res://.godot/custom-image-behavior-ui-smoke.png");
+            if (rendered.SavePng(screenshot) != Error.Ok)
+                throw new InvalidOperationException("Could not save the imported-image behavior UI screenshot.");
+            GD.Print($"CUSTOM_IMAGE_SMOKE_OK uri={imageUri} storePreview=true licenseWarning=true propImage=true uiImage=true uiImageSlice=true screenshot={screenshot}");
+        }
+        finally
+        {
+            viewport?.QueueFree();
+            imageEditor.QueueFree();
+            await WaitForUiFrames(1);
+        }
+        return imageUri;
+    }
+
+    private bool HasImportedImage(string uri)
+    {
+        return _catalog.TryGet(uri, out RenderableEntry entry)
+            && entry.ModelPaths.Length == 0
+            && entry.ImagePaths.Length == 1
+            && File.Exists(entry.ImagePaths[0]);
     }
 
     private async System.Threading.Tasks.Task RunCardManagerSmoke(LegacyPanelCanvasWindow canvas)

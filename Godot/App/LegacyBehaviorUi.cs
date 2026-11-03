@@ -1,4 +1,6 @@
 using System.Text.Json.Nodes;
+using GBNG.Assets;
+
 using GBNG.Domain;
 using Godot;
 
@@ -7,7 +9,9 @@ namespace GBNG.App;
 public partial class LegacyBehaviorUi : Control
 {
     private const float GameUiWidth = 1600f;
+    private readonly LegacyRenderableCatalog? _catalog;
     private readonly HashSet<string> _unresolvedImages = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Texture2D> _importedImages = new(StringComparer.Ordinal);
     private readonly Dictionary<(Texture2D Texture, bool NoFilter), CanvasTexture> _filteredImages = new();
     private JsonArray _commands = new();
     private readonly Vector2[] _triangleOutline = new Vector2[4];
@@ -19,12 +23,21 @@ public partial class LegacyBehaviorUi : Control
     private static readonly char[] TextColorTerminators = { '"', '\'', '>' };
     private static readonly string[] TextTags = { "color", "b", "/color", "/b" };
 
-    public LegacyBehaviorUi()
+    public LegacyBehaviorUi() : this(null) { }
+
+    public LegacyBehaviorUi(LegacyRenderableCatalog? catalog)
     {
+        _catalog = catalog;
         MouseFilter = MouseFilterEnum.Pass;
         SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
     }
 
+    public void ClearImageCache()
+    {
+        _importedImages.Clear();
+        _filteredImages.Clear();
+        _unresolvedImages.Clear();
+    }
     public void SetMessageHandler(Action<string, string, string> sendMessage) => _sendMessage = sendMessage;
 
     public void SetCommands(JsonArray commands)
@@ -424,12 +437,38 @@ public partial class LegacyBehaviorUi : Control
     private bool TryLoadImage(string imageId, out Texture2D? texture)
     {
         texture = null;
-        if (imageId.Length > 0 && (imageId.StartsWith("res://", StringComparison.Ordinal) || imageId.StartsWith("user://", StringComparison.Ordinal)))
+        if (imageId.StartsWith("custom:", StringComparison.Ordinal)
+            && _catalog is not null
+            && _catalog.TryGet(imageId, out RenderableEntry entry))
+        {
+            if (_importedImages.TryGetValue(imageId, out texture))
+                return true;
+            foreach (string imagePath in entry.ImagePaths)
+            {
+                try
+                {
+                    Image image = Image.LoadFromFile(imagePath);
+                    if (image.IsEmpty())
+                        continue;
+                    texture = ImageTexture.CreateFromImage(image);
+                    _importedImages.Add(imageId, texture);
+                    break;
+                }
+                catch (Exception exception)
+                {
+                    GD.PushWarning($"Could not load behavior UI image '{imageId}': {exception.Message}");
+                }
+            }
+        }
+        else if (imageId.Length > 0
+            && (imageId.StartsWith("res://", StringComparison.Ordinal) || imageId.StartsWith("user://", StringComparison.Ordinal)))
+        {
             texture = ResourceLoader.Load<Texture2D>(imageId);
+        }
         if (texture is not null)
             return true;
         if (_unresolvedImages.Add(imageId))
-            GD.PushWarning($"Behavior UI image '{imageId}' is not a local Godot texture resource.");
+            GD.PushWarning($"Behavior UI image '{imageId}' is not a resolvable local asset.");
         return false;
     }
 

@@ -38,6 +38,7 @@ public partial class GameBuilderApp : Node3D
     private FileDialog _openDialog = null!;
     private FileDialog _saveDialog = null!;
     private FileDialog _importModelDialog = null!;
+    private FileDialog _importImageDialog = null!;
     private AcceptDialog _errorDialog = null!;
     private LegacyLanSession _lanSession = null!;
     private LegacyLanNetworkWindow _networkWindow = null!;
@@ -326,7 +327,8 @@ public partial class GameBuilderApp : Node3D
             _catalog,
             () => _document is not null && !_playMode && !_lanSession.HasPendingAssetSync,
             uri => AddActor(uri),
-            OpenModelImportDialog);
+            OpenModelImportDialog,
+            OpenImageImportDialog);
         AddChild(_assetStoreWindow);
         AddChild(_networkWindow);
 
@@ -344,7 +346,7 @@ public partial class GameBuilderApp : Node3D
         _editor = BuildEditorPanel();
         root.AddChild(_editor);
 
-        _behaviorUi = new LegacyBehaviorUi { Name = "BehaviorUi", Visible = false };
+        _behaviorUi = new LegacyBehaviorUi(_catalog) { Name = "BehaviorUi", Visible = false };
         _behaviorUi.SetMessageHandler((actorName, messageName, argumentJson) =>
             _behaviorRuntime?.SendUiMessage(actorName, messageName, argumentJson));
         root.AddChild(_behaviorUi);
@@ -383,6 +385,19 @@ public partial class GameBuilderApp : Node3D
         _importModelDialog.AddFilter("*.fbx", "FBX model with animations");
         _importModelDialog.FileSelected += ImportModelFromPath;
         root.AddChild(_importModelDialog);
+        _importImageDialog = new FileDialog
+        {
+            Title = "Import a local image",
+            FileMode = FileDialog.FileModeEnum.OpenFile,
+            Access = FileDialog.AccessEnum.Filesystem,
+            UseNativeDialog = true
+        };
+        _importImageDialog.AddFilter("*.png", "PNG image");
+        _importImageDialog.AddFilter("*.jpg", "JPEG image");
+        _importImageDialog.AddFilter("*.jpeg", "JPEG image");
+        _importImageDialog.AddFilter("*.webp", "WebP image");
+        _importImageDialog.FileSelected += ImportImageFromPath;
+        root.AddChild(_importImageDialog);
 
         _errorDialog = new AcceptDialog { Title = "GBNG" };
         root.AddChild(_errorDialog);
@@ -730,7 +745,8 @@ public partial class GameBuilderApp : Node3D
             _selectedActor.State,
             OnBehaviorDataChanged,
             uri => _behaviorRuntimeError is null ? _behaviorRuntime?.GetBehaviorPropertyDefinitions(uri) : null,
-            ValidateBehaviorSourceForEditor);
+            ValidateBehaviorSourceForEditor,
+            _catalog);
         AddChild(window);
         window.PopupCentered();
     }
@@ -980,6 +996,7 @@ public partial class GameBuilderApp : Node3D
             _document = document;
             DiscardRetainedHostAssetsForDifferentProject(document.SourcePath);
             _catalog.LoadProjectAssets(GetProjectAssetSourcePath());
+            _behaviorUi.ClearImageCache();
             ClearHistory();
             LegacyTerrainData? terrainData = LegacyTerrainData.Decode(document.GridState);
             if (terrainData is not null)
@@ -1252,6 +1269,9 @@ public partial class GameBuilderApp : Node3D
         _terrain!.FlushUpdates();
     }
 
+    private static bool IsActorRenderable(RenderableEntry entry)
+        => entry.ModelPaths.Length > 0 || entry.PrefabPath.Length > 0;
+
     private void PopulateAssetPicker()
     {
         string selectedUri = _assetPicker.Selected >= 0
@@ -1260,7 +1280,10 @@ public partial class GameBuilderApp : Node3D
         string filter = _assetSearch.Text.Trim();
         _assetPicker.Clear();
         int selectedIndex = -1;
-        foreach (RenderableEntry entry in _catalog.Entries.OrderBy(entry => entry.Uri, StringComparer.Ordinal))
+        int actorAssetCount = _catalog.Entries.Count(IsActorRenderable);
+        foreach (RenderableEntry entry in _catalog.Entries
+            .Where(IsActorRenderable)
+            .OrderBy(entry => entry.Uri, StringComparer.Ordinal))
         {
             if (filter.Length > 0
                 && !entry.Uri.Contains(filter, StringComparison.OrdinalIgnoreCase))
@@ -1280,7 +1303,7 @@ public partial class GameBuilderApp : Node3D
         if (_assetPicker.ItemCount > 0)
         {
             _assetPicker.Select(selectedIndex >= 0 ? selectedIndex : 0);
-            _assetCount.Text = $"{_assetPicker.ItemCount} of {_catalog.Entries.Count} assets";
+            _assetCount.Text = $"{_assetPicker.ItemCount} of {actorAssetCount} actor assets";
         }
         else
         {
@@ -1325,6 +1348,36 @@ public partial class GameBuilderApp : Node3D
         }
         _importModelDialog.PopupCentered(new Vector2I(1000, 700));
     }
+    private void OpenImageImportDialog()
+    {
+        if (_document is null)
+        {
+            ShowError("Open a .voos project before importing an image.");
+            return;
+        }
+        if (GetProjectAssetSourcePath().StartsWith("res://", StringComparison.Ordinal))
+        {
+            ShowError("Save a writable .voos copy before importing an image.");
+            return;
+        }
+        _importImageDialog.PopupCentered(new Vector2I(1000, 700));
+    }
+
+    private void ImportImageFromPath(string path)
+    {
+        if (_document is null)
+            return;
+        try
+        {
+            RenderableEntry entry = _catalog.ImportProjectImage(GetProjectAssetSourcePath(), path);
+            CompleteProjectAssetImport(path, entry);
+        }
+        catch (Exception exception)
+        {
+            ShowError($"Could not import image:\n{exception.Message}");
+        }
+    }
+
 
     private void ImportModelFromPath(string path)
     {
@@ -1332,50 +1385,56 @@ public partial class GameBuilderApp : Node3D
             return;
         try
         {
-            string assetProjectPath = GetProjectAssetSourcePath();
-            RenderableEntry entry = _catalog.ImportProjectModel(assetProjectPath, path);
-            if (_lanSession.IsClient)
-            {
-                if (_lanSession.SubmitAssetBundle(assetProjectPath, out long transferId))
-                {
-                    _unsharedAssetUris.Add(entry.Uri);
-                    _pendingAssetUrisByTransferId.Add(transferId, entry.Uri);
-                }
-                else
-                {
-                    _unsharedAssetUris.Add(entry.Uri);
-                }
-            }
-            else if (_lanSession.IsHost && _networkHostProjectPath is string hostProjectPath)
-            {
-                if (!_document.SourcePath.StartsWith("res://", StringComparison.Ordinal))
-                    _catalog.CopyProjectAssets(hostProjectPath, _document.SourcePath);
-                PersistNetworkHostProjectCopy();
-                _catalog.LoadProjectAssets(hostProjectPath);
-                _lanSession.BroadcastAssetBundle(hostProjectPath, _lanSession.LocalPeerId, 0);
-            }
-            bool clearedSearch = _assetSearch.Text.Length > 0;
-            _assetSearch.Text = "";
-            if (!clearedSearch)
-                PopulateAssetPicker();
-            for (int index = 0; index < _assetPicker.ItemCount; index++)
-            {
-                if (_assetPicker.GetItemMetadata(index).AsString() != entry.Uri)
-                    continue;
-                _assetPicker.Select(index);
-                ShowSelectedAssetPreview();
-                break;
-            }
-            _status.Text = _lanSession.IsClient
-                ? _unsharedAssetUris.Contains(entry.Uri)
-                    ? $"Imported {Path.GetFileName(path)} locally; wait for host asset sync before adding it."
-                    : $"Imported {Path.GetFileName(path)} into this project."
-                : $"Imported {Path.GetFileName(path)} into this project.";
+            RenderableEntry entry = _catalog.ImportProjectModel(GetProjectAssetSourcePath(), path);
+            CompleteProjectAssetImport(path, entry);
         }
         catch (Exception exception)
         {
             ShowError($"Could not import model:\n{exception.Message}");
         }
+    }
+
+    private void CompleteProjectAssetImport(string path, RenderableEntry entry)
+    {
+        string assetProjectPath = GetProjectAssetSourcePath();
+        if (_lanSession.IsClient)
+        {
+            if (_lanSession.SubmitAssetBundle(assetProjectPath, out long transferId))
+            {
+                _unsharedAssetUris.Add(entry.Uri);
+                _pendingAssetUrisByTransferId.Add(transferId, entry.Uri);
+            }
+            else
+            {
+                _unsharedAssetUris.Add(entry.Uri);
+            }
+        }
+        else if (_lanSession.IsHost && _networkHostProjectPath is string hostProjectPath)
+        {
+            if (!_document!.SourcePath.StartsWith("res://", StringComparison.Ordinal))
+                _catalog.CopyProjectAssets(hostProjectPath, _document.SourcePath);
+            PersistNetworkHostProjectCopy();
+            _catalog.LoadProjectAssets(hostProjectPath);
+            _behaviorUi.ClearImageCache();
+            _lanSession.BroadcastAssetBundle(hostProjectPath, _lanSession.LocalPeerId, 0);
+        }
+        bool clearedSearch = _assetSearch.Text.Length > 0;
+        _assetSearch.Text = "";
+        if (!clearedSearch)
+            PopulateAssetPicker();
+        for (int index = 0; index < _assetPicker.ItemCount; index++)
+        {
+            if (_assetPicker.GetItemMetadata(index).AsString() != entry.Uri)
+                continue;
+            _assetPicker.Select(index);
+            ShowSelectedAssetPreview();
+            break;
+        }
+        _status.Text = _lanSession.IsClient
+            ? _unsharedAssetUris.Contains(entry.Uri)
+                ? $"Imported {Path.GetFileName(path)} locally; wait for host asset sync before using it."
+                : $"Imported {Path.GetFileName(path)} into this project."
+            : $"Imported {Path.GetFileName(path)} into this project.";
     }
 
     private bool AddActor(string? selectedUri = null)
@@ -1384,16 +1443,16 @@ public partial class GameBuilderApp : Node3D
             return false;
         if (_lanSession.HasPendingAssetSync)
         {
-            _status.Text = "Wait for the host to finish syncing imported models before adding an actor.";
+            _status.Text = "Wait for the host to finish syncing imported assets before adding an actor.";
             return false;
         }
 
         string uri = selectedUri ?? _assetPicker.GetItemMetadata(_assetPicker.Selected).AsString();
-        if (!_catalog.TryGet(uri, out _))
+        if (!_catalog.TryGet(uri, out RenderableEntry entry) || !IsActorRenderable(entry))
             return false;
         if (_lanSession.IsClient && _unsharedAssetUris.Contains(uri))
         {
-            _status.Text = "This imported model is not synchronized with the host yet.";
+            _status.Text = "This imported asset is not synchronized with the host yet.";
             return false;
         }
         string name = $"actor-{Guid.NewGuid():N}";
@@ -1913,6 +1972,7 @@ public partial class GameBuilderApp : Node3D
             _catalog.CopyProjectAssets(GetProjectAssetSourcePath(), path);
             _document.SaveTo(path);
             _catalog.LoadProjectAssets(path);
+            _behaviorUi.ClearImageCache();
             PopulateAssetPicker();
             ReleaseRetainedHostAssetsAfterSave();
             _status.Text = $"Saved {Path.GetFileName(path)} — {_actors.Count} actors.";

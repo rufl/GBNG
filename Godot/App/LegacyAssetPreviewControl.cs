@@ -154,7 +154,25 @@ public sealed partial class LegacyAssetPreviewControl : VBoxContainer
     {
         foreach (string imagePath in entry.ImagePaths)
         {
-            Texture2D? texture = ResourceLoader.Load<Texture2D>(imagePath);
+            Texture2D? texture = null;
+            try
+            {
+                if (imagePath.StartsWith("res://", System.StringComparison.Ordinal)
+                    || imagePath.StartsWith("user://", System.StringComparison.Ordinal))
+                {
+                    texture = ResourceLoader.Load<Texture2D>(imagePath);
+                }
+                else
+                {
+                    Image image = Image.LoadFromFile(imagePath);
+                    if (!image.IsEmpty())
+                        texture = ImageTexture.CreateFromImage(image);
+                }
+            }
+            catch (System.Exception exception)
+            {
+                GD.PushWarning($"Could not preview image '{imagePath}': {exception.Message}");
+            }
             if (texture is null)
                 continue;
             _imagePreview.Texture = texture;

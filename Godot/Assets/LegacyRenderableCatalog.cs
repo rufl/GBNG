@@ -56,10 +56,13 @@ public sealed class LegacyRenderableCatalog
         Dictionary<string, string> assets = ReadProjectAssetManifest(Path.Combine(directory, ManifestFileName));
         foreach ((string uri, string fileName) in assets)
         {
-            string modelPath = Path.Combine(directory, fileName);
-            if (!File.Exists(modelPath))
-                throw new FileNotFoundException($"The imported model for '{uri}' is missing.", modelPath);
-            _entries.Add(uri, new RenderableEntry(uri, string.Empty, [modelPath], Array.Empty<string>()));
+            string assetPath = Path.Combine(directory, fileName);
+            if (!File.Exists(assetPath))
+                throw new FileNotFoundException($"The imported asset for '{uri}' is missing.", assetPath);
+            RenderableEntry entry = Path.GetExtension(fileName).Equals(".glb", StringComparison.OrdinalIgnoreCase)
+                ? new RenderableEntry(uri, string.Empty, [assetPath], Array.Empty<string>())
+                : new RenderableEntry(uri, string.Empty, Array.Empty<string>(), [assetPath]);
+            _entries.Add(uri, entry);
             _projectAssetUris.Add(uri);
         }
     }
@@ -142,27 +145,45 @@ public sealed class LegacyRenderableCatalog
             throw;
         }
 
-        var entry = new RenderableEntry(uri, string.Empty, [destination], Array.Empty<string>());
-        _entries.Add(uri, entry);
-        _projectAssetUris.Add(uri);
+        return RegisterProjectAsset(
+            new RenderableEntry(uri, string.Empty, [destination], Array.Empty<string>()),
+            Path.Combine(directory, ManifestFileName),
+            destination);
+    }
+    public RenderableEntry ImportProjectImage(string projectPath, string sourcePath)
+    {
+        if (projectPath.StartsWith("res://", StringComparison.Ordinal))
+            throw new InvalidOperationException("Save a writable .voos copy before importing an image.");
+        string source = Path.GetFullPath(sourcePath);
+        string extension = Path.GetExtension(source);
+        if (!File.Exists(source) || !IsSupportedImageExtension(extension))
+            throw new InvalidDataException("Choose an existing PNG, JPEG, or WebP image.");
+        Image decoded = Image.LoadFromFile(source);
+        if (decoded.IsEmpty())
+            throw new InvalidDataException("Godot could not decode this image.");
+
+        string id = Guid.NewGuid().ToString("N");
+        string uri = $"custom:{id}/{Path.GetFileNameWithoutExtension(source)}";
+        string fileName = $"{id}{extension.ToLowerInvariant()}";
+        string directory = GetProjectAssetDirectory(projectPath);
+        Directory.CreateDirectory(directory);
+        string destination = Path.Combine(directory, fileName);
         try
         {
-            WriteProjectAssetManifest(
-                Path.Combine(directory, ManifestFileName),
-                _projectAssetUris.ToDictionary(
-                    assetUri => assetUri,
-                    assetUri => Path.GetFileName(_entries[assetUri].ModelPaths[0]),
-                    StringComparer.Ordinal));
+            File.Copy(source, destination);
         }
         catch
         {
-            _entries.Remove(uri);
-            _projectAssetUris.Remove(uri);
-            File.Delete(destination);
+            if (File.Exists(destination))
+                File.Delete(destination);
             throw;
         }
-        return entry;
+        return RegisterProjectAsset(
+            new RenderableEntry(uri, string.Empty, Array.Empty<string>(), [destination]),
+            Path.Combine(directory, ManifestFileName),
+            destination);
     }
+
 
     public void CopyProjectAssets(string sourceProjectPath, string destinationProjectPath)
     {
@@ -188,10 +209,10 @@ public sealed class LegacyRenderableCatalog
         {
             string source = Path.Combine(sourceDirectory, fileName);
             if (!File.Exists(source))
-                throw new FileNotFoundException($"The imported model for '{uri}' is missing.", source);
+                throw new FileNotFoundException($"The imported asset for '{uri}' is missing.", source);
             if (destinationAssets.TryGetValue(uri, out string? existingFile)
                 && !string.Equals(existingFile, fileName, StringComparison.Ordinal))
-                throw new IOException($"The destination already contains a different imported model for '{uri}'.");
+                throw new IOException($"The destination already contains a different imported asset for '{uri}'.");
 
             string destination = Path.Combine(destinationDirectory, fileName);
             if (File.Exists(destination))
@@ -296,9 +317,50 @@ public sealed class LegacyRenderableCatalog
 
     private static bool IsValidAssetFileName(string fileName)
     {
+        string extension = Path.GetExtension(fileName);
         return Path.GetFileName(fileName) == fileName
-            && Path.GetExtension(fileName).Equals(".glb", StringComparison.OrdinalIgnoreCase)
+            && (extension.Equals(".glb", StringComparison.OrdinalIgnoreCase) || IsSupportedImageExtension(extension))
             && Guid.TryParseExact(Path.GetFileNameWithoutExtension(fileName), "N", out _);
+    }
+
+    private static bool IsSupportedImageExtension(string extension)
+    {
+        return extension.Equals(".png", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".webp", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private RenderableEntry RegisterProjectAsset(RenderableEntry entry, string manifestPath, string destination)
+    {
+        _entries.Add(entry.Uri, entry);
+        _projectAssetUris.Add(entry.Uri);
+        try
+        {
+            WriteProjectAssetManifest(
+                manifestPath,
+                _projectAssetUris.ToDictionary(
+                    assetUri => assetUri,
+                    assetUri => GetManifestFileName(_entries[assetUri]),
+                    StringComparer.Ordinal));
+        }
+        catch
+        {
+            _entries.Remove(entry.Uri);
+            _projectAssetUris.Remove(entry.Uri);
+            if (File.Exists(destination))
+                File.Delete(destination);
+            throw;
+        }
+        return entry;
+    }
+
+    private static string GetManifestFileName(RenderableEntry entry)
+    {
+        string? assetPath = entry.ModelPaths.FirstOrDefault() ?? entry.ImagePaths.FirstOrDefault();
+        return assetPath is null
+            ? throw new InvalidDataException($"Imported asset '{entry.Uri}' has no project file.")
+            : Path.GetFileName(assetPath);
     }
 
     private static void WriteProjectAssetManifest(string manifestPath, IReadOnlyDictionary<string, string> assets)

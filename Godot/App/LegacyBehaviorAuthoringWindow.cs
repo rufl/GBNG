@@ -20,6 +20,7 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
     private const string NewBehaviorSource = "// Broadcasts a readable message whenever this actor collides.\nexport function onCollision(msg) {\n  broadcast('ActorCollided', getDisplayName(msg.other));\n}\n";
 
     private readonly LegacySaveDocument _document;
+    private readonly LegacyRenderableCatalog? _catalog;
     private readonly LegacyActorData _actor;
     private readonly Action _onChanged;
     private readonly ItemList _assignedUses = new();
@@ -166,12 +167,24 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
         Action onChanged,
         Func<string, JsonArray?> getPropertyDefinitions,
         Func<string, string, string?> validateBehaviorSource)
+        : this(document, actor, onChanged, getPropertyDefinitions, validateBehaviorSource, null)
+    {
+    }
+
+    public LegacyBehaviorAuthoringWindow(
+        LegacySaveDocument document,
+        LegacyActorData actor,
+        Action onChanged,
+        Func<string, JsonArray?> getPropertyDefinitions,
+        Func<string, string, string?> validateBehaviorSource,
+        LegacyRenderableCatalog? catalog)
     {
         _document = document;
         _actor = actor;
         _onChanged = onChanged;
         _getPropertyDefinitions = getPropertyDefinitions;
         _validateBehaviorSource = validateBehaviorSource;
+        _catalog = catalog;
         Title = $"Behavior editor — {actor.DisplayName}";
         Size = new Vector2I(1000, 700);
         CloseRequested += () => QueueFree();
@@ -918,7 +931,7 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
             case "ParticleEffect":
                 return CreateSojoPicker("ParticleEffect", stringValue);
             case "Image":
-                return CreateSojoPicker("Image", stringValue);
+                return CreateImagePicker(stringValue);
             case "Prefab":
                 return CreateSojoPicker("ActorPrefab", stringValue);
             case "CardDeck":
@@ -986,6 +999,29 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
             AddPickerOption(picker, $"Actor · {actor.DisplayName} · {actor.Name}", actor.Name, selectedValue);
 
         AddUnknownPickerOption(picker, selectedValue);
+        return picker;
+    }
+
+    private OptionButton CreateImagePicker(string selectedId)
+    {
+        var picker = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        AddPickerOption(picker, "(none)", "", selectedId);
+        var addedValues = new HashSet<string>(StringComparer.Ordinal);
+        if (_catalog is not null)
+        {
+            foreach (RenderableEntry entry in _catalog.Entries.OrderBy(item => item.Uri, StringComparer.OrdinalIgnoreCase))
+            {
+                foreach (string imagePath in entry.ImagePaths.OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+                {
+                    string value = entry.Uri.StartsWith("custom:", StringComparison.Ordinal) ? entry.Uri : imagePath;
+                    if (!addedValues.Add(value))
+                        continue;
+                    string source = entry.Uri.StartsWith("custom:", StringComparison.Ordinal) ? "Imported" : "Built-in";
+                    AddPickerOption(picker, $"{Path.GetFileNameWithoutExtension(imagePath)} · {source}", value, selectedId);
+                }
+            }
+        }
+        AddUnknownPickerOption(picker, selectedId);
         return picker;
     }
 

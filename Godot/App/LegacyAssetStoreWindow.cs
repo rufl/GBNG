@@ -11,6 +11,7 @@ public sealed partial class LegacyAssetStoreWindow : Window
     private readonly Func<bool> _canAddAsset;
     private readonly Func<string, bool> _addAsset;
     private readonly Action _importModel;
+    private readonly Action _importImage;
     private readonly LineEdit _search = new();
     private readonly OptionButton _category = new();
     private readonly ItemList _assets = new();
@@ -24,12 +25,14 @@ public sealed partial class LegacyAssetStoreWindow : Window
         LegacyRenderableCatalog catalog,
         Func<bool> canAddAsset,
         Func<string, bool> addAsset,
-        Action importModel)
+        Action importModel,
+        Action importImage)
     {
         _catalog = catalog;
         _canAddAsset = canAddAsset;
         _addAsset = addAsset;
         _importModel = importModel;
+        _importImage = importImage;
         Title = "GBNG Asset Store · offline";
         Size = new Vector2I(1080, 700);
         CloseRequested += () => Hide();
@@ -75,7 +78,7 @@ public sealed partial class LegacyAssetStoreWindow : Window
         margin.AddChild(layout);
         layout.AddChild(new Label
         {
-            Text = "Browse the built-in Game Builder catalog or models imported into this project. This store is offline: it uses no account, remote search, or third-party asset service.",
+            Text = "Browse built-in assets and local models or images imported into this project. This store is offline: it uses no account, remote search, or third-party asset service.",
             AutowrapMode = TextServer.AutowrapMode.Word
         });
 
@@ -115,13 +118,20 @@ public sealed partial class LegacyAssetStoreWindow : Window
         right.AddChild(_licenseDetails);
 
         var actions = new HBoxContainer();
-        var import = new Button { Name = "AssetStoreImportModel", Text = "Import local model…" };
-        import.Pressed += () =>
+        var importModel = new Button { Name = "AssetStoreImportModel", Text = "Import local model…" };
+        importModel.Pressed += () =>
         {
             Hide();
             _importModel();
         };
-        actions.AddChild(import);
+        actions.AddChild(importModel);
+        var importImage = new Button { Name = "AssetStoreImportImage", Text = "Import local image…" };
+        importImage.Pressed += () =>
+        {
+            Hide();
+            _importImage();
+        };
+        actions.AddChild(importImage);
         _addButton.Name = "AssetStoreAddActor";
         _addButton.Text = "Add to project";
         _addButton.Pressed += AddSelectedAsset;
@@ -170,7 +180,7 @@ public sealed partial class LegacyAssetStoreWindow : Window
         _status.Text = _assets.ItemCount == 0
             ? "No assets match this search."
             : $"{_assets.ItemCount} shown · {bundledCount} bundled · {importedCount} imported · offline";
-        _addButton.Disabled = _assets.ItemCount == 0 || _selectedUri.Length == 0 || !_canAddAsset();
+        _addButton.Disabled = !CanAddSelectedAsset();
     }
 
     private void ShowSelectedAsset()
@@ -194,15 +204,23 @@ public sealed partial class LegacyAssetStoreWindow : Window
             ?? entry.ImagePaths.FirstOrDefault()
             ?? entry.PrefabPath;
         string licenseEvidence = uri.StartsWith("custom:", StringComparison.Ordinal)
-            ? "Imported model. GBNG does not verify its license; check the source terms before reuse or sharing."
+            ? "Imported local asset. GBNG does not verify its license; check the source terms before reuse or sharing."
             : "Repository inventory records Apache License 2.0 evidence. Review the entry in tools/asset-inventory/ before redistribution.";
         _licenseDetails.Text = $"{uri}\nSource: {sourcePath}\n{licenseEvidence}";
-        _addButton.Disabled = !_canAddAsset();
+        _addButton.Disabled = !CanAddSelectedAsset();
+    }
+
+    private bool CanAddSelectedAsset()
+    {
+        return _selectedUri.Length > 0
+            && _catalog.TryGet(_selectedUri, out RenderableEntry entry)
+            && (entry.ModelPaths.Length > 0 || entry.PrefabPath.Length > 0)
+            && _canAddAsset();
     }
 
     private void AddSelectedAsset()
     {
-        if (_selectedUri.Length == 0 || !_canAddAsset())
+        if (!CanAddSelectedAsset())
             return;
         _status.Text = _addAsset(_selectedUri)
             ? $"Added {GetAssetName(_selectedUri)} to the project."
