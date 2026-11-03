@@ -52,7 +52,7 @@ public sealed partial class LegacyLanSession : Node
     public string Status => _status;
     public IReadOnlyCollection<LegacyLanPlayer> Players { get; private set; } = Array.Empty<LegacyLanPlayer>();
     public IReadOnlyCollection<LegacyLanRoom> Rooms => _rooms.Values;
-    public bool HasPeer => _enetPeer is not null;
+    public bool HasPeer => _enetPeer is not null || _webRtcPeer is not null;
     public bool IsHost => HasPeer && _isHost;
     public bool IsClient => HasPeer && !_isHost;
     public bool IsMultiplayer => HasPeer;
@@ -82,6 +82,7 @@ public sealed partial class LegacyLanSession : Node
 
     public override void _Process(double delta)
     {
+        PollInternetTransport(delta);
         PollDiscovery(_discoveryListener, isHostListener: true);
         PollDiscovery(_discoveryClient, isHostListener: false);
         PumpProjectTransfer();
@@ -201,6 +202,7 @@ public sealed partial class LegacyLanSession : Node
         _discoveryClient = null;
         _discoveryRemaining = 0d;
         _discoveryListener = null;
+        LeaveInternetTransport();
         _incomingPackage = null;
         _receivedChunks = null;
         _incomingChunkCount = 0;
@@ -219,8 +221,9 @@ public sealed partial class LegacyLanSession : Node
         {
             _enetPeer.Close();
             _enetPeer = null;
-            Multiplayer.MultiplayerPeer = null;
         }
+        if (wasConnected)
+            Multiplayer.MultiplayerPeer = null;
         _isHost = false;
         _hostPlayMode = false;
         _hostPort = 0;
@@ -371,6 +374,8 @@ public sealed partial class LegacyLanSession : Node
 
     private void OnPeerDisconnected(long peerId)
     {
+        if (peerId <= int.MaxValue)
+            RemoveWebRtcPeer((int)peerId);
         if (!_isHost)
             return;
         _playerNames.Remove(peerId);
@@ -415,6 +420,10 @@ public sealed partial class LegacyLanSession : Node
     private void LeavePeerOnly()
     {
         bool wasClient = IsClient;
+        LeaveInternetTransport();
+        _enetPeer?.Close();
+        _enetPeer = null;
+        Multiplayer.MultiplayerPeer = null;
         _isHost = false;
         _hostPlayMode = false;
         _playerNames.Clear();

@@ -51,8 +51,13 @@ unity-asset-deps.txt
 # Godot-generated import cache and build output
 /.godot/
 /Godot/.godot/
+/addons/webrtc-native/
 # Godot creates per-resource sidecars while scanning the preserved Unity assets.
 *.import
 *.uid
 !/GBNG.Godot.csproj
 !/GBNG.Godot.sln
+
+# Matchmaking service build output
+/services/GBNG.Matchmaking/bin/
+/services/GBNG.Matchmaking/obj/

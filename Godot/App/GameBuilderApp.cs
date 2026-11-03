@@ -415,7 +415,7 @@ public partial class GameBuilderApp : Node3D
             _saveDialog.CurrentFile = _document is null ? "project.voos" : Path.GetFileName(_document.SourcePath);
             _saveDialog.PopupCentered(new Vector2I(1000, 700));
         });
-        AddToolbarButton(toolbar, "Network", () => _networkWindow.PopupCentered(new Vector2I(760, 660)));
+        AddToolbarButton(toolbar, "Host", () => _networkWindow.PopupCentered(new Vector2I(760, 650)));
         _playButton = new Button { Text = "Play", CustomMinimumSize = new Vector2(84f, 36f) };
         _playButton.Pressed += () => SetPlayMode(!_playMode);
         toolbar.AddChild(_playButton);

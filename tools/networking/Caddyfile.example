@@ -1,0 +1,7 @@
+# Replace the hostname with the public matchmaking DNS name.
+# Caddy obtains/renews public TLS certificates when DNS and ports 80/443 work.
+matchmaking.example.com {
+    @matchmaking path /healthz /v1/session
+    reverse_proxy @matchmaking 127.0.0.1:8765
+    respond 404
+}

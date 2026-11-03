@@ -1,0 +1,24 @@
+# Example coturn configuration for TURN REST (time-limited HMAC-SHA1) credentials.
+# Replace every example value before deployment; never commit real secrets or keys.
+listening-port=3478
+fingerprint
+lt-cred-mech
+use-auth-secret
+static-auth-secret=REPLACE_WITH_AT_LEAST_32_RANDOM_UTF8_BYTES
+realm=turn.example.com
+
+# Keep relay allocation ports narrow and match the firewall rules.
+min-port=49160
+max-port=49200
+
+# Production hardening. Add the correct public/private address mapping below
+# when coturn is behind NAT; see README.md before enabling it.
+no-multicast-peers
+no-cli
+no-tlsv1
+no-tlsv1_1
+
+# NAT example (uncomment and replace when applicable):
+# external-ip=PUBLIC_IPV4/PRIVATE_IPV4
+# listening-ip=PRIVATE_IPV4
+# relay-ip=PRIVATE_IPV4
