@@ -1,0 +1,15 @@
+{
+  "version": 3,
+  "targets": {
+    "net10.0/win-x64": {
+      "ilspycmd/11.2.0.10050": {
+        "type": "package",
+        "tools": {
+          "tools/any/any/DotnetToolSettings.xml": {}
+        }
+      }
+    }
+  },
+  "libraries": {},
+  "projectFileDependencyGroups": {}
+}

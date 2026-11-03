@@ -1,0 +1,17 @@
+{
+  "version": 3,
+  "targets": {
+    "net10.0/win-x64": {
+      "ilspycmd.win-x64/11.2.0.10050": {
+        "type": "package",
+        "tools": {
+          "tools/any/win-x64/DotnetToolSettings.xml": {},
+          "tools/any/win-x64/ICSharpCode.Decompiler.xml": {},
+          "tools/any/win-x64/ilspycmd.exe": {}
+        }
+      }
+    }
+  },
+  "libraries": {},
+  "projectFileDependencyGroups": {}
+}

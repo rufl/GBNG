@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<DotNetCliTool Version="2">
+  <Commands>
+    <Command Name="ilspycmd" />
+  </Commands>
+  <RuntimeIdentifierPackages>
+    <RuntimeIdentifierPackage RuntimeIdentifier="win-x64" Id="ilspycmd.win-x64" />
+    <RuntimeIdentifierPackage RuntimeIdentifier="linux-x64" Id="ilspycmd.linux-x64" />
+    <RuntimeIdentifierPackage RuntimeIdentifier="any" Id="ilspycmd.any" />
+  </RuntimeIdentifierPackages>
+</DotNetCliTool>
