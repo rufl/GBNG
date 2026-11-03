@@ -50,6 +50,7 @@ public sealed partial class LegacyWorldSettingsWindow : Window
         Name = "WorldSettingsWindow";
         Title = "World settings";
         Size = new Vector2I(500, 360);
+        Hide();
         CloseRequested += () =>
         {
             _mapSizeDialog.Hide();
@@ -155,6 +156,7 @@ public sealed partial class LegacyWorldSettingsWindow : Window
         _mapSizeDialog.Name = "WorldMapSizeDialog";
         _mapSizeDialog.Title = "Change map size";
         _mapSizeDialog.Size = new Vector2I(560, 230);
+        _mapSizeDialog.Hide();
         _mapSizeDialog.CloseRequested += () => _mapSizeDialog.Hide();
 
         var margin = new MarginContainer { AnchorRight = 1f, AnchorBottom = 1f };

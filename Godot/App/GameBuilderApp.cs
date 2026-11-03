@@ -159,6 +159,8 @@ public partial class GameBuilderApp : Node3D
             RunWorldMapSizeSmoke();
         if (commandLineArgs.Contains("--smoke-camera-effects", StringComparer.Ordinal))
             RunCameraEffectsSmoke();
+        if (commandLineArgs.Contains("--smoke-copy-actors", StringComparer.Ordinal))
+            RunActorCopySmoke();
     }
 
 
@@ -234,11 +236,16 @@ public partial class GameBuilderApp : Node3D
     {
         if (@event is InputEventMouseButton mouseButton)
         {
-            if (mouseButton.ButtonIndex == MouseButton.Right)
+            if (mouseButton.ButtonIndex == MouseButton.Right && !_copyPlacementActive)
                 Input.MouseMode = mouseButton.Pressed ? Input.MouseModeEnum.Captured : Input.MouseModeEnum.Visible;
             if (mouseButton.ButtonIndex == MouseButton.Left && mouseButton.Pressed && !_playMode)
             {
-                if (IsTerrainBrushActive)
+                if (_copyPlacementActive)
+                {
+                    if (!IsPointerOverUi(mouseButton.Position))
+                        PasteCopyAtCursor(mouseButton.Position, mouseButton.CtrlPressed || mouseButton.MetaPressed);
+                }
+                else if (IsTerrainBrushActive)
                 {
                     BeginTerrainStroke();
                     ApplyTerrainBrush(mouseButton.Position);
@@ -263,14 +270,22 @@ public partial class GameBuilderApp : Node3D
         }
         else if (@event is InputEventMouseMotion motion)
         {
-            if (IsTerrainBrushActive && Input.IsMouseButtonPressed(MouseButton.Left))
-                ApplyTerrainBrush(motion.Position);
-            if (Input.MouseMode == Input.MouseModeEnum.Captured)
+            if (_copyPlacementActive)
             {
-                _cameraYaw -= motion.Relative.X * 0.004f;
-                _cameraPitch = Mathf.Clamp(_cameraPitch - motion.Relative.Y * 0.004f, -1.35f, 0.15f);
-                _lookAxes += new Vector2(-motion.Relative.X * 0.004f, -motion.Relative.Y * 0.004f);
-                UpdateOrbitCamera();
+                if (!IsPointerOverUi(motion.Position))
+                    UpdateCopyPreview(motion.Position, motion.CtrlPressed || motion.MetaPressed);
+            }
+            else
+            {
+                if (IsTerrainBrushActive && Input.IsMouseButtonPressed(MouseButton.Left))
+                    ApplyTerrainBrush(motion.Position);
+                if (Input.MouseMode == Input.MouseModeEnum.Captured)
+                {
+                    _cameraYaw -= motion.Relative.X * 0.004f;
+                    _cameraPitch = Mathf.Clamp(_cameraPitch - motion.Relative.Y * 0.004f, -1.35f, 0.15f);
+                    _lookAxes += new Vector2(-motion.Relative.X * 0.004f, -motion.Relative.Y * 0.004f);
+                    UpdateOrbitCamera();
+                }
             }
         }
         else if (@event is InputEventKey key && key.Pressed && !key.Echo)
@@ -279,7 +294,9 @@ public partial class GameBuilderApp : Node3D
             bool editingText = focusedControl is LineEdit or TextEdit;
             if (!_playMode && !editingText && (key.CtrlPressed || key.MetaPressed))
             {
-                if (key.Keycode == Key.Y || (key.Keycode == Key.Z && key.ShiftPressed))
+                if (key.Keycode == Key.C)
+                    BeginCopyPlacement();
+                else if (key.Keycode == Key.Y || (key.Keycode == Key.Z && key.ShiftPressed))
                     RedoEdit();
                 else if (key.Keycode == Key.Z)
                     UndoEdit();
@@ -288,6 +305,8 @@ public partial class GameBuilderApp : Node3D
             {
                 if (_playMode)
                     SetPlayMode(false);
+                else if (_copyPlacementActive)
+                    CancelCopyPlacement();
                 else
                     Input.MouseMode = Input.MouseModeEnum.Visible;
             }
@@ -490,6 +509,9 @@ public partial class GameBuilderApp : Node3D
         _playButton = new Button { Text = "Play", CustomMinimumSize = new Vector2(84f, 36f) };
         _playButton.Pressed += () => SetPlayMode(!_playMode);
         toolbar.AddChild(_playButton);
+        var copyActors = new Button { Name = "CopyActorsButton", Text = "Copy", CustomMinimumSize = new Vector2(70f, 36f) };
+        copyActors.Pressed += BeginCopyPlacement;
+        toolbar.AddChild(copyActors);
         AddToolbarButton(toolbar, "World", OpenWorldSettings);
         AddToolbarButton(toolbar, "Effects", OpenVisualEffects);
         AddToolbarButton(toolbar, "Terrain", OpenTerrainEditor);
@@ -1018,6 +1040,7 @@ public partial class GameBuilderApp : Node3D
             return;
         }
         _terrainEditorWindow?.SetBrushActive(false);
+        CancelCopyPlacement(showStatus: false);
         EndTerrainStroke();
         try
         {
@@ -1722,6 +1745,8 @@ public partial class GameBuilderApp : Node3D
         if (_document is null)
             return false;
         WorldActorNode? actor = _actors.FirstOrDefault(candidate => candidate.LegacyName == actorName);
+        if (_copyPlacementActive && _copySources.Any(candidate => candidate.LegacyName == actorName))
+            CancelCopyPlacement(showStatus: false);
         if (actor is null || actor.LegacyName.StartsWith("builtin:", StringComparison.Ordinal))
             return false;
         bool wasSelected = _selectedActor == actor;
@@ -1912,6 +1937,7 @@ public partial class GameBuilderApp : Node3D
         }
         if (enabled)
         {
+            CancelCopyPlacement(showStatus: false);
             _terrainEditorWindow?.SetBrushActive(false);
             _worldSettingsWindow.Hide();
             EndTerrainStroke();

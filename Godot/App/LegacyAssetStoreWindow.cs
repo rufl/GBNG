@@ -35,6 +35,7 @@ public sealed partial class LegacyAssetStoreWindow : Window
         _importImage = importImage;
         Title = "GBNG Asset Store · offline";
         Size = new Vector2I(1080, 700);
+        Hide();
         CloseRequested += () => Hide();
         BuildInterface();
         RefreshCatalog();
