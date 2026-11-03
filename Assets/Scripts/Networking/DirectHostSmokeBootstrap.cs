@@ -93,6 +93,8 @@ public sealed class DirectHostSmokeObserver : MonoBehaviour
     while (Time.realtimeSinceStartup < timeoutAt)
     {
       manager = NetworkManager.Singleton;
+      AutoSaveController autoSave = FindObjectOfType<AutoSaveController>();
+      if (autoSave != null) autoSave.SetPaused(true);
       localBody = FindBody(true);
       remoteBody = FindBody(false);
       bool networkReady = role == "offline"
@@ -126,12 +128,77 @@ public sealed class DirectHostSmokeObserver : MonoBehaviour
     }
 
     Vector3 avatarTarget = role == "host" ? new Vector3(5f, 1.5f, 3f) : new Vector3(-5f, 1.5f, 3f);
-    localBody.transform.position = avatarTarget;
-    yield return new WaitForSecondsRealtime(1.5f);
     Vector3 remoteAvatarTarget = role == "host" ? new Vector3(-5f, 1.5f, 3f) : new Vector3(5f, 1.5f, 3f);
+    PhotonView localView = localBody.GetComponent<PhotonView>();
+    UserMain localUserMain = FindObjectOfType<UserMain>();
+    bool wasUserMainEnabled = localUserMain != null && localUserMain.enabled;
+    if (localUserMain != null) localUserMain.enabled = false;
+    NavigationControls navigationControls = FindObjectOfType<NavigationControls>();
+    bool wereControlsEnabled = navigationControls != null && navigationControls.enabled;
+    if (navigationControls != null) navigationControls.enabled = false;
+    Transform originalParent = localBody.transform.parent;
+    localBody.transform.SetParent(null, true);
+    localBody.transform.position = avatarTarget;
+    for (int i = 0; i < 10; i++)
+    {
+      DirectHostRpcRouter.SendUserBodyPose(localView, avatarTarget, Quaternion.identity);
+      yield return new WaitForSecondsRealtime(0.1f);
+    }
+    yield return new WaitForSecondsRealtime(0.5f);
     bool avatarPoseSynced = remoteBody != null
       && Vector3.Distance(remoteBody.transform.position, remoteAvatarTarget) < 0.75f;
 
+    Color playerTint = role == "host" ? Color.cyan : Color.magenta;
+    localBody.SetTint(playerTint);
+    Animator localAnimator = localBody.GetComponentInChildren<Animator>(true);
+    if (localAnimator != null) localAnimator.SetBool("IsSprinting", true);
+    yield return new WaitForSecondsRealtime(0.75f);
+    Animator remoteAnimator = remoteBody != null ? remoteBody.GetComponentInChildren<Animator>(true) : null;
+    Color remotePlayerTint = role == "host" ? Color.magenta : Color.cyan;
+    bool playerTintSynced = remoteBody != null && remoteBody.currentTint == remotePlayerTint;
+    bool sprintSynced = remoteAnimator != null && remoteAnimator.GetBool("IsSprinting");
+    bool playerStateSynced = playerTintSynced && sprintSynced;
+    Debug.Log($"DIRECT_HOST_SMOKE|{role}|player-state|local-tint={localBody.currentTint}|expected-remote-tint={remotePlayerTint}|remote-tint={(remoteBody == null ? "none" : remoteBody.currentTint.ToString())}|local-sprint={(localAnimator != null && localAnimator.GetBool("IsSprinting"))}|remote-sprint={(remoteAnimator != null && remoteAnimator.GetBool("IsSprinting"))}");
+    Debug.Log($"DIRECT_HOST_SMOKE|{role}|player-state-check|tint={playerTintSynced}|sprint={sprintSynced}");
+    TerrainManager terrainManager = FindObjectOfType<TerrainManager>();
+    TerrainManager.Cell terrainCell = default;
+    TerrainManager.Cell remoteTerrainCell = default;
+    bool foundEmptyTerrainCell = false;
+    bool foundRemoteTerrainCell = false;
+    int terrainX = role == "host" ? 0 : 1;
+    int remoteTerrainX = role == "host" ? 1 : 0;
+    if (terrainManager != null)
+    {
+      for (int y = 120; y >= 100; y--)
+      {
+        TerrainManager.Cell candidate = new TerrainManager.Cell(terrainX, y, 0);
+        if (terrainManager.GetCellValue(candidate).IsOccupied()) continue;
+        terrainCell = candidate;
+        foundEmptyTerrainCell = true;
+        break;
+      }
+      for (int y = 120; y >= 100; y--)
+      {
+        TerrainManager.Cell candidate = new TerrainManager.Cell(remoteTerrainX, y, 0);
+        if (terrainManager.GetCellValue(candidate).IsOccupied()) continue;
+        remoteTerrainCell = candidate;
+        foundRemoteTerrainCell = true;
+        break;
+      }
+    }
+    if (foundEmptyTerrainCell)
+    {
+      terrainManager.SetCellValue(terrainCell, new TerrainManager.CellValue(
+        TerrainManager.BlockShape.Full, TerrainManager.BlockDirection.North, TerrainManager.BlockStyle.SolidColor0));
+      yield return new WaitForSecondsRealtime(1f);
+    }
+    bool terrainReplicated = foundRemoteTerrainCell
+      && terrainManager.GetCellValue(remoteTerrainCell).blockType == TerrainManager.BlockShape.Full;
+
+
+    localBody.transform.SetParent(originalParent, true);
+    if (navigationControls != null) navigationControls.enabled = wereControlsEnabled;
+    if (localUserMain != null) localUserMain.enabled = wasUserMainEnabled;
     VoosEngine engine = FindObjectOfType<VoosEngine>();
     string localActorName = "DirectSmoke_" + role;
     Vector3 actorStart = role == "host" ? new Vector3(10f, 2f, 0f) : new Vector3(-10f, 2f, 0f);
@@ -155,12 +222,13 @@ public sealed class DirectHostSmokeObserver : MonoBehaviour
 
     bool actorReplicated = remoteActor != null
       && Vector3.Distance(remoteActor.transform.position, remoteActorTarget) < 0.75f;
-    bool passed = avatarPoseSynced && actorReplicated;
-    PhotonView localView = localBody.GetComponent<PhotonView>();
+    yield return new WaitForSecondsRealtime(0.5f);
+    bool passed = avatarPoseSynced && playerStateSynced && terrainReplicated && actorReplicated;
     PhotonView remoteView = remoteBody != null ? remoteBody.GetComponent<PhotonView>() : null;
     string remotePosition = remoteBody != null ? remoteBody.transform.position.ToString() : "none";
-    Debug.Log($"DIRECT_HOST_SMOKE|{role}|{(passed ? "pass" : "fail")}|avatar-pose={avatarPoseSynced}|actor-state={actorReplicated}|local-pos={localBody.transform.position}|remote-pos={remotePosition}|local-view={localView.viewID}/{localView.ownerId}|remote-view={(remoteView == null ? "none" : remoteView.viewID + "/" + remoteView.ownerId)}");
-    yield return new WaitForSecondsRealtime(2f);
+    Debug.Log($"DIRECT_HOST_SMOKE|{role}|{(passed ? "pass" : "fail")}|avatar-pose={avatarPoseSynced}|player-state={playerStateSynced}|terrain={terrainReplicated}|actor-state={actorReplicated}|local-pos={localBody.transform.position}|remote-pos={remotePosition}|local-view={localView.viewID}/{localView.ownerId}|remote-view={(remoteView == null ? "none" : remoteView.viewID + "/" + remoteView.ownerId)}");
+    yield return new WaitForSecondsRealtime(25f);
+    if (localActor != null && engine != null) engine.DestroyActor(localActor);
     QuitSmoke(passed ? 0 : 1);
   }
 

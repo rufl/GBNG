@@ -31,7 +31,11 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
   bool registered;
   int debugLoggedSentPoseViewId;
   int debugLoggedReceivedPoseViewId;
+  int debugLoggedAcceptedPoseViewId;
   float nextObservableTime;
+  long debugLoggedSentObservableKey;
+  long debugLoggedReceivedObservableKey;
+  long debugLoggedAcceptedObservableKey;
   readonly HashSet<int> knownPlayerIds = new HashSet<int>();
   readonly HashSet<int> currentPlayerIds = new HashSet<int>();
 
@@ -498,15 +502,28 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
           UserBody body = view.GetComponent<UserBody>();
           if (body == null) return;
           body.SetDirectPose(position, rotation);
+          if (Debug.isDebugBuild && debugLoggedAcceptedPoseViewId != viewId)
+          {
+            debugLoggedAcceptedPoseViewId = viewId;
+            Debug.Log($"DIRECT_POSE|accepted-server|view={viewId}|owner={ownerPlayerId}|sender={senderClientId}|position={position}");
+          }
           SendPoseToClients(packet, senderClientId);
         }
         else if (senderClientId == NetworkManager.ServerClientId && view != null && view.ownerId == ownerPlayerId
           && ownerPlayerId != checked((int)manager.LocalClientId + 1))
         {
           UserBody body = view.GetComponent<UserBody>();
-          if (body != null) body.SetDirectPose(position, rotation);
-        }
+          if (body != null)
+          {
+            body.SetDirectPose(position, rotation);
+            if (Debug.isDebugBuild && debugLoggedAcceptedPoseViewId != viewId)
+            {
+              debugLoggedAcceptedPoseViewId = viewId;
+              Debug.Log($"DIRECT_POSE|accepted-client|view={viewId}|owner={ownerPlayerId}|position={position}");
+            }
+          }
       }
+    }
     }
     catch (Exception e) { Debug.LogError($"Invalid direct player pose from client {senderClientId}: {e}"); }
   }
@@ -545,6 +562,11 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
           }
           else SendPacket(ObservableName, NetworkManager.ServerClientId, packet, NetworkDelivery.ReliableFragmentedSequenced);
           sentStates[key] = new ObservableState { bytes = state, sentAt = now };
+          if (Debug.isDebugBuild && view.GetComponent<UserBody>() != null && debugLoggedSentObservableKey != key)
+          {
+            debugLoggedSentObservableKey = key;
+            Debug.Log($"DIRECT_OBSERVABLE|send|view={view.viewID}|owner={PhotonNetwork.player.ID}|component={componentIndex}|bytes={state.Length}|server={manager.IsServer}");
+          }
         }
         componentIndex++;
       }
@@ -585,17 +607,35 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
         if (state.Length != length || input.BaseStream.Position != input.BaseStream.Length)
           throw new InvalidDataException("Truncated observable state packet.");
         PhotonView view = PhotonView.Find(viewId);
+        long key = ((long)viewId << 16) ^ (uint)componentIndex;
+        if (Debug.isDebugBuild && view != null && view.GetComponent<UserBody>() != null && debugLoggedReceivedObservableKey != key)
+        {
+          debugLoggedReceivedObservableKey = key;
+          Debug.Log($"DIRECT_OBSERVABLE|receive|view={viewId}|owner={ownerPlayerId}|component={componentIndex}|bytes={length}|server={manager.IsServer}|sender={senderClientId}");
+        }
         if (manager.IsServer)
         {
           int senderPlayerId = checked((int)senderClientId + 1);
           if (view == null || ownerPlayerId != senderPlayerId || view.ownerId != senderPlayerId) return;
           InvokeObservable(view, componentIndex, state, PhotonNetwork.GetDirectPlayer(senderClientId));
+          if (Debug.isDebugBuild && view.GetComponent<UserBody>() != null && debugLoggedAcceptedObservableKey != key)
+          {
+            debugLoggedAcceptedObservableKey = key;
+            Debug.Log($"DIRECT_OBSERVABLE|accepted-server|view={viewId}|owner={ownerPlayerId}");
+          }
           foreach (ulong clientId in manager.ConnectedClientsIds)
             if (clientId != manager.LocalClientId && clientId != senderClientId)
               SendPacket(ObservableName, clientId, packet, NetworkDelivery.ReliableFragmentedSequenced);
         }
         else if (senderClientId == NetworkManager.ServerClientId && view != null && view.ownerId == ownerPlayerId)
+        {
           InvokeObservable(view, componentIndex, state, PhotonNetwork.GetDirectPlayer((ulong)(ownerPlayerId - 1)));
+          if (Debug.isDebugBuild && view.GetComponent<UserBody>() != null && debugLoggedAcceptedObservableKey != key)
+          {
+            debugLoggedAcceptedObservableKey = key;
+            Debug.Log($"DIRECT_OBSERVABLE|accepted-client|view={viewId}|owner={ownerPlayerId}");
+          }
+        }
       }
     }
     catch (Exception e) { Debug.LogError($"Invalid direct multiplayer observable from client {senderClientId}: {e}"); }

@@ -41,13 +41,11 @@ GameObject:
   - component: {fileID: 4214085465961396}
   - component: {fileID: 114265042630513590}
   - component: {fileID: 114357310594470758}
-  - component: {fileID: 114365681981103052}
   - component: {fileID: 114938399738467446}
   - component: {fileID: 968547995868462236}
   - component: {fileID: 82911695516918090}
   - component: {fileID: 82862461513083814}
   - component: {fileID: 82879982871387206}
-  - component: {fileID: 7019357569552382821}
   m_Layer: 9
   m_Name: UserBody
   m_TagString: Untagged
@@ -93,8 +91,6 @@ MonoBehaviour:
   onSerializeRigidBodyOption: 2
   ownershipTransfer: 0
   ObservedComponents:
-  - {fileID: 7019357569552382821}
-  - {fileID: 114365681981103052}
   - {fileID: 114357310594470758}
   ObservedComponentsFoldoutOpen: 1
   viewIdField: 0
@@ -160,63 +156,6 @@ MonoBehaviour:
   - {fileID: 9086424698598723339, guid: 52e610fdf036f544c8abf64e45f96d93, type: 3}
   - {fileID: 7003406400678228549, guid: 88e24f9d29064384180099f01b3fbc52, type: 3}
   groundEffects: []
---- !u!114 &114365681981103052
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1931475627264184}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 9b8c4a61274f60b4ea5fb4299cfdbf14, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  ShowLayerWeightsInspector: 1
-  ShowParameterInspector: 1
-  m_SynchronizeParameters:
-  - Type: 4
-    SynchronizeType: 1
-    Name: IsCrouching
-  - Type: 4
-    SynchronizeType: 1
-    Name: IsSprinting
-  - Type: 9
-    SynchronizeType: 1
-    Name: IsJumping
-  - Type: 4
-    SynchronizeType: 1
-    Name: IsGrounded
-  - Type: 9
-    SynchronizeType: 1
-    Name: TransformToEditor
-  - Type: 9
-    SynchronizeType: 1
-    Name: TransformToExplorer
-  - Type: 1
-    SynchronizeType: 1
-    Name: VelX
-  - Type: 1
-    SynchronizeType: 1
-    Name: VelY
-  - Type: 9
-    SynchronizeType: 1
-    Name: IsDamaged
-  - Type: 9
-    SynchronizeType: 1
-    Name: IsDead
-  - Type: 9
-    SynchronizeType: 1
-    Name: IsRespawning
-  - Type: 9
-    SynchronizeType: 1
-    Name: ExplorerIsGrabbing
-  - Type: 4
-    SynchronizeType: 1
-    Name: EditorHolograms
-  m_SynchronizeLayers:
-  - SynchronizeType: 0
-    LayerIndex: 0
 --- !u!114 &114938399738467446
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -602,84 +541,6 @@ AudioSource:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
---- !u!114 &7019357569552382821
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1931475627264184}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 627855c7f81362d41938ffe0b1475957, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  m_PositionModel:
-    SynchronizeEnabled: 1
-    TeleportEnabled: 1
-    TeleportIfDistanceGreaterThan: 3
-    InterpolateOption: 2
-    InterpolateMoveTowardsSpeed: 1
-    InterpolateLerpSpeed: 1
-    InterpolateMoveTowardsAcceleration: 2
-    InterpolateMoveTowardsDeceleration: 2
-    InterpolateSpeedCurve:
-      serializedVersion: 2
-      m_Curve:
-      - serializedVersion: 3
-        time: -1
-        value: 0
-        inSlope: 0
-        outSlope: Infinity
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0
-      - serializedVersion: 3
-        time: 0
-        value: 1
-        inSlope: 0
-        outSlope: 0
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0
-      - serializedVersion: 3
-        time: 1
-        value: 1
-        inSlope: 0
-        outSlope: 1
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0
-      - serializedVersion: 3
-        time: 4
-        value: 4
-        inSlope: 1
-        outSlope: 0
-        tangentMode: 0
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0
-      m_PreInfinity: 2
-      m_PostInfinity: 2
-      m_RotationOrder: 4
-    ExtrapolateOption: 0
-    ExtrapolateSpeed: 1
-    ExtrapolateIncludingRoundTripTime: 1
-    ExtrapolateNumberOfStoredPositions: 1
-    DrawErrorGizmo: 1
-  m_RotationModel:
-    SynchronizeEnabled: 1
-    InterpolateOption: 1
-    InterpolateRotateTowardsSpeed: 180
-    InterpolateLerpSpeed: 5
-  m_ScaleModel:
-    SynchronizeEnabled: 1
-    InterpolateOption: 0
-    InterpolateMoveTowardsSpeed: 1
-    InterpolateLerpSpeed: 0
 --- !u!1 &1998075719716952
 GameObject:
   m_ObjectHideFlags: 0
