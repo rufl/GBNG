@@ -397,6 +397,25 @@ public partial class WorldActorNode : RigidBody3D
         State.SetVelocity(LinearVelocity);
         State.SetAngularVelocity(AngularVelocity);
     }
+    public void ApplyNetworkState()
+    {
+        if (State is null)
+            return;
+        DesiredVelocity = CoordinateSpace.ToGodot(State.ReadLegacyVector("desiredVelocity", Vector3.Zero));
+        StickyDesiredVelocity = CoordinateSpace.ToGodot(State.ReadLegacyVector("stickyDesiredVelocity", Vector3.Zero));
+        StickyForce = CoordinateSpace.ToGodot(State.ReadLegacyVector("stickyForce", Vector3.Zero));
+        UseDesiredVelocity = LegacySaveDocument.ReadBool(State.Data["useDesiredVelocity"]);
+        IgnoreVerticalDesiredVelocity = LegacySaveDocument.ReadBool(State.Data["ignoreVerticalDesiredVelocity"]);
+        UseStickyDesiredVelocity = LegacySaveDocument.ReadBool(State.Data["useStickyDesiredVelocity"]);
+        GlobalTransform = State.GetWorldTransform();
+        LinearVelocity = State.Velocity;
+        AngularVelocity = State.AngularVelocity;
+        SetTint(State.Tint);
+        SetRenderableOffset(State.ReadLegacyVector("renderableOffset", Vector3.Zero));
+        SetRenderableRotation(State.ReadLegacyQuaternion("renderableRotation"));
+        SetLoopingAnimation(State.LoopingAnimation);
+        ApplyLegacyPhysicsSettings();
+    }
 
     private void CreateBodyCollider()
     {

@@ -1,3 +1,5 @@
+using System.Text.Json;
+using GBNG.Networking;
 using System.Text.Json.Nodes;
 using GBNG.Behaviors;
 using GBNG.Assets;
@@ -33,6 +35,8 @@ public partial class GameBuilderApp : Node3D
     private FileDialog _saveDialog = null!;
     private FileDialog _importModelDialog = null!;
     private AcceptDialog _errorDialog = null!;
+    private LegacyLanSession _lanSession = null!;
+    private LegacyLanNetworkWindow _networkWindow = null!;
     private WorldActorNode? _selectedActor;
 
     private LegacyTerrainNode? _terrain;
@@ -52,6 +56,8 @@ public partial class GameBuilderApp : Node3D
     private Vector3 _temporaryCameraOffset;
     private Vector2 _lookAxes;
     private float _mouseWheelRaw;
+    private Vector2 _networkLookAxes;
+    private float _networkWheelRaw;
     private readonly List<Control> _inspectorInputs = new();
     private LineEdit _displayNameField = null!;
     private TextEdit _descriptionField = null!;
@@ -74,12 +80,28 @@ public partial class GameBuilderApp : Node3D
     private sealed record HistoryEntry(string Label, Action Undo, Action Redo);
     private sealed record ActorDeletionSnapshot(string Name, string DisplayName, string ActorJson, int Index, string[] ChildNames);
     private readonly record struct ActorMotionSnapshot(Transform3D Transform, Vector3 Velocity, Vector3 AngularVelocity);
+    private sealed record NetworkActorSnapshot(
+        string Name,
+        float X, float Y, float Z,
+        float RotationX, float RotationY, float RotationZ, float RotationW,
+        float ScaleX, float ScaleY, float ScaleZ,
+        float VelocityX, float VelocityY, float VelocityZ,
+        float AngularX, float AngularY, float AngularZ,
+        float TintR, float TintG, float TintB, float TintA,
+        float OffsetX, float OffsetY, float OffsetZ,
+        float RenderRotationX, float RenderRotationY, float RenderRotationZ, float RenderRotationW,
+        string Animation);
 
 
 
     public override void _Ready()
     {
         _catalog = LegacyRenderableCatalog.Load();
+        _lanSession = new LegacyLanSession { Name = "LanSession" };
+        _lanSession.SnapshotReceived += ApplyNetworkSnapshot;
+        _lanSession.HostPlayModeChanged += enabled => SetPlayMode(enabled, fromHost: true);
+        _lanSession.ActorStructureReceived += ApplyNetworkActorStructure;
+        AddChild(_lanSession);
         BuildWorldServices();
         BuildInterface();
         PopulateSamples();
@@ -119,13 +141,42 @@ public partial class GameBuilderApp : Node3D
 
     public override void _PhysicsProcess(double delta)
     {
-        if (_playMode)
+        if (_lanSession.IsClient && _playMode)
+        {
+            _networkLookAxes += _lookAxes;
+            _networkWheelRaw += _mouseWheelRaw;
+            if (_lanSession.ShouldSendLocalInput(delta, _playMode))
+            {
+                Vector2 pointerPosition = GetViewport().GetMousePosition();
+                Vector2 viewportSize = GetViewport().GetVisibleRect().Size;
+                float uiScale = viewportSize.X / 1600f;
+                Vector2 mouseUiPosition = uiScale > 0f ? pointerPosition / uiScale : Vector2.Zero;
+                _lanSession.SendLocalInput(
+                    _networkLookAxes,
+                    mouseUiPosition,
+                    _networkWheelRaw,
+                    IsPointerOverUi(pointerPosition),
+                    _camera.ProjectRayOrigin(pointerPosition),
+                    _camera.ProjectRayNormal(pointerPosition),
+                    _camera.GlobalPosition,
+                    _camera.GlobalBasis.GetRotationQuaternion());
+                _networkLookAxes = Vector2.Zero;
+                _networkWheelRaw = 0f;
+            }
+        }
+        else
+        {
+            _networkLookAxes = Vector2.Zero;
+            _networkWheelRaw = 0f;
+        }
+        if (_playMode && !_lanSession.IsClient)
         {
             Vector2 pointerPosition = GetViewport().GetMousePosition();
             _behaviorRuntime?.SetLookAxes(_lookAxes);
             _behaviorRuntime?.SetPointerState(pointerPosition, _mouseWheelRaw, IsPointerOverUi(pointerPosition));
             _behaviorRuntime?.Tick(delta);
         }
+        _lanSession.Tick(delta, _playMode, _actors);
         _lookAxes = Vector2.Zero;
         _mouseWheelRaw = 0f;
     }
@@ -237,6 +288,8 @@ public partial class GameBuilderApp : Node3D
     {
         var layer = new CanvasLayer { Name = "EditorInterface", Layer = 10 };
         AddChild(layer);
+        _networkWindow = new LegacyLanNetworkWindow(_lanSession, PrepareNetworkHostProjectCopy, OpenReceivedNetworkProject);
+        AddChild(_networkWindow);
 
         var root = new Control
         {
@@ -362,6 +415,7 @@ public partial class GameBuilderApp : Node3D
             _saveDialog.CurrentFile = _document is null ? "project.voos" : Path.GetFileName(_document.SourcePath);
             _saveDialog.PopupCentered(new Vector2I(1000, 700));
         });
+        AddToolbarButton(toolbar, "Network", () => _networkWindow.PopupCentered(new Vector2I(760, 660)));
         _playButton = new Button { Text = "Play", CustomMinimumSize = new Vector2(84f, 36f) };
         _playButton.Pressed += () => SetPlayMode(!_playMode);
         toolbar.AddChild(_playButton);
@@ -688,8 +742,8 @@ public partial class GameBuilderApp : Node3D
             _camera,
             _behaviorUi.SetCommands,
             RefreshRuntimeActors,
-            SetTemporaryCameraOffset);
-
+            SetTemporaryCameraOffset,
+            _lanSession);
 
     private void BeginTextEdit(string property)
     {
@@ -1375,6 +1429,8 @@ public partial class GameBuilderApp : Node3D
     {
         RefreshActorList();
         RefreshBrainChoices();
+        if (_lanSession.IsHost)
+            _lanSession.MarkActorStructureChanged();
         if (_selectedActor is not null && !_actors.Contains(_selectedActor))
             SelectActor(_actors.FirstOrDefault());
     }
@@ -1481,10 +1537,15 @@ public partial class GameBuilderApp : Node3D
             () => SetActorTransform(actorName, newTransform));
     }
 
-    private void SetPlayMode(bool enabled)
+    private void SetPlayMode(bool enabled, bool fromHost = false)
     {
         if (_document is null)
             return;
+        if (_lanSession.IsClient && !fromHost)
+        {
+            _status.Text = "The host controls play mode; connected clients observe the shared simulation.";
+            return;
+        }
         if (enabled && (_behaviorRuntime is null || _behaviorRuntimeError is not null))
         {
             ShowError($"Behavior runtime cannot start:\n{_behaviorRuntimeError ?? "the project has not loaded successfully."}");
@@ -1500,6 +1561,7 @@ public partial class GameBuilderApp : Node3D
         foreach (WorldActorNode actor in _actors)
             actor.SetPlayMode(enabled);
         _playButton.Text = enabled ? "Stop" : "Play";
+        _playButton.Disabled = _lanSession.IsClient;
         _behaviorUi.Visible = enabled;
         _actorList.Visible = !enabled;
         _positionFields[0].Editable = !enabled && _selectedActor is not null;
@@ -1511,11 +1573,185 @@ public partial class GameBuilderApp : Node3D
         _behaviorEditorButton.Disabled = enabled || _selectedActor is null;
         UpdateHistoryButtons();
         _status.Text = enabled
-            ? "Play mode — WASD/arrows to move, Space to jump, Esc to return to editing."
+            ? _lanSession.IsHost
+                ? "Host play mode — WASD/arrows to move; connected clients observe the simulation."
+                : "Shared play mode — the host runs the simulation."
             : "Edit mode — select an actor and change its transform.";
         if (enabled && GetPlayerActor() is WorldActorNode player)
             _cameraTarget = player.GlobalPosition + new Vector3(0f, 3f, 0f);
         UpdateOrbitCamera();
+        if (!fromHost)
+            _lanSession.SetHostPlayMode(enabled);
+    }
+
+    private string? PrepareNetworkHostProjectCopy()
+    {
+        if (_document is null)
+            return null;
+
+        string fileName = Path.GetFileName(_document.SourcePath);
+        if (string.IsNullOrWhiteSpace(fileName) || !fileName.EndsWith(".voos", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("The current project does not have a .voos filename.");
+
+        string hostDirectory = ProjectSettings.GlobalizePath($"user://network-host/{Guid.NewGuid():N}");
+        Directory.CreateDirectory(hostDirectory);
+        string hostProjectPath = Path.Combine(hostDirectory, fileName);
+        try
+        {
+            foreach (WorldActorNode actor in _actors)
+                actor.SaveTransform();
+            if (_terrain is not null)
+            {
+                _terrain.FlushUpdates();
+                _document.SaveTerrainPayload(_terrain.Encode());
+            }
+            _catalog.CopyProjectAssets(_document.SourcePath, hostProjectPath);
+            _document.SaveCopyTo(hostProjectPath);
+            return hostProjectPath;
+        }
+        catch
+        {
+            if (Directory.Exists(hostDirectory))
+                Directory.Delete(hostDirectory, recursive: true);
+            throw;
+        }
+    }
+
+    private void ApplyNetworkSnapshot(string snapshotJson)
+    {
+        NetworkActorSnapshot[]? snapshots;
+        try
+        {
+            snapshots = JsonSerializer.Deserialize<NetworkActorSnapshot[]>(
+                snapshotJson,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch (JsonException exception)
+        {
+            GD.PushWarning($"Ignored invalid network actor snapshot: {exception.Message}");
+            return;
+        }
+        if (snapshots is null)
+            return;
+
+        foreach (NetworkActorSnapshot snapshot in snapshots)
+        {
+            WorldActorNode? actor = _actors.FirstOrDefault(candidate => candidate.LegacyName == snapshot.Name);
+            if (actor is null)
+                continue;
+            var scale = new Vector3(snapshot.ScaleX, snapshot.ScaleY, snapshot.ScaleZ);
+            var rotation = new Quaternion(snapshot.RotationX, snapshot.RotationY, snapshot.RotationZ, snapshot.RotationW);
+            actor.GlobalTransform = new Transform3D(new Basis(rotation).Scaled(scale), new Vector3(snapshot.X, snapshot.Y, snapshot.Z));
+            actor.LinearVelocity = new Vector3(snapshot.VelocityX, snapshot.VelocityY, snapshot.VelocityZ);
+            actor.AngularVelocity = new Vector3(snapshot.AngularX, snapshot.AngularY, snapshot.AngularZ);
+            var tint = new Color(snapshot.TintR, snapshot.TintG, snapshot.TintB, snapshot.TintA);
+            if (actor.State.Tint != tint)
+                actor.SetTint(tint);
+            Vector3 renderableOffset = new(snapshot.OffsetX, snapshot.OffsetY, snapshot.OffsetZ);
+            if (actor.State.ReadLegacyVector("renderableOffset", Vector3.Zero) != renderableOffset)
+                actor.SetRenderableOffset(renderableOffset);
+            var renderableRotation = new Quaternion(
+                snapshot.RenderRotationX, snapshot.RenderRotationY, snapshot.RenderRotationZ, snapshot.RenderRotationW);
+            if (actor.State.ReadLegacyQuaternion("renderableRotation") != renderableRotation)
+                actor.SetRenderableRotation(renderableRotation);
+            if (actor.State.LoopingAnimation != snapshot.Animation)
+                actor.SetLoopingAnimation(snapshot.Animation);
+            actor.SaveTransform();
+        }
+    }
+    private void OpenReceivedNetworkProject(string path)
+    {
+        LoadProject(path);
+        if (string.Equals(_document?.SourcePath, path, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+            _lanSession.NotifyProjectLoaded();
+    }
+
+    private void ApplyNetworkActorStructure(string actorStatesJson)
+    {
+        if (!_lanSession.IsClient || _document is null)
+            return;
+
+        string[]? serializedActors;
+        try
+        {
+            serializedActors = JsonSerializer.Deserialize<string[]>(actorStatesJson);
+        }
+        catch (JsonException exception)
+        {
+            GD.PushWarning($"Ignored invalid network actor structure: {exception.Message}");
+            return;
+        }
+        if (serializedActors is null || serializedActors.Length > ushort.MaxValue)
+        {
+            GD.PushWarning("Ignored network actor structure with an invalid actor count.");
+            return;
+        }
+
+        var actorData = new List<JsonObject>(serializedActors.Length);
+        var receivedNames = new HashSet<string>(StringComparer.Ordinal);
+        foreach (string serializedActor in serializedActors)
+        {
+            if (JsonNode.Parse(serializedActor) is not JsonObject data)
+            {
+                GD.PushWarning("Ignored network actor structure containing a non-object actor.");
+                return;
+            }
+            string name = LegacySaveDocument.ReadString(data["name"]);
+            if (string.IsNullOrWhiteSpace(name) || !receivedNames.Add(name))
+            {
+                GD.PushWarning("Ignored network actor structure containing an empty or duplicate actor name.");
+                return;
+            }
+            actorData.Add(data);
+        }
+
+        foreach (WorldActorNode actor in _actors.Where(existing => !receivedNames.Contains(existing.LegacyName)).ToArray())
+        {
+            _document.RemoveActor(actor.LegacyName);
+            _actors.Remove(actor);
+            actor.QueueFree();
+        }
+
+        var actorsByName = _actors.ToDictionary(actor => actor.LegacyName, StringComparer.Ordinal);
+        foreach (JsonObject data in actorData)
+        {
+            string name = LegacySaveDocument.ReadString(data["name"]);
+            if (actorsByName.TryGetValue(name, out WorldActorNode? existing))
+            {
+                existing.State.ApplyNetworkData(data);
+                continue;
+            }
+
+            LegacyActorData state = _document.AddActor(data);
+            _catalog.TryGet(state.RenderableUri, out RenderableEntry? renderable);
+            var created = new WorldActorNode();
+            created.Initialize(state, renderable);
+            created.SetPlayMode(_playMode);
+            _world.AddChild(created);
+            _actors.Add(created);
+            actorsByName.Add(name, created);
+        }
+
+        foreach (JsonObject data in actorData)
+        {
+            string name = LegacySaveDocument.ReadString(data["name"]);
+            WorldActorNode actor = actorsByName[name];
+            actor.ApplyNetworkState();
+            actor.SetPlayMode(_playMode);
+        }
+        foreach (WorldActorNode actor in _actors)
+        {
+            WorldActorNode? desiredParent = actor.State.TransformParent.Length > 0
+                ? _actors.FirstOrDefault(candidate => candidate.LegacyName == actor.State.TransformParent)
+                : null;
+            Node parent = desiredParent ?? _world;
+            if (actor.GetParent() == parent)
+                continue;
+            Transform3D globalTransform = actor.GlobalTransform;
+            actor.Reparent(parent, keepGlobalTransform: false);
+            actor.GlobalTransform = globalTransform;
+        }
+        RefreshRuntimeActors();
     }
 
     private void SaveProject()
@@ -1707,7 +1943,16 @@ public partial class GameBuilderApp : Node3D
 
     private WorldActorNode? GetPlayerActor()
     {
-        return _actors.FirstOrDefault(actor => actor.State.IsPlayerControllable);
+        int targetSlot = _lanSession.IsClient ? _lanSession.LocalPlayerSlot : 1;
+        int slot = 0;
+        foreach (WorldActorNode actor in _actors)
+        {
+            if (!actor.State.IsPlayerControllable)
+                continue;
+            if (++slot == targetSlot)
+                return actor;
+        }
+        return null;
     }
     private WorldActorNode? GetCameraActor(WorldActorNode player)
     {

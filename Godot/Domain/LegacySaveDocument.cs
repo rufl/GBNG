@@ -112,6 +112,14 @@ public sealed class LegacySaveDocument
 
     public void SaveTo(string path)
     {
+        WriteTo(path);
+        SourcePath = path;
+    }
+
+    public void SaveCopyTo(string path) => WriteTo(path);
+
+    private void WriteTo(string path)
+    {
         if (string.IsNullOrWhiteSpace(path))
             throw new ArgumentException("A destination .voos path is required.", nameof(path));
         if (path.StartsWith("res://", StringComparison.Ordinal))
@@ -126,7 +134,6 @@ public sealed class LegacySaveDocument
         string temporaryPath = absolutePath + ".tmp";
         File.WriteAllText(temporaryPath, json, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         File.Move(temporaryPath, absolutePath, overwrite: true);
-        SourcePath = path;
     }
 
 
@@ -203,6 +210,12 @@ public sealed class LegacyActorData
     internal LegacyActorData(JsonObject data) => _data = data;
 
     internal JsonObject Data => _data;
+    internal void ApplyNetworkData(JsonObject source)
+    {
+        _data.Clear();
+        foreach ((string key, JsonNode? value) in source)
+            _data[key] = value?.DeepClone();
+    }
 
     public string Name => LegacySaveDocument.ReadString(_data["name"]);
     public string DisplayName => LegacySaveDocument.ReadString(_data["displayName"], Name);

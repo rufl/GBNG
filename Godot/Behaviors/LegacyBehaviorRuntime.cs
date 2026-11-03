@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using GBNG.Assets;
 using GBNG.Domain;
 using GBNG.World;
+using GBNG.Networking;
 using Godot;
 using Microsoft.ClearScript;
 using Microsoft.ClearScript.V8;
@@ -27,6 +28,7 @@ public sealed partial class LegacyBehaviorRuntime : IDisposable
     private readonly Action<JsonArray> _requestUi;
     private readonly Action? _actorsChanged;
     private readonly Action<Vector3>? _requestCameraOffset;
+    private readonly LegacyLanSession? _lanSession;
     private readonly V8ScriptEngine _engine;
     private long _executionDeadlineTimestamp;
     private readonly Dictionary<string, WorldActorNode> _actorsByName = new(StringComparer.Ordinal);
@@ -35,6 +37,8 @@ public sealed partial class LegacyBehaviorRuntime : IDisposable
     private (string FromActor, string ToActor, bool Destroy)? _pendingPlayerControlTransfer;
     private readonly HashSet<string> _collisionHandlingBrainIds = new(StringComparer.Ordinal);
     private readonly HashSet<string> _keysHeldLastTick = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, RemoteInputHistory> _remoteInputHistories = new(StringComparer.Ordinal);
+    private readonly List<string> _remoteInputHistoryRemoveBuffer = new();
     private readonly HashSet<string> _actorsKnownToRuntime = new(StringComparer.Ordinal);
     private readonly List<object> _actorStatesBuffer = new();
     private readonly List<LegacyBehaviorMessage> _pendingBehaviorMessagesBuffer = new();
@@ -50,15 +54,7 @@ public sealed partial class LegacyBehaviorRuntime : IDisposable
     private bool _collectInput;
     private bool _physicsQueryAvailable;
 
-    private static readonly string[] ScriptableKeyNames =
-    [
-        "1", "2", "3", "4", "5", "6", "7", "8", "9", "0",
-        "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m",
-        "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
-        "space", "enter", "return", "backspace", "up", "down", "left", "right",
-        "[1]", "[2]", "[3]", "[4]", "[5]", "[6]", "[7]", "[8]", "[9]", "[0]",
-        "mouse 0", "@jump", "@pri", "@sec"
-    ];
+    private static readonly string[] ScriptableKeyNames = LegacyInputKeys.ScriptableNames;
 
     private const float LegacyGameUiWidth = 1600f;
     public LegacyBehaviorRuntime(
@@ -70,7 +66,8 @@ public sealed partial class LegacyBehaviorRuntime : IDisposable
         Camera3D camera,
         Action<JsonArray> requestUi,
         Action? actorsChanged = null,
-        Action<Vector3>? requestCameraOffset = null)
+        Action<Vector3>? requestCameraOffset = null,
+        LegacyLanSession? lanSession = null)
     {
         _actors = actors;
         _document = document;
@@ -82,6 +79,7 @@ public sealed partial class LegacyBehaviorRuntime : IDisposable
         _actorsChanged = actorsChanged;
         _requestCameraOffset = requestCameraOffset;
         _engine = new V8ScriptEngine();
+        _lanSession = lanSession;
         try
         {
             _engine.ContinuationCallback = ShouldContinueScript;
@@ -513,25 +511,65 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
         Vector2 viewportSize = _camera.GetViewport().GetVisibleRect().Size;
         float uiScale = viewportSize.X / LegacyGameUiWidth;
         Vector2 mouseUiPosition = uiScale > 0f ? _mousePosition / uiScale : Vector2.Zero;
-        Vector3 mouseRayOriginGodot = _camera.ProjectRayOrigin(_mousePosition);
-        Vector3 mouseRayDirectionGodot = _camera.ProjectRayNormal(_mousePosition);
-        Vector3 mouseRayOrigin = CoordinateSpace.ToLegacy(mouseRayOriginGodot);
-        Vector3 mouseRayDirection = CoordinateSpace.ToLegacy(mouseRayDirectionGodot);
+        Vector3 localMouseRayOrigin = _camera.ProjectRayOrigin(_mousePosition);
+        Vector3 localMouseRayDirection = _camera.ProjectRayNormal(_mousePosition);
 
+        int playerSlotNumber = 0;
+        bool networkHost = _lanSession?.IsHost == true;
         foreach (WorldActorNode actor in _actors)
         {
             _actorsByName.Add(actor.LegacyName, actor);
             actor.SetLegacyCollisionHandling(_collisionHandlingBrainIds.Contains(actor.State.BrainName));
             _actorsById.Add(actor);
             bool isPlayer = actor.State.IsPlayerControllable;
+            int playerSlot = isPlayer ? ++playerSlotNumber : 0;
+            bool remoteControlled = isPlayer && networkHost && playerSlot > 1;
+            LegacyLanInputFrame? remoteInput = remoteControlled ? _lanSession!.GetRemoteInputForSlot(playerSlot) : null;
+            RemoteInputHistory? remoteHistory = hasInputFrame && remoteControlled
+                ? UpdateRemoteInputHistory(actor.LegacyName, remoteInput)
+                : null;
             bool hasPlayerInput = isPlayer && hasInputFrame;
-            Vector3 playerInput = isPlayer ? ReadPlayerThrottle() : Vector3.Zero;
-            Vector3 worldThrottleGodot = _camera.GlobalBasis * CoordinateSpace.ToGodot(playerInput);
+            List<string> actorKeysHeld = remoteControlled ? remoteHistory?.KeysHeld ?? EmptyInputKeys : keysHeld;
+            List<string> actorKeysJustPressed = remoteControlled ? remoteHistory?.KeysJustPressed ?? EmptyInputKeys : keysJustPressed;
+            List<string> actorKeysJustReleased = remoteControlled ? remoteHistory?.KeysJustReleased ?? EmptyInputKeys : keysJustReleased;
+            bool actorMouseDown = remoteControlled ? remoteHistory?.MouseDown ?? false : mouseIsDown;
+            bool actorSecondaryDown = remoteControlled ? remoteHistory?.SecondaryActionDown ?? false : secondaryActionDown;
+            bool actorMouseJustPressed = remoteControlled ? remoteHistory?.MouseJustPressed ?? false : mouseJustPressed;
+            bool actorMouseJustReleased = remoteControlled ? remoteHistory?.MouseJustReleased ?? false : mouseJustReleased;
+            float actorMouseWheelRaw = remoteControlled ? remoteHistory?.MouseWheelRaw ?? 0f : _mouseWheelRaw;
+            Vector2 actorMouseUiPosition = remoteControlled
+                ? remoteInput is null ? Vector2.Zero : new Vector2(remoteInput.MouseUiX, remoteInput.MouseUiY)
+                : mouseUiPosition;
+            Vector2 actorLookAxes = remoteControlled
+                ? remoteInput is null ? Vector2.Zero : new Vector2(remoteInput.LookX, remoteInput.LookY)
+                : _lookAxes;
+            Vector3 actorMouseRayOrigin = remoteControlled
+                ? remoteInput is null ? Vector3.Zero : new Vector3(remoteInput.RayOriginX, remoteInput.RayOriginY, remoteInput.RayOriginZ)
+                : localMouseRayOrigin;
+            Vector3 actorMouseRayDirection = remoteControlled
+                ? remoteInput is null ? Vector3.Zero : new Vector3(remoteInput.RayDirectionX, remoteInput.RayDirectionY, remoteInput.RayDirectionZ)
+                : localMouseRayDirection;
+            Basis actorCameraBasis = remoteInput is null
+                ? remoteControlled ? actor.GlobalBasis : _camera.GlobalBasis
+                : new Basis(new Quaternion(
+                    remoteInput.CameraRotationX,
+                    remoteInput.CameraRotationY,
+                    remoteInput.CameraRotationZ,
+                    remoteInput.CameraRotationW));
+            Vector3 actorCameraPosition = remoteInput is null
+                ? remoteControlled ? actor.GlobalPosition : _camera.GlobalPosition
+                : new Vector3(remoteInput.CameraPositionX, remoteInput.CameraPositionY, remoteInput.CameraPositionZ);
+            Vector3 playerInput = !isPlayer
+                ? Vector3.Zero
+                : remoteControlled
+                    ? remoteInput is null ? Vector3.Zero : ReadRemotePlayerThrottle(remoteHistory!.HeldKeys)
+                    : ReadPlayerThrottle();
+            Vector3 worldThrottleGodot = actorCameraBasis * CoordinateSpace.ToGodot(playerInput);
             Vector3 worldThrottle = CoordinateSpace.ToLegacy(worldThrottleGodot.Normalized());
             Vector3 spawnPosition = actor.State.ReadLegacyVector("spawnPosition", actor.State.ReadLegacyVector("position", Vector3.Zero));
             Quaternion spawnRotation = actor.State.ReadLegacyQuaternion("spawnRotation");
-            Vector3 aimDirectionGodot = isPlayer ? -_camera.GlobalBasis.Z : -actor.GlobalBasis.Z;
-            Vector3 aimOriginGodot = isPlayer ? _camera.GlobalPosition : actor.GlobalPosition + new Vector3(0f, 0.5f, 0f);
+            Vector3 aimDirectionGodot = isPlayer ? -actorCameraBasis.Z : -actor.GlobalBasis.Z;
+            Vector3 aimOriginGodot = isPlayer ? actorCameraPosition : actor.GlobalPosition + new Vector3(0f, 0.5f, 0f);
             Vector3 lastAimHitPoint = Vector3.Zero;
             string? aimingAtName = null;
             bool aimingEnabled = isPlayer && LegacySaveDocument.ReadBool(actor.State.Data["enableAiming"]);
@@ -554,8 +592,19 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
                 }
             }
 
+            Vector3 legacyMouseRayOrigin = CoordinateSpace.ToLegacy(actorMouseRayOrigin);
+            Vector3 legacyMouseRayDirection = CoordinateSpace.ToLegacy(actorMouseRayDirection);
             List<object>? messages = hasPlayerInput
-                ? BuildInputMessages(actor.LegacyName, keysHeld, keysJustPressed, keysJustReleased, mouseJustPressed, mouseJustReleased, mouseIsDown, mouseRayOriginGodot, mouseRayDirectionGodot)
+                ? BuildInputMessages(
+                    actor.LegacyName,
+                    actorKeysHeld,
+                    actorKeysJustPressed,
+                    actorKeysJustReleased,
+                    actorMouseJustPressed,
+                    actorMouseJustReleased,
+                    actorMouseDown,
+                    actorMouseRayOrigin,
+                    actorMouseRayDirection)
                 : null;
             pendingBehaviorMessages.Clear();
             actor.DrainPendingBehaviorMessages(pendingBehaviorMessages);
@@ -580,30 +629,30 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
                 transformParent = actor.State.TransformParent,
                 spawnPosition = ToVectorJson(spawnPosition),
                 spawnRotation = ToQuaternionJson(spawnRotation),
-                isSprinting = isPlayer && Input.IsKeyPressed(Key.Shift),
+                isSprinting = isPlayer && (remoteInput?.Sprinting ?? (!remoteControlled && Input.IsKeyPressed(Key.Shift))),
                 worldSpaceThrottle = ToVectorJson(worldThrottle),
                 inputThrottle = ToVectorJson(playerInput),
                 aimDirection = ToVectorJson(CoordinateSpace.ToLegacy(aimDirectionGodot.Normalized())),
                 aimOrigin = ToVectorJson(CoordinateSpace.ToLegacy(aimOriginGodot)),
                 lastAimHitPoint = ToVectorJson(lastAimHitPoint),
                 aimingAtName,
-                lookAxes = ToVectorJson(isPlayer ? new Vector3(_lookAxes.X, _lookAxes.Y, 0f) : Vector3.Zero),
+                lookAxes = ToVectorJson(isPlayer ? new Vector3(actorLookAxes.X, actorLookAxes.Y, 0f) : Vector3.Zero),
                 hasInputState = hasPlayerInput,
                 inputState = hasPlayerInput
                     ? new
                     {
-                        mouseX = mouseUiPosition.X,
-                        mouseY = mouseUiPosition.Y,
-                        mouseButtonIsPressed = mouseIsDown,
-                        mouseButtonJustPressed = mouseJustPressed,
-                        mouseButtonJustReleased = mouseJustReleased,
-                        mouseRayOrigin = ToVectorJson(mouseRayOrigin),
-                        mouseRayDirection = ToVectorJson(mouseRayDirection),
-                        mouseWheelRaw = _mouseWheelRaw,
-                        mouseWheel = _mouseWheelRaw * (OperatingSystem.IsMacOS() ? 0.033f : 1f),
-                        keysJustPressed = keysJustPressed,
-                        keysHeld = keysHeld,
-                        keysJustReleased = keysJustReleased
+                        mouseX = actorMouseUiPosition.X,
+                        mouseY = actorMouseUiPosition.Y,
+                        mouseButtonIsPressed = actorMouseDown,
+                        mouseButtonJustPressed = actorMouseJustPressed,
+                        mouseButtonJustReleased = actorMouseJustReleased,
+                        mouseRayOrigin = ToVectorJson(legacyMouseRayOrigin),
+                        mouseRayDirection = ToVectorJson(legacyMouseRayDirection),
+                        mouseWheelRaw = actorMouseWheelRaw,
+                        mouseWheel = actorMouseWheelRaw * (OperatingSystem.IsMacOS() ? 0.033f : 1f),
+                        keysJustPressed = actorKeysJustPressed,
+                        keysHeld = actorKeysHeld,
+                        keysJustReleased = actorKeysJustReleased
                     }
                     : null,
                 messages = (object?)messages ?? Array.Empty<object>()
@@ -613,9 +662,14 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
         SetScriptValue("__gbActorStates", JsonSerializer.Serialize(states));
         states.Clear();
         ExecuteScript("__gbActorStatesJson(__gbActorStates);");
-        foreach (string actorName in _actorsByName.Keys)
-            _actorsKnownToRuntime.Add(actorName);
-        _actorsKnownToRuntime.RemoveWhere(name => !_actorsByName.ContainsKey(name));
+        _remoteInputHistoryRemoveBuffer.Clear();
+        foreach (string actorName in _remoteInputHistories.Keys)
+        {
+            if (!_actorsByName.ContainsKey(actorName))
+                _remoteInputHistoryRemoveBuffer.Add(actorName);
+        }
+        foreach (string actorName in _remoteInputHistoryRemoveBuffer)
+            _remoteInputHistories.Remove(actorName);
         if (hasInputFrame)
         {
             _keysHeldLastTick.Clear();
@@ -624,6 +678,71 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
         }
         _lookAxes = Vector2.Zero;
         _mouseWheelRaw = 0f;
+    }
+    private RemoteInputHistory UpdateRemoteInputHistory(string actorName, LegacyLanInputFrame? frame)
+    {
+        if (!_remoteInputHistories.TryGetValue(actorName, out RemoteInputHistory? history))
+        {
+            history = new RemoteInputHistory();
+            _remoteInputHistories.Add(actorName, history);
+        }
+        history.KeysHeld.Clear();
+        history.HeldKeys.Clear();
+        history.KeysJustPressed.Clear();
+        history.KeysJustReleased.Clear();
+        if (frame is not null)
+        {
+            foreach (string key in frame.KeysHeld)
+            {
+                history.KeysHeld.Add(key);
+                history.HeldKeys.Add(key);
+                if (!history.PreviousKeysHeld.Contains(key))
+                    history.KeysJustPressed.Add(key);
+            }
+        }
+        foreach (string key in history.PreviousKeysHeld)
+        {
+            if (!history.HeldKeys.Contains(key))
+                history.KeysJustReleased.Add(key);
+        }
+        history.PreviousKeysHeld.Clear();
+        history.PreviousKeysHeld.UnionWith(history.HeldKeys);
+        bool mouseDown = frame?.MouseDown ?? false;
+        history.MouseJustPressed = mouseDown && !history.MouseDown;
+        history.MouseJustReleased = !mouseDown && history.MouseDown;
+        history.MouseDown = mouseDown;
+        history.SecondaryActionDown = frame?.SecondaryActionDown ?? false;
+        history.MouseWheelRaw = frame is not null && frame.Sequence != history.LastSequence ? frame.MouseWheelRaw : 0f;
+        if (frame is not null)
+            history.LastSequence = frame.Sequence;
+        return history;
+    }
+
+    private static readonly List<string> EmptyInputKeys = new();
+
+    private sealed class RemoteInputHistory
+    {
+        public HashSet<string> PreviousKeysHeld { get; } = new(StringComparer.Ordinal);
+        public HashSet<string> HeldKeys { get; } = new(StringComparer.Ordinal);
+        public List<string> KeysHeld { get; } = new();
+        public List<string> KeysJustPressed { get; } = new();
+        public List<string> KeysJustReleased { get; } = new();
+        public bool MouseDown { get; set; }
+        public bool SecondaryActionDown { get; set; }
+        public bool MouseJustPressed { get; set; }
+        public bool MouseJustReleased { get; set; }
+        public float MouseWheelRaw { get; set; }
+        public long LastSequence { get; set; }
+    }
+
+    private static Vector3 ReadRemotePlayerThrottle(HashSet<string> heldKeys)
+    {
+        float horizontal = (heldKeys.Contains("d") || heldKeys.Contains("right") ? 1f : 0f)
+            - (heldKeys.Contains("a") || heldKeys.Contains("left") ? 1f : 0f);
+        float vertical = (heldKeys.Contains("space") ? 1f : 0f) - (heldKeys.Contains("c") ? 1f : 0f);
+        float depth = (heldKeys.Contains("w") || heldKeys.Contains("up") ? 1f : 0f)
+            - (heldKeys.Contains("s") || heldKeys.Contains("down") ? 1f : 0f);
+        return new Vector3(horizontal, vertical, depth);
     }
 
     private List<object> BuildInputMessages(
@@ -699,33 +818,7 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
     }
 
     private static bool IsScriptableKeyHeld(string keyName, bool mouseIsDown, bool secondaryActionDown)
-    {
-        if (keyName == "mouse 0")
-            return mouseIsDown;
-        if (keyName == "@jump")
-            return Input.IsKeyPressed(Key.Space);
-        if (keyName == "@pri")
-            return mouseIsDown;
-        if (keyName == "@sec")
-            return secondaryActionDown;
-        if (keyName.Length == 1 && char.IsAsciiLetter(keyName[0]))
-            return Input.IsKeyPressed((Key)char.ToUpperInvariant(keyName[0]));
-        if (keyName.Length == 1 && char.IsAsciiDigit(keyName[0]))
-            return Input.IsKeyPressed((Key)((int)Key.Key0 + keyName[0] - '0'));
-        if (keyName.Length == 3 && keyName[0] == '[' && keyName[2] == ']')
-            return Input.IsKeyPressed((Key)((int)Key.Kp0 + keyName[1] - '0'));
-        return keyName switch
-        {
-            "space" => Input.IsKeyPressed(Key.Space),
-            "enter" or "return" => Input.IsKeyPressed(Key.Enter),
-            "backspace" => Input.IsKeyPressed(Key.Backspace),
-            "up" => Input.IsKeyPressed(Key.Up),
-            "down" => Input.IsKeyPressed(Key.Down),
-            "left" => Input.IsKeyPressed(Key.Left),
-            "right" => Input.IsKeyPressed(Key.Right),
-            _ => false
-        };
-    }
+        => LegacyInputKeys.IsHeld(keyName, mouseIsDown, secondaryActionDown);
 
     private Vector3 ReadPlayerThrottle()
     {
@@ -1112,15 +1205,20 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
                 return JsonSerializer.Serialize(_actors.FirstOrDefault(actor => actor.LegacyName == cameraName)?.LegacyName);
             }
             case "GetPlayersInfo":
+                if (_lanSession is not null)
+                {
+                    _lanSession.TryGetPlayerInfo(out string playerInfo, out _);
+                    return playerInfo;
+                }
                 return JsonSerializer.Serialize(new
                 {
                     allPlayers = new[] { new { id = "local", slotNumber = 1, nickName = "Local Player" } },
                     localPlayerId = "local"
                 });
             case "IsMultiplayer":
-                return "false";
+                return (_lanSession?.IsMultiplayer ?? false).ToString().ToLowerInvariant();
             case "IsMasterClient":
-                return "true";
+                return (_lanSession?.IsMaster ?? true).ToString().ToLowerInvariant();
             case "GetScreenInfo":
             {
                 Vector2 viewportSize = _camera.GetViewport().GetVisibleRect().Size;

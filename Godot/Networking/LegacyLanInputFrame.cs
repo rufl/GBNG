@@ -1,0 +1,26 @@
+namespace GBNG.Networking;
+
+public sealed record LegacyLanInputFrame(
+    long Sequence,
+    string[] KeysHeld,
+    bool MouseDown,
+    bool SecondaryActionDown,
+    bool Sprinting,
+    float LookX,
+    float LookY,
+    float MouseUiX,
+    float MouseUiY,
+    float MouseWheelRaw,
+    float RayOriginX,
+    float RayOriginY,
+    float RayOriginZ,
+    float RayDirectionX,
+    float RayDirectionY,
+    float RayDirectionZ,
+    float CameraPositionX,
+    float CameraPositionY,
+    float CameraPositionZ,
+    float CameraRotationX,
+    float CameraRotationY,
+    float CameraRotationZ,
+    float CameraRotationW);
