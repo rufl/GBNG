@@ -175,19 +175,19 @@ Photon PUN nor a paid Unity service is required.
   **Join by IP** and enter the host's IPv4 address if discovery is blocked. The
   multiplayer panel shows the host's shareable LAN address.
 - The host listens on UDP port `7777`; LAN discovery broadcasts on UDP `47778`.
-  For Internet play, the host must allow UDP `7777` through the operating-system
-  firewall and forward it on the router; players outside the LAN must enter the
-  host's public IPv4 address.
+  Allow UDP `47778` through local firewalls for LAN discovery. For Internet play,
+  allow UDP `7777` through the host's operating-system firewall and forward it on
+  the router; players outside the LAN must enter the host's public IPv4 address.
 - The room list is LAN-only. There is no public room browser, Relay, matchmaking,
   or NAT traversal service.
 
 The host sends an initial project snapshot (maximum 400 KiB). The direct
 adapter forwards actor-state and transform RPCs, terrain edits, player identity
 and poses, ownership changes, and observable player state (tint, visibility,
-avatar animation, and tool-effect data). Two-process loopback smokes exercise
-host/join, player identity, master/client-targeted RPCs, map switching while
-retaining the session, and kicking a client; a separate offline smoke exercises
-save/load round-tripping. Internet reachability has not been tested.
+avatar animation, and tool-effect data). A two-process LAN smoke confirms a host
+advertisement and its 1/16-player room-list thumbnail. Separate loopback smokes
+exercise host/join, identity, RPC targeting, map switching, and kicking; an
+offline smoke verifies save/load round-tripping. Internet reachability is untested.
 
 Direct-host mode implements the core player-hosted flow, not every PUN/cloud
 feature. Host migration is unavailable. The transport accepts at most 16

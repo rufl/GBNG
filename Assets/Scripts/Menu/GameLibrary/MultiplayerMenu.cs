@@ -351,7 +351,7 @@ public class MultiplayerMenu : ThumbnailMenu
     CreateThumbnails();
   }
 
-  void Update()
+  protected override void Update()
   {
     if (!gameObject.activeInHierarchy || Time.unscaledTime < nextDiscoveryRefresh) return;
     nextDiscoveryRefresh = Time.unscaledTime + 0.5f;
