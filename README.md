@@ -86,11 +86,11 @@ bitmap atlas from the archived release; those font assets are distributed under
 the font's MIT license. The in-tree Unity GL renderer reads the BMFont XML
 directly, with no Shaper plugin dependency.
 
-The ProggyClean BMFont atlas stores glyph `y` metrics from the bottom; the
-runtime renderer converts those coordinates to Unity texture UVs. The main
-camera keeps PostProcessing's final blit enabled, while its obsolete
-`GameUiRenderer` image-effect pass-through is disabled so it cannot overwrite
-the processed scene.
+The ProggyClean BMFont stores glyph cells in an atlas orientation that differs
+from Unity's GL texture coordinates; the renderer maps each cell with the
+correct vertical orientation. The main camera keeps PostProcessing's final
+blit enabled, while its obsolete `GameUiRenderer` image-effect pass-through is
+disabled so it cannot overwrite the processed scene.
 
 ## Common instructions
 
@@ -156,8 +156,9 @@ source navigation, editing, read-only mode, diagnostics, scroll restoration
 and zoom. If WebView2 is missing, the graphics API is unsupported, or the
 build targets another platform, the built-in multiline editor remains
 available.
-The browser uses a stable 1280x720 surface. Resizing the app scales that texture
-instead of resizing the native browser surface.
+The native browser surface is created lazily at the visible code panel's pixel
+dimensions. Native resizing is avoided because the bundled WebView resize path
+can crash; Unity scales the existing texture if the window layout later changes.
 
 ## Optional integrations available for free
 

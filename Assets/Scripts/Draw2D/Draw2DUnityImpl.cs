@@ -104,10 +104,10 @@ public class Draw2DUnityImpl : IDraw2D
         height = height / (float)fontSize,
         xAdvance = ReadFontMetric(character, "xadvance") / (float)fontSize,
         uLeft = x / atlasWidth,
-        // ProggyClean's BMFont y metrics are measured from the bottom of the atlas.
-        vTop = (y + height) / atlasHeight,
+        // The atlas glyph pixels are vertically inverted within their BMFont cells.
+        vTop = y / atlasHeight,
         uRight = (x + width) / atlasWidth,
-        vBottom = y / atlasHeight
+        vBottom = (y + height) / atlasHeight
       });
     }
   }

@@ -131,11 +131,14 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
 
   private void Start()
   {
-    startTime = Time.unscaledTime;
-    TryStartWebView();
+#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
+    // Wait until the editor panel has its real dimensions before creating the WebView.
+#else
+    TryStartWebView(0, 0);
+#endif
   }
 
-  private void TryStartWebView()
+  private void TryStartWebView(int width, int height)
   {
 #if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
     if (fallback == null || output == null)
@@ -170,7 +173,7 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
         return;
       }
 
-      webView = manager.CreateWebView(1280, 720, editorUrl, false);
+      webView = manager.CreateWebView(width, height, editorUrl, false);
       if (webView == null || webView.Texture == null)
       {
         SwitchToFallback("The free WebView2 runtime could not create a browser surface.");
@@ -201,7 +204,20 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
 
     if (usingFallback) return;
 #if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
-    if (webView == null) return;
+    if (webView == null)
+    {
+      if (!visible || output == null) return;
+
+      Rect outputRect = output.rectTransform.rect;
+      float canvasScaleFactor = output.canvas != null ? output.canvas.scaleFactor : 1f;
+      int width = Mathf.RoundToInt(outputRect.width * canvasScaleFactor);
+      int height = Mathf.RoundToInt(outputRect.height * canvasScaleFactor);
+      if (width < 2 || height < 2) return;
+
+      startTime = Time.unscaledTime;
+      TryStartWebView(width, height);
+      if (usingFallback || webView == null) return;
+    }
 
     manager?.Tick();
 
@@ -213,6 +229,8 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
 
     UpdateKeyboardFocus();
     if (pageReady && keyboardFocus) ForwardKeyboardInput();
+#else
+    if (visible) TryStartWebView(0, 0);
 #endif
   }
 
