@@ -171,14 +171,15 @@ The Unity path uses Unity Netcode for GameObjects and Unity Transport; neither
 Photon PUN nor a paid Unity service is required.
 
 - From the splash screen, open **Multiplayer** and choose **Host a game**.
-- Other players choose **Join by IP** and enter the host's IPv4 address, with
-  `:7777` optional. On the same LAN, the multiplayer panel shows the host's
-  LAN address.
-- The host listens on UDP port `7777`. For Internet play, the host must allow
-  this port through the operating-system firewall and forward UDP `7777` on the
-  router; players outside the LAN must enter the host's public IPv4 address.
-- This is direct-connect only: no public room browser, Relay, matchmaking, or
-  NAT traversal service.
+- Other players on the same LAN see hosts in the room list automatically; use
+  **Join by IP** and enter the host's IPv4 address if discovery is blocked. The
+  multiplayer panel shows the host's shareable LAN address.
+- The host listens on UDP port `7777`; LAN discovery broadcasts on UDP `47778`.
+  For Internet play, the host must allow UDP `7777` through the operating-system
+  firewall and forward it on the router; players outside the LAN must enter the
+  host's public IPv4 address.
+- The room list is LAN-only. There is no public room browser, Relay, matchmaking,
+  or NAT traversal service.
 
 The host sends an initial project snapshot (maximum 400 KiB). The direct
 adapter forwards actor-state and transform RPCs, terrain edits, player identity

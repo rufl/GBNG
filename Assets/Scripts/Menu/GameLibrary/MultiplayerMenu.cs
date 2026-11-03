@@ -319,6 +319,8 @@ public class MultiplayerMenu : ThumbnailMenu
   GameBuilderSceneController scenes;
   LoadingScreen loadingScreen;
   public static string LastJoinedRoomPrefsKey = "LAST_DIRECT_HOST_ADDRESS";
+  int lastDiscoveryRevision = -1;
+  float nextDiscoveryRefresh;
 
   public override void Setup()
   {
@@ -328,7 +330,10 @@ public class MultiplayerMenu : ThumbnailMenu
     joinCodeButton.onClick.AddListener(JoinMultiplayerPopup);
     joinMultiplayerPopup.confirmWithInputEvent = JoinMultiplayer;
     joinMultiplayerPopup.cancelEvent = CancelMultiplayerPopup;
-    refreshButton.gameObject.SetActive(false);
+    refreshButton.onClick.AddListener(Refresh);
+    DirectHostDiscovery.BeginBrowsing();
+    lastDiscoveryRevision = DirectHostDiscovery.Revision;
+    refreshButton.gameObject.SetActive(true);
 
     TMPro.TMP_Text joinLabel = joinCodeButton.GetComponentInChildren<TMPro.TMP_Text>(true);
     if (joinLabel != null)
@@ -338,6 +343,22 @@ public class MultiplayerMenu : ThumbnailMenu
 
     SetOpenEvent(CreateThumbnails);
     AddCategory(null, "");
+  }
+
+  void Refresh()
+  {
+    ClearThumbnails();
+    CreateThumbnails();
+  }
+
+  void Update()
+  {
+    if (!gameObject.activeInHierarchy || Time.unscaledTime < nextDiscoveryRefresh) return;
+    nextDiscoveryRefresh = Time.unscaledTime + 0.5f;
+    int revision = DirectHostDiscovery.Revision;
+    if (revision == lastDiscoveryRevision) return;
+    lastDiscoveryRevision = revision;
+    Refresh();
   }
 
   void CreateThumbnails()
@@ -351,6 +372,32 @@ public class MultiplayerMenu : ThumbnailMenu
     thumbnail.GetDescription = () => "Host a free direct-connect multiplayer game";
     thumbnail.GetPlayerCount = () => 1;
     AddThumbnail(thumbnail);
+    foreach (DirectHostDiscovery.HostInfo host in DirectHostDiscovery.GetDiscoveredHosts())
+    {
+      GameThumbnail discovered = Instantiate(gameThumbnailPrefab).GetComponent<GameThumbnail>();
+      discovered.SetThumbnail(spoofGameTexture);
+      discovered.SetGameSource(GameDetail.GameSource.Multiplayer);
+      discovered.SetName(host.Name);
+      discovered.OnClick = () => JoinDiscoveredHost(host);
+      discovered.GetWriteTime = () => System.DateTime.Today;
+      discovered.GetDescription = () => $"{host.PlayerCount}/{host.MaxPlayers} players - {host.Address}:{host.Port}";
+      discovered.GetPlayerCount = () => host.PlayerCount;
+      AddThumbnail(discovered);
+    }
+  }
+
+  void JoinDiscoveredHost(DirectHostDiscovery.HostInfo host)
+  {
+    string addressAndPort = $"{host.Address}:{host.Port}";
+    PlayerPrefs.SetString(LastJoinedRoomPrefsKey, addressAndPort);
+    PlayerPrefs.Save();
+    var options = new GameBuilderApplication.GameOptions
+    {
+      joinAddress = host.Address,
+      joinPort = host.Port,
+      playOptions = new GameBuilderApplication.PlayOptions { isMultiplayer = true }
+    };
+    loadingScreen.ShowAndDo(() => scenes.LoadMainSceneAsync(options));
   }
 
   void OpenNew()

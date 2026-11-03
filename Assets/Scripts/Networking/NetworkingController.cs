@@ -590,6 +590,7 @@ public class NetworkingController : Photon.PunBehaviour
       }
     }
     PhotonView.InitializeSceneViews();
+    DirectHostDiscovery.EnsureAvailable();
   }
 
   void RegisterDirectNetworkHandlers()
