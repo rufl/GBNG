@@ -17,7 +17,7 @@ public sealed partial class LegacyJavaScriptCodeEdit : CodeEdit
     public const string DiagnosticGutterName = "JavaScriptDiagnostics";
     private static readonly Color DiagnosticLineBackground = new(0.48f, 0.08f, 0.08f, 0.28f);
     private static readonly Color DiagnosticGutterColor = new(1f, 0.36f, 0.36f);
-    private readonly HashSet<int> _diagnosticLines = new();
+    private readonly Dictionary<int, string> _diagnosticMessagesByLine = new();
     private int _diagnosticGutter = -1;
 
     public LegacyJavaScriptCodeEdit()
@@ -49,15 +49,14 @@ public sealed partial class LegacyJavaScriptCodeEdit : CodeEdit
 
     public void ResetZoom() => RemoveThemeFontSizeOverride("font_size");
 
-    public void AddDiagnosticLine(int oneBasedLineNumber)
+    public void AddDiagnosticLine(int oneBasedLineNumber, string message)
     {
         int line = oneBasedLineNumber - 1;
         if (line < 0 || line >= GetLineCount())
             return;
 
+        _diagnosticMessagesByLine[line] = message;
         SetGutterWidth(_diagnosticGutter, 16);
-
-        _diagnosticLines.Add(line);
         SetLineGutterText(line, _diagnosticGutter, "!");
         SetLineGutterItemColor(line, _diagnosticGutter, DiagnosticGutterColor);
         SetLineBackgroundColor(line, DiagnosticLineBackground);
@@ -65,7 +64,7 @@ public sealed partial class LegacyJavaScriptCodeEdit : CodeEdit
 
     public void ClearDiagnosticLines()
     {
-        foreach (int line in _diagnosticLines)
+        foreach (int line in _diagnosticMessagesByLine.Keys)
         {
             if (line >= GetLineCount())
                 continue;
@@ -73,8 +72,22 @@ public sealed partial class LegacyJavaScriptCodeEdit : CodeEdit
             SetLineGutterItemColor(line, _diagnosticGutter, Colors.Transparent);
             SetLineBackgroundColor(line, Colors.Transparent);
         }
-        _diagnosticLines.Clear();
+        _diagnosticMessagesByLine.Clear();
         SetGutterWidth(_diagnosticGutter, 0);
+    }
+
+    public override string _GetTooltip(Vector2 atPosition)
+    {
+        if (atPosition.X < 0f || atPosition.Y < 0f || atPosition.X >= Size.X || atPosition.Y >= Size.Y)
+            return string.Empty;
+
+        Vector2I lineAndColumn = GetLineColumnAtPos(
+            new Vector2I((int)atPosition.X, (int)atPosition.Y),
+            false,
+            true);
+        return _diagnosticMessagesByLine.TryGetValue(lineAndColumn.Y, out string? message)
+            ? message
+            : string.Empty;
     }
 
     private void AdjustFontSize(int delta)

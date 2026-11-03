@@ -692,7 +692,7 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
             _scriptDiagnostics.Text = diagnostic;
             int diagnosticLine = ParseDiagnosticLine(diagnostic);
             if (diagnosticLine > 0)
-                _scriptEditor.AddDiagnosticLine(diagnosticLine);
+                _scriptEditor.AddDiagnosticLine(diagnosticLine, diagnostic);
             _scriptDiagnostics.Visible = true;
             _status.Text = "JavaScript syntax error. Fix the reported line before applying.";
             return;
@@ -720,7 +720,7 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
             : $"{_scriptDiagnostics.Text}\n{diagnostic}";
         _scriptDiagnostics.Visible = diagnostic.Length > 0;
         if (lineNumber > 0)
-            _scriptEditor.AddDiagnosticLine(lineNumber);
+            _scriptEditor.AddDiagnosticLine(lineNumber, diagnostic);
     }
     private static int ParseDiagnosticLine(string diagnostic)
     {

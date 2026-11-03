@@ -492,6 +492,12 @@ public partial class GameBuilderApp
                 || behaviorCode.GetLineGutterText(1, syntaxErrorGutter) != "!"
                 || behaviorCode.GetLineBackgroundColor(1).A <= 0f)
                 throw new InvalidOperationException("The JavaScript syntax diagnostic did not mark its source line in the CodeEdit gutter and background.");
+            Vector2 syntaxDiagnosticPoint = GetEditorPositionOnLine(behaviorCode, 1);
+            Vector2 normalLinePoint = GetEditorPositionOnLine(behaviorCode, 0);
+            string syntaxTooltip = behaviorCode.GetTooltip(syntaxDiagnosticPoint);
+            if (syntaxTooltip != diagnostics.Text
+                || behaviorCode.GetTooltip(normalLinePoint).Length != 0)
+                throw new InvalidOperationException("The syntax diagnostic tooltip did not match the marked source line.");
             if (LegacySaveDocument.ReadString(FindEmbeddedBehaviorSmoke(behaviorValidationId)?["javascript"]) != originalSource)
                 throw new InvalidOperationException("Invalid JavaScript replaced the last valid embedded behavior source.");
             await WaitForUiFrames(1);
@@ -516,13 +522,15 @@ public partial class GameBuilderApp
                 Pressed = false
             });
             int clearedDiagnosticGutter = FindDiagnosticGutter(behaviorCode);
+            Vector2 clearedDiagnosticPoint = GetEditorPositionOnLine(behaviorCode, 1);
             if (behaviorCode.Text.Length != textLengthBeforeEdit + 1
                 || diagnostics.Visible
                 || diagnostics.Text.Length != 0
                 || clearedDiagnosticGutter < 0
                 || behaviorCode.GetLineGutterText(1, clearedDiagnosticGutter) != ""
                 || behaviorCode.GetGutterWidth(clearedDiagnosticGutter) != 0
-                || behaviorCode.GetLineBackgroundColor(1).A > 0f)
+                || behaviorCode.GetLineBackgroundColor(1).A > 0f
+                || behaviorCode.GetTooltip(clearedDiagnosticPoint).Length != 0)
                 throw new InvalidOperationException("Typing in the JavaScript editor did not update the source and clear its stale diagnostic.");
 
             behaviorCode.Text = validBehaviorSource;
@@ -551,6 +559,10 @@ public partial class GameBuilderApp
                 || behaviorCode.GetLineGutterText(1, runtimeErrorGutter) != "!"
                 || behaviorCode.GetLineBackgroundColor(1).A <= 0f)
                 throw new InvalidOperationException("The JavaScript runtime exception did not mark its source line in the CodeEdit gutter and background.");
+            Vector2 runtimeDiagnosticPoint = GetEditorPositionOnLine(behaviorCode, 1);
+            if (!behaviorCode.GetTooltip(runtimeDiagnosticPoint)
+                .Contains("RuntimeEditorSmoke", StringComparison.Ordinal))
+                throw new InvalidOperationException("The runtime diagnostic tooltip did not expose the exception message on its source line.");
             await WaitForUiFrames(1);
             if (GetViewport().GetTexture().GetImage().SavePng(diagnosticScreenshot) != Error.Ok)
                 throw new InvalidOperationException("Could not save the runtime JavaScript diagnostic screenshot.");
@@ -1076,6 +1088,17 @@ public partial class GameBuilderApp
                 return gutter;
         }
         return -1;
+    }
+    private static Vector2 GetEditorPositionOnLine(LegacyJavaScriptCodeEdit editor, int zeroBasedLine)
+    {
+        int x = editor.GetTotalGutterWidth() + 1;
+        for (int y = 0; y < editor.Size.Y; y++)
+        {
+            Vector2I lineAndColumn = editor.GetLineColumnAtPos(new Vector2I(x, y), false, true);
+            if (lineAndColumn.Y == zeroBasedLine)
+                return new Vector2(x, y);
+        }
+        throw new InvalidOperationException($"CodeEdit line {zeroBasedLine + 1} is not visible for the tooltip smoke assertion.");
     }
 
     private static IEnumerable<Node> Descendants(Node node)
