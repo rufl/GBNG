@@ -128,6 +128,21 @@ public static class PhotonNetwork
       NetworkManager.Singleton.Shutdown();
     ClearDirectSession();
   }
+  internal static void MarkDirectSessionDisconnected()
+  {
+    connected = false;
+    inRoom = false;
+    isMasterClient = false;
+    offlineMode = false;
+  }
+
+  internal static void DisconnectDirectSessionPreservingPlayers()
+  {
+    MarkDirectSessionDisconnected();
+    NetworkManager manager = NetworkManager.Singleton;
+    if (manager != null && manager.IsListening && !manager.IsServer)
+      manager.Shutdown();
+  }
 
   public static void RaiseEvent(object eventCode, object content, object reliable, object options)
   {

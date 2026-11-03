@@ -180,18 +180,21 @@ Photon PUN nor a paid Unity service is required.
 - This is direct-connect only: no public room browser, Relay, matchmaking, or
   NAT traversal service.
 
-The host transfers an initial project snapshot (maximum 400 KiB). During a
-session, the direct adapter forwards the existing actor state/transform RPCs,
-terrain cell edits, player poses, and player observable state (tint, visibility,
-avatar animation, and tool-effect data). A two-process loopback smoke checks
-host/join, actor movement, terrain edits, and avatar state; Internet reachability
-has not been tested.
+The host sends an initial project snapshot (maximum 400 KiB). The direct
+adapter forwards actor-state and transform RPCs, terrain edits, player identity
+and poses, ownership changes, and observable player state (tint, visibility,
+avatar animation, and tool-effect data). Two-process loopback smokes exercise
+host/join, player identity, master/client-targeted RPCs, map switching while
+retaining the session, and kicking a client; a separate offline smoke exercises
+save/load round-tripping. Internet reachability has not been tested.
 
-This is not full PUN parity: map switching is disabled for direct sessions and
-there is no host migration. The transport accepts at most 16 players (host plus
-15 clients). Direct connections have no application-level authentication or
-encryption; only share the host address with trusted players. Internet play
-requires the host to allow and forward UDP `7777` as described above.
+Direct-host mode implements the core player-hosted flow, not every PUN/cloud
+feature. Host migration is unavailable. The transport accepts at most 16
+players (host plus 15 clients). Direct connections have no application-level
+authentication or encryption; share the host address only with trusted players.
+Internet play requires players outside the LAN to use the host's public IPv4
+address and the host to allow and forward UDP `7777`; each router/firewall path
+remains to be tested.
 
 * [Crosstales File Browser](https://assetstore.unity.com/packages/tools/utilities/file-browser-standalone-98716) - Enables the system file browser UI for local disk import/export features
 

@@ -1009,7 +1009,7 @@ public class NetworkingController : Photon.PunBehaviour
       && GameBuilderApplication.CurrentGameOptions.playOptions.isMultiplayer)
     {
       bool wasKicked = wasDirectlyKicked;
-      PhotonNetwork.ClearDirectSession();
+      PhotonNetwork.MarkDirectSessionDisconnected();
       if (!wasKicked)
       {
         OnFatalError(receivedPlayerInitPayload
@@ -1682,7 +1682,7 @@ public class NetworkingController : Photon.PunBehaviour
     Util.Log($"Kick RPC invoked; sender={(info.sender == null ? "none" : info.sender.ID.ToString())}.");
     if (info.sender == null || PhotonNetwork.masterClient == null || info.sender.ID != PhotonNetwork.masterClient.ID) return;
     wasDirectlyKicked = true;
-    PhotonNetwork.Disconnect();
+    PhotonNetwork.DisconnectDirectSessionPreservingPlayers();
     popups.Show("You were kicked.", "Back to Main Menu", () =>
     {
       scenes.LoadSplashScreen();
