@@ -282,7 +282,8 @@ source IP to eight new registrations per five minutes and supports up to 1,000
 simultaneous sessions. It does not authenticate players or encrypt the game
 transport.
 
-The host sends an initial project snapshot (maximum 400 KiB). The direct
+The host sends an initial project snapshot (maximum 400 KiB), split into 48 KiB
+reliable chunks to stay below NGO's 64,000-byte per-message limit. The direct
 adapter forwards actor-state and transform RPCs, terrain edits, player identity
 and poses, ownership changes, and observable player state (tint, visibility,
 avatar animation, and tool-effect data). LAN/DNS/loopback smokes exercise host

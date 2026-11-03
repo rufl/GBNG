@@ -32,9 +32,9 @@ using Unity.Netcode.Transports.UTP;
 // TODO probably should rename this to just MainController...but also cordone off some of the networking-specific stuff into a new utility.
 public class NetworkingController : Photon.PunBehaviour
 {
-  // From experiments, it seems like 490kb for that one RPC was a guaranteed
-  // disconnect. So, let's stay under 400kb to be safe.
-  static int MaximumPlayerInitKbs = 400;
+  // NGO caps each reliable-fragmented message at 64,000 bytes; leave room for framing.
+  const int MaximumPlayerInitKbs = 400;
+  const int DirectHostInitChunkBytes = 48 * 1024;
   public const ushort DefaultDirectHostPort = 7777;
   const string DirectHostInitMessageName = "GB_DIRECT_HOST_INIT_V1";
   const string DirectPlayerIdentityMessageName = "GB_DIRECT_PLAYER_IDENTITY_V1";
@@ -51,6 +51,7 @@ public class NetworkingController : Photon.PunBehaviour
   bool directClientAssignmentReceived;
   bool directWorldReady;
   readonly HashSet<ulong> directInitResponseClients = new HashSet<ulong>();
+  readonly DirectHostInitChunkAssembler directHostInitAssembler = new DirectHostInitChunkAssembler();
   string directHostShareAddress;
 
   public static string SteamIdPlayerProperty = "SteamID";
@@ -815,14 +816,29 @@ public class NetworkingController : Photon.PunBehaviour
   void SendDirectHostInit(ulong clientId)
   {
     byte[] initPacket = CreateDirectHostInitPacket();
-    using (FastBufferWriter writer = new FastBufferWriter(initPacket.Length + sizeof(int), Allocator.Temp))
+    int chunkCount = (initPacket.Length + DirectHostInitChunkBytes - 1) / DirectHostInitChunkBytes;
+    for (int chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++)
     {
-      writer.WriteValueSafe(initPacket.Length);
-      writer.WriteBytesSafe(initPacket);
-      directNetworkManager.CustomMessagingManager.SendNamedMessage(
-        DirectHostInitMessageName, clientId, writer, NetworkDelivery.ReliableFragmentedSequenced);
+      int offset = chunkIndex * DirectHostInitChunkBytes;
+      int chunkLength = Math.Min(DirectHostInitChunkBytes, initPacket.Length - offset);
+      using (FastBufferWriter writer = new FastBufferWriter(chunkLength + 4 * sizeof(int), Allocator.Temp))
+      {
+        WriteDirectHostInitChunk(writer, initPacket, chunkIndex, chunkCount, chunkLength);
+        directNetworkManager.CustomMessagingManager.SendNamedMessage(
+          DirectHostInitMessageName, clientId, writer, NetworkDelivery.ReliableFragmentedSequenced);
+      }
     }
-    Util.Log($"Sent initial world state ({initPacket.Length / 1024} KB) to direct client {clientId}.");
+    Util.Log($"Sent initial world state ({initPacket.Length / 1024} KB) to direct client {clientId} in {chunkCount} chunks.");
+  }
+
+  static void WriteDirectHostInitChunk(FastBufferWriter writer, byte[] packet, int chunkIndex, int chunkCount, int chunkLength)
+  {
+    int offset = chunkIndex * DirectHostInitChunkBytes;
+    writer.WriteValueSafe(packet.Length);
+    writer.WriteValueSafe(chunkIndex);
+    writer.WriteValueSafe(chunkCount);
+    writer.WriteValueSafe(chunkLength);
+    writer.WriteBytesSafe(packet, chunkLength, offset);
   }
 
   void SendDirectPlayerIdentity(ulong clientId, int playerId, string nickname)
@@ -1196,6 +1212,7 @@ public class NetworkingController : Photon.PunBehaviour
       && GameBuilderApplication.CurrentGameOptions.playOptions.isMultiplayer)
     {
       bool wasKicked = wasDirectlyKicked;
+      directHostInitAssembler.Reset();
       PhotonNetwork.MarkDirectSessionDisconnected();
       string disconnectError = receivedPlayerInitPayload
         ? "The host disconnected."
@@ -1300,13 +1317,12 @@ public class NetworkingController : Photon.PunBehaviour
     try
     {
       reader.ReadValueSafe(out int packetLength);
-      if (packetLength <= 0 || packetLength > MaximumPlayerInitKbs * 1024 + 3 * sizeof(int))
-      {
-        throw new InvalidDataException($"Invalid direct-host initial-state size: {packetLength} bytes.");
-      }
+      reader.ReadValueSafe(out int chunkIndex);
+      reader.ReadValueSafe(out int chunkCount);
+      reader.ReadValueSafe(out int chunkLength);
+      byte[] packet = directHostInitAssembler.Append(packetLength, chunkIndex, chunkCount, chunkLength, reader);
+      if (packet == null) return;
 
-      byte[] packet = new byte[packetLength];
-      reader.ReadBytesSafe(ref packet, packetLength);
       using (MemoryStream stream = new MemoryStream(packet, false))
       using (BinaryReader binaryReader = new BinaryReader(stream))
       {
@@ -1330,7 +1346,58 @@ public class NetworkingController : Photon.PunBehaviour
     }
     catch (Exception e)
     {
+      directHostInitAssembler.Reset();
       OnFatalError($"Could not load the game state from the host.\n{e.Message}");
+    }
+  }
+
+  sealed class DirectHostInitChunkAssembler
+  {
+    byte[] packet;
+    int expectedChunkCount;
+    int nextChunkIndex;
+
+    public byte[] Append(int packetLength, int chunkIndex, int chunkCount, int chunkLength, FastBufferReader reader)
+    {
+      int maximumPacketBytes = MaximumPlayerInitKbs * 1024 + 3 * sizeof(int);
+      if (packetLength <= 0 || packetLength > maximumPacketBytes)
+        throw new InvalidDataException($"Invalid direct-host initial-state size: {packetLength} bytes.");
+
+      int expectedCount = (packetLength + DirectHostInitChunkBytes - 1) / DirectHostInitChunkBytes;
+      if (chunkCount != expectedCount || chunkIndex < 0 || chunkIndex >= chunkCount)
+        throw new InvalidDataException("Invalid direct-host initial-state chunk index or count.");
+
+      if (packet == null)
+      {
+        if (chunkIndex != 0)
+          throw new InvalidDataException("Direct-host initial-state chunks arrived out of order.");
+        packet = new byte[packetLength];
+        expectedChunkCount = chunkCount;
+        nextChunkIndex = 0;
+      }
+
+      if (packet.Length != packetLength || expectedChunkCount != chunkCount || chunkIndex != nextChunkIndex)
+        throw new InvalidDataException("Direct-host initial-state chunk sequence changed mid-transfer.");
+
+      int offset = chunkIndex * DirectHostInitChunkBytes;
+      int expectedLength = Math.Min(DirectHostInitChunkBytes, packetLength - offset);
+      if (chunkLength != expectedLength || reader.Length - reader.Position != chunkLength)
+        throw new InvalidDataException("Invalid direct-host initial-state chunk length.");
+
+      reader.ReadBytesSafe(ref packet, chunkLength, offset);
+      nextChunkIndex++;
+      if (nextChunkIndex != expectedChunkCount) return null;
+
+      byte[] completedPacket = packet;
+      Reset();
+      return completedPacket;
+    }
+
+    public void Reset()
+    {
+      packet = null;
+      expectedChunkCount = 0;
+      nextChunkIndex = 0;
     }
   }
 
