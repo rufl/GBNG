@@ -670,11 +670,12 @@ public partial class GameBuilderApp
             if (LegacySaveDocument.ReadString(FindEmbeddedBehaviorSmoke(behaviorId)?["javascript"]) != appliedSource)
                 throw new InvalidOperationException("CodeEdit source was not applied to the embedded behavior.");
 
+            string uiCircleQualityScreenshot = await RunBehaviorUiCircleQualitySmoke();
             string uiImageFilterScreenshot = await RunBehaviorUiImageFilterSmoke();
             string screenshot = ProjectSettings.GlobalizePath("res://.godot/code-editor-smoke.png");
             if (GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
                 throw new InvalidOperationException("Could not save the native code-editor screenshot.");
-            GD.Print($"CODE_EDITOR_SMOKE_OK completion=myself zoom=true zoomBounds=8-36 inlineDiagnostics=true scrollRestoration=true syntaxDiagnostics=true runtimeDiagnostics=true managedCardValidation=true managedCardDiagnostics=true applied=true uiImageFilter=true uiImageSliceFilter=true uiImageFilterScreenshot={uiImageFilterScreenshot} zoomScreenshot={zoomScreenshot} scrollScreenshot={scrollScreenshot} diagnosticsScreenshot={diagnosticScreenshot} managedCardDiagnosticsScreenshot={managedCardDiagnosticsScreenshot} screenshot={screenshot}");
+            GD.Print($"CODE_EDITOR_SMOKE_OK completion=myself zoom=true zoomBounds=8-36 inlineDiagnostics=true scrollRestoration=true syntaxDiagnostics=true runtimeDiagnostics=true managedCardValidation=true managedCardDiagnostics=true applied=true uiImageFilter=true uiImageSliceFilter=true uiCircleAdaptiveDetail=true uiCircleQualityScreenshot={uiCircleQualityScreenshot} uiImageFilterScreenshot={uiImageFilterScreenshot} zoomScreenshot={zoomScreenshot} scrollScreenshot={scrollScreenshot} diagnosticsScreenshot={diagnosticScreenshot} managedCardDiagnosticsScreenshot={managedCardDiagnosticsScreenshot} screenshot={screenshot}");
         }
         catch (Exception exception)
         {
@@ -767,6 +768,69 @@ public partial class GameBuilderApp
             await WaitForUiFrames(1);
             if (File.Exists(texturePath))
                 File.Delete(texturePath);
+        }
+    }
+
+    private async System.Threading.Tasks.Task<string> RunBehaviorUiCircleQualitySmoke()
+    {
+        const int borderSampleX = 749;
+        const int borderSampleY = 473;
+        const float borderCenterX = 400f;
+        const float borderCenterY = 450f;
+        float borderOffsetX = borderSampleX + 0.5f - borderCenterX;
+        float borderOffsetY = borderSampleY + 0.5f - borderCenterY;
+        float borderRadius = MathF.Sqrt(borderOffsetX * borderOffsetX + borderOffsetY * borderOffsetY);
+        const int dashedSampleX = 1547;
+        const int dashedSampleY = 499;
+        const float dashedCenterX = 1200f;
+        const float dashedCenterY = 450f;
+        float dashedOffsetX = dashedSampleX + 0.5f - dashedCenterX;
+        float dashedOffsetY = dashedSampleY + 0.5f - dashedCenterY;
+        float dashedRadius = MathF.Sqrt(dashedOffsetX * dashedOffsetX + dashedOffsetY * dashedOffsetY);
+        var viewport = new SubViewport
+        {
+            Name = "BehaviorUiCircleQualitySmokeViewport",
+            Size = new Vector2I(1600, 900),
+            TransparentBg = true,
+            RenderTargetUpdateMode = SubViewport.UpdateMode.Always
+        };
+
+        try
+        {
+            AddChild(viewport);
+            var behaviorUi = new LegacyBehaviorUi();
+            viewport.AddChild(behaviorUi);
+            behaviorUi.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+            JsonObject CreateCircleCommand(float centerX, float centerY, float radius, string style, int color) => new()
+            {
+                ["cmd"] = 5,
+                ["points"] = new JsonArray { new JsonObject { ["x"] = centerX, ["y"] = centerY } },
+                ["radius"] = radius,
+                ["style"] = style,
+                ["backgroundColor"] = color,
+                ["opacity"] = 1f
+            };
+            behaviorUi.SetCommands(new JsonArray
+            {
+                CreateCircleCommand(borderCenterX, borderCenterY, borderRadius, "BORDER", 0xff0000),
+                CreateCircleCommand(dashedCenterX, dashedCenterY, dashedRadius, "DASHED", 0x0000ff)
+            });
+            await WaitForUiFrames(2);
+
+            Image rendered = viewport.GetTexture().GetImage();
+            string screenshot = ProjectSettings.GlobalizePath("res://.godot/behavior-ui-circle-quality-smoke.png");
+            if (rendered.SavePng(screenshot) != Error.Ok)
+                throw new InvalidOperationException("Could not save the behavior UI circle-quality screenshot.");
+            Color borderSample = rendered.GetPixel(borderSampleX, borderSampleY);
+            Color dashedSample = rendered.GetPixel(dashedSampleX, dashedSampleY);
+            if (borderSample.A < 0.5f || dashedSample.A < 0.5f)
+                throw new InvalidOperationException($"Adaptive UI circle detail missed its target samples: border={borderSample}, dashed={dashedSample}. Screenshot: {screenshot}");
+            return screenshot;
+        }
+        finally
+        {
+            viewport.QueueFree();
+            await WaitForUiFrames(1);
         }
     }
 

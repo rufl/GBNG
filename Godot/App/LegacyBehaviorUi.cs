@@ -288,12 +288,18 @@ public partial class LegacyBehaviorUi : Control
         var point = new Vector2(LegacySaveDocument.ReadFloat(center["x"], 0f), LegacySaveDocument.ReadFloat(center["y"], 0f));
         float radius = Math.Max(0f, LegacySaveDocument.ReadFloat(command["radius"], 0f));
         if (style == "BORDER")
-            DrawArc(point, radius, 0f, Mathf.Tau, 48, color, 1f, true);
+            DrawArc(point, radius, 0f, Mathf.Tau, GetCircleSegmentCount(radius), color, 1f, true);
         else if (style == "DASHED")
-            DrawDashedCircle(point, radius, color);
+            DrawDashedCircle(point, radius, color, GetCircleSegmentCount(radius));
         else
             DrawCircle(point, radius, color);
     }
+    private int GetCircleSegmentCount(float radius)
+    {
+        float screenRadius = radius * GetViewportRect().Size.X / GameUiWidth;
+        return Mathf.CeilToInt(Mathf.Clamp(Mathf.Pi * screenRadius, 3f, 300f));
+    }
+
 
     private void DrawTriangle(JsonObject command, Color color, string style)
     {
@@ -340,9 +346,8 @@ public partial class LegacyBehaviorUi : Control
             DrawRect(rect, color);
     }
 
-    private void DrawDashedCircle(Vector2 center, float radius, Color color)
+    private void DrawDashedCircle(Vector2 center, float radius, Color color, int segments)
     {
-        const int segments = 48;
         for (int i = 0; i < segments; i += 2)
         {
             float start = Mathf.Tau * i / segments;

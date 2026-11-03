@@ -31,7 +31,7 @@ Bundled examples are read-only project resources; use **Save as…** to create a
 
 The Godot branch loads and saves legacy `.voos` projects, supports actor selection and inspector editing (including behavior-brain assignment), and provides behavior authoring for embedded JavaScript and legacy typed properties using Godot's native code editor. Its first-party offline asset store searches the generated built-in renderable catalog and models imported into the project's `<project>.assets/` sidecar; it previews converted 3D models and image-backed assets, and imports local `.glb`, `.gltf`, or `.fbx` files. FBX models are parsed with Godot's experimental native FBX document API, then exported as project-local GLBs with animation clips preserved where present. The store needs no account or remote asset service. Save As carries imported references and files to the new project location.
 
-Behavior UI image and image-slice widgets honor the legacy `noFilter` option: nearest sampling when enabled, bilinear sampling when omitted or false.
+Behavior UI image and image-slice widgets honor the legacy `noFilter` option: nearest sampling when enabled, bilinear sampling when omitted or false. Behavior UI `BORDER` and `DASHED` circles select 3–300 segments from their projected screen radius, matching the legacy renderer's adaptive detail.
 
 The visual card library supports text/category filtering, card-icon previews, hidden-card filtering, and drag-and-drop deck assignment. The canvas edits panels, card uses, notes, and panel layout while preserving legacy `.voos` references. A card manager creates, copies, edits, and deletes embedded cards and imports/exports legacy card-pack folders; conflicting IDs can be overwritten, duplicated, or canceled.
 
