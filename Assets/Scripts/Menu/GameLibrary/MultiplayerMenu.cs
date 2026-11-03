@@ -477,37 +477,91 @@ public class MultiplayerMenu : ThumbnailMenu
       $"127.0.0.1:{NetworkingController.DefaultDirectHostPort}"));
   }
 
+  static bool TryParseDirectHostAddress(string input, out string address, out ushort port)
+  {
+    address = null;
+    port = NetworkingController.DefaultDirectHostPort;
+    if (string.IsNullOrWhiteSpace(input)) return false;
+
+    input = input.Trim();
+    if (input[0] == '[')
+    {
+      int closingBracket = input.IndexOf(']');
+      if (closingBracket <= 1) return false;
+
+      address = input.Substring(1, closingBracket - 1);
+      string suffix = input.Substring(closingBracket + 1);
+      if (suffix.Length > 0
+        && (suffix[0] != ':' || !ushort.TryParse(suffix.Substring(1), out port) || port == 0))
+      {
+        return false;
+      }
+
+      return System.Net.IPAddress.TryParse(address, out System.Net.IPAddress bracketedAddress)
+        && bracketedAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6;
+    }
+
+    if (System.Net.IPAddress.TryParse(input, out System.Net.IPAddress parsedAddress))
+    {
+      if (parsedAddress.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork
+        && parsedAddress.AddressFamily != System.Net.Sockets.AddressFamily.InterNetworkV6)
+      {
+        return false;
+      }
+      address = parsedAddress.ToString();
+      return true;
+    }
+
+    int separator = input.LastIndexOf(':');
+    if (separator >= 0)
+    {
+      if (input.IndexOf(':') != separator
+        || !ushort.TryParse(input.Substring(separator + 1), out port)
+        || port == 0)
+      {
+        return false;
+      }
+      address = input.Substring(0, separator);
+    }
+    else
+    {
+      address = input;
+    }
+
+    return !string.IsNullOrWhiteSpace(address);
+  }
+
+  static System.Net.IPAddress SelectDirectHostAddress(System.Net.IPAddress[] candidates)
+  {
+    System.Net.IPAddress firstIpv6 = null;
+    foreach (System.Net.IPAddress candidate in candidates)
+    {
+      if (candidate.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork) return candidate;
+      if (firstIpv6 == null && candidate.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
+      {
+        firstIpv6 = candidate;
+      }
+    }
+    return firstIpv6;
+  }
+
   void JoinMultiplayer(string addressAndPort)
   {
-    addressAndPort = addressAndPort.Trim();
-    int separator = addressAndPort.LastIndexOf(':');
-    string address = separator < 0 ? addressAndPort : addressAndPort.Substring(0, separator);
-    ushort port = NetworkingController.DefaultDirectHostPort;
-
-    if (separator >= 0
-      && (!ushort.TryParse(addressAndPort.Substring(separator + 1), out port) || port == 0))
+    if (!TryParseDirectHostAddress(addressAndPort, out string address, out ushort port))
     {
-      Util.LogError($"Invalid direct-host port in '{addressAndPort}'.");
+      Util.LogError(
+        $"Enter an IPv4 address, IPv6 address, or hostname with an optional port. "
+        + $"Use [IPv6]:port for a custom port, for example [2001:db8::1]:{NetworkingController.DefaultDirectHostPort}.");
       return;
     }
 
     if (System.Net.IPAddress.TryParse(address, out System.Net.IPAddress parsedAddress))
     {
-      if (parsedAddress.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
-      {
-        Util.LogError("Direct-host connections require an IPv4 address or a hostname with an IPv4 record.");
-        return;
-      }
-      JoinMultiplayerByAddress(parsedAddress.ToString(), port, addressAndPort);
+      JoinMultiplayerByAddress(parsedAddress.ToString(), port, addressAndPort.Trim());
       return;
     }
 
-    if (string.IsNullOrWhiteSpace(address))
-    {
-      Util.LogError("Enter an IPv4 address or a hostname, optionally followed by :port.");
-      return;
-    }
-    StartCoroutine(ResolveAndJoinHost(address, port, addressAndPort));
+    StartCoroutine(ResolveAndJoinHost(address, port, addressAndPort.Trim()));
   }
 
   System.Collections.IEnumerator ResolveAndJoinHost(string hostName, ushort port, string originalAddress)
@@ -531,22 +585,15 @@ public class MultiplayerMenu : ThumbnailMenu
       yield break;
     }
 
-    System.Net.IPAddress resolvedAddress = null;
-    foreach (System.Net.IPAddress candidate in resolution.Result)
-    {
-      if (candidate.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
-      {
-        resolvedAddress = candidate;
-        break;
-      }
-    }
+    System.Net.IPAddress resolvedAddress = SelectDirectHostAddress(resolution.Result);
     if (resolvedAddress == null)
     {
-      Util.LogError($"Host '{hostName}' has no IPv4 address.");
+      Util.LogError($"Host '{hostName}' has no IPv4 or IPv6 address.");
       yield break;
     }
     JoinMultiplayerByAddress(resolvedAddress.ToString(), port, originalAddress);
   }
+
 
   void JoinMultiplayerByAddress(string address, ushort port, string savedAddress)
   {

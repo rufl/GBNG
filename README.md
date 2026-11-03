@@ -173,8 +173,10 @@ Photon PUN nor a paid Unity service is required.
 
 - From the splash screen, open **Multiplayer** and choose **Host a game**.
 - Other players on the same LAN see hosts in the room list automatically. Use
-  **Join by address** with an IPv4 address or DNS hostname (`:7777` optional)
-  if discovery is blocked; the multiplayer panel shows the host's LAN address.
+  **Join by address** with an IPv4/IPv6 address or DNS hostname (`:7777` optional)
+  if discovery is blocked. Use `[IPv6]:port` to specify a custom port for an
+  IPv6 literal; DNS lookup prefers IPv4 and falls back to IPv6.
+  The multiplayer panel shows the host's LAN address.
 - The host listens on UDP port `7777`; LAN discovery broadcasts on UDP `47778`.
   Allow UDP `47778` through local firewalls for LAN discovery. Internet hosting
   tries to create an automatic UPnP IGD mapping to local UDP `7777`; if external
@@ -251,8 +253,9 @@ router-specific forwarding are untested.
 Direct-host mode implements the core player-hosted flow, not every PUN/cloud
 feature. Host migration is unavailable. The transport accepts at most 16
 players (host plus 15 clients); the host assigns reusable player IDs so
-disconnect/rejoin cycles do not exhaust player slots. It currently requires
-IPv4. Direct connections have no application-level authentication or encryption;
+disconnect/rejoin cycles do not exhaust player slots. Hosting currently requires
+IPv4, although address joins accept IPv6 endpoints when the host is reachable
+over IPv6. Direct connections have no application-level authentication or encryption;
 share the host address only with trusted players. Manual address joins work
 without the directory.
 
