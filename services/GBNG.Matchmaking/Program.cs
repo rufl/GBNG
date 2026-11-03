@@ -75,9 +75,12 @@ internal sealed class SessionRegistry(SessionOptions options)
     private const int MaximumTrackedJoinSources = 65_536;
     private const int MaximumJoinAttemptsPerMinute = 30;
     private const string RoomCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    private static readonly long JoinAttemptWindowTicks = Stopwatch.Frequency * 60L;
     private readonly ConcurrentDictionary<string, MatchRoom> _rooms = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, AttemptWindow> _joinAttempts = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, AttemptWindow> _joinAttempts = new(StringComparer.Ordinal);
+    private readonly object _joinAttemptsSync = new();
     private readonly object _roomCreationLock = new();
+    private long _nextJoinAttemptCleanupAt;
     public async Task RunPeerAsync(SessionPeer peer, CancellationToken cancellationToken)
     {
         byte[] buffer = new byte[8 * 1024];
@@ -358,20 +361,32 @@ internal sealed class SessionRegistry(SessionOptions options)
     private bool ConsumeJoinAttempt(IPAddress? address)
     {
         string key = address?.ToString() ?? "unknown";
-        if (!_joinAttempts.TryGetValue(key, out AttemptWindow? window))
-        {
-            if (_joinAttempts.Count >= MaximumTrackedJoinSources)
-                return false;
-            window = _joinAttempts.GetOrAdd(key, static _ => new AttemptWindow());
-        }
-        lock (window.Sync)
+        lock (_joinAttemptsSync)
         {
             long now = Stopwatch.GetTimestamp();
-            if (now - window.StartedAt >= Stopwatch.Frequency * 60L)
+            if (now >= _nextJoinAttemptCleanupAt)
+            {
+                foreach (KeyValuePair<string, AttemptWindow> entry in _joinAttempts)
+                {
+                    if (now - entry.Value.StartedAt >= JoinAttemptWindowTicks)
+                        _joinAttempts.Remove(entry.Key);
+                }
+                _nextJoinAttemptCleanupAt = now + JoinAttemptWindowTicks;
+            }
+
+            if (!_joinAttempts.TryGetValue(key, out AttemptWindow? window))
+            {
+                if (_joinAttempts.Count >= MaximumTrackedJoinSources)
+                    return false;
+                window = new AttemptWindow { StartedAt = now };
+                _joinAttempts.Add(key, window);
+            }
+            else if (now - window.StartedAt >= JoinAttemptWindowTicks)
             {
                 window.StartedAt = now;
                 window.Count = 0;
             }
+
             if (window.Count >= MaximumJoinAttemptsPerMinute)
                 return false;
             window.Count++;
@@ -507,8 +522,7 @@ internal sealed class SessionPeer(WebSocket socket, IPAddress? remoteAddress)
 
 internal sealed class AttemptWindow
 {
-    public object Sync { get; } = new();
-    public long StartedAt { get; set; } = Stopwatch.GetTimestamp();
+    public long StartedAt { get; set; }
     public int Count { get; set; }
 }
 
