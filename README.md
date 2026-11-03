@@ -287,9 +287,10 @@ reliable chunks to stay below NGO's 64,000-byte per-message limit. The direct
 adapter forwards actor-state and transform RPCs, terrain edits, player identity
 and poses, ownership changes, and observable player state (tint, visibility,
 avatar animation, and tool-effect data). LAN/DNS/loopback smokes exercise host
-discovery, direct joins, identity, RPC targeting, map switching, and kicking;
-offline smoke verifies save/load round-tripping. Internet reachability and
-router-specific forwarding are untested.
+discovery, direct joins, identity, RPC targeting, map switching, and kicking.
+A standalone 400 KiB test transfers all nine chunks through two live NGO/UTP
+managers over loopback. Internet reachability and router-specific forwarding
+remain untested; offline smoke verifies save/load round-tripping.
 
 If the host disconnects after a client loads the initial snapshot, the client
 autosaves its local copy and can recover it from the Game Library. This
