@@ -81,8 +81,10 @@ local OBJ model loading, the built-in and saved actor libraries, and in-app
 project saving are part of the baseline. Optional integrations below may
 require separate plugins, accounts, or API keys.
 
-The built-in 2D renderer uses Unity's GUI font rather than Shaper's bitmap
-atlas, so existing text may look different.
+The free 2D renderer uses the project's bundled Assailand TrueType font for
+script-generated text. It matches the rest of the UI's typeface without the
+paid Shaper package; rasterization and glyph metrics still differ from Shaper's
+original bitmap atlas.
 
 ## Common instructions
 

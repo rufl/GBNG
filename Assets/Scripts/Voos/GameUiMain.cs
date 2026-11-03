@@ -42,15 +42,11 @@ using UnityEngine;
 
 public class GameUiMain : MonoBehaviour
 {
-  [SerializeField] Texture2D bitmapFontImage;
-  [SerializeField] TextAsset bitmapFontXml;
+  [SerializeField] Font scriptUiFont;
 
-  private IBitmapFont2D bitmapFont;
   private SimpleRichTextParser simpleRichTextParser = new SimpleRichTextParser();
   private IDraw2D draw2D;
 
-  // TODO: enable this back when we implement Steam Workshop based uploading.
-  private static readonly bool ENABLE_IMAGES = false;
 
   // If true, shows font calibration pattern.
   // Each character should neatly fit in one of the calibration pattern's boxes.
@@ -228,12 +224,7 @@ public class GameUiMain : MonoBehaviour
 
   private void Awake()
   {
-#if USE_SHAPER_2D_LIBRARY
-    draw2D = new Draw2DShaperImpl();
-#else
-    draw2D = new Draw2DUnityImpl();
-#endif
-    bitmapFont = draw2D.CreateBitmapFont(bitmapFontXml, bitmapFontImage);
+    draw2D = new Draw2DUnityImpl(scriptUiFont);
     Util.FindIfNotSet(this, ref engine);
     Util.FindIfNotSet(this, ref imageSystem);
     Util.FindIfNotSet(this, ref imageLoader);
@@ -370,12 +361,12 @@ public class GameUiMain : MonoBehaviour
     string extentText = (extent.start == 0 && extent.length == text.Length) ?
       text : text.Substring(extent.start, extent.length);
     draw2D.DrawText(extentText, ToSurfaceX(x), ToSurfaceY(y), 0.0f,
-       ToSurfaceLength(textSize), extent.color, bitmapFont);
+       ToSurfaceLength(textSize), extent.color);
     if (extent.bold)
     {
       // Double-strike to simulate bold.
       draw2D.DrawText(extentText, ToSurfaceX(x) + 1, ToSurfaceY(y), 0.0f,
-       ToSurfaceLength(textSize), extent.color, bitmapFont);
+       ToSurfaceLength(textSize), extent.color);
     }
     if (extent.lineBreakAtEnd)
     {
@@ -395,7 +386,7 @@ public class GameUiMain : MonoBehaviour
     float top = y - textHeight / 2;
     float left = x - textWidth / 2;
     draw2D.DrawText(text, ToSurfaceX(left), ToSurfaceY(top), 0.0f,
-       ToSurfaceLength(size), color, bitmapFont);
+       ToSurfaceLength(size), color);
   }
 
   private float GetCharWidthForSize(float textSize)

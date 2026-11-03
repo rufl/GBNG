@@ -27,11 +27,10 @@ public interface IDraw2D
   Draw2DMode GetDraw2DMode();
   void StartRendering(RenderTexture source, RenderTexture destination);
   void EndRendering();
-  IBitmapFont2D CreateBitmapFont(TextAsset xmlFile, Texture2D fontImage);
   void FillRect(Rect rect, Color color);
   void DrawRect(Rect rect, Color color);
   void DrawDashedRect(Rect rect, Color color, float lineWidth);
-  void DrawText(string text, float x, float y, float rotationDegs, float worldSizePixels, Color color, IBitmapFont2D font);
+  void DrawText(string text, float x, float y, float rotationDegs, float worldSizePixels, Color color);
   void DrawTexture(Rect rect, Color color, Texture2D texture);
   void FillQuads(Vector2[] vertices, Vector2[] texCoords, Color color, Texture2D texture);
   void DrawDashedLine(Vector2 pointA, Vector2 pointB, Color color);
@@ -44,6 +43,3 @@ public interface IDraw2D
   void FillCircle(Vector2 center, float radius, Color color);
 }
 
-public interface IBitmapFont2D
-{
-}

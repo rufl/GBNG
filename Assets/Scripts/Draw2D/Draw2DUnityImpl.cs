@@ -25,7 +25,9 @@ public class Draw2DUnityImpl : IDraw2D
   private readonly Material material;
   private readonly GUIStyle textStyle;
 
-  public Draw2DUnityImpl()
+  public Draw2DUnityImpl() : this(null) { }
+
+  public Draw2DUnityImpl(Font textFont)
   {
     Shader shader = Shader.Find("Hidden/Internal-Colored");
     if (shader == null) shader = Shader.Find("UI/Default");
@@ -43,6 +45,7 @@ public class Draw2DUnityImpl : IDraw2D
     }
     textStyle = new GUIStyle
     {
+      font = textFont,
       wordWrap = false,
       richText = false,
       alignment = TextAnchor.UpperLeft
@@ -53,13 +56,6 @@ public class Draw2DUnityImpl : IDraw2D
   public void StartRendering(RenderTexture source, RenderTexture destination) { }
   public void EndRendering() { }
 
-  public IBitmapFont2D CreateBitmapFont(TextAsset xmlFile, Texture2D fontImage)
-  {
-    // Unity's built-in GUI font cannot consume the Shaper bitmap-font XML/atlas.
-    return new BitmapFontImpl();
-  }
-
-  private sealed class BitmapFontImpl : IBitmapFont2D { }
 
   private bool CanDraw()
   {
@@ -137,7 +133,7 @@ public class Draw2DUnityImpl : IDraw2D
     }
   }
 
-  public void DrawText(string text, float x, float y, float rotationDegs, float worldSizePixels, Color color, IBitmapFont2D font)
+  public void DrawText(string text, float x, float y, float rotationDegs, float worldSizePixels, Color color)
   {
     if (string.IsNullOrEmpty(text) || Event.current == null || Event.current.type != EventType.Repaint ||
       float.IsNaN(x) || float.IsNaN(y)) return;

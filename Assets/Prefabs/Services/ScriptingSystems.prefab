@@ -420,8 +420,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f68ed618e92b5fc4facab863ee7b02e0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  bitmapFontImage: {fileID: 2800000, guid: 1fd15593f4a5aee4290a82831498da18, type: 3}
-  bitmapFontXml: {fileID: 4900000, guid: 2e6e06fc7070d2e44a3b8ea84005165f, type: 3}
+  scriptUiFont: {fileID: 12800000, guid: 16f6eb607346b724f803ca1de558ff61, type: 3}
 --- !u!114 &6959659861501381847
 MonoBehaviour:
   m_ObjectHideFlags: 0
