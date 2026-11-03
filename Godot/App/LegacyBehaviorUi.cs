@@ -84,7 +84,7 @@ public partial class LegacyBehaviorUi : Control
             float y = LegacySaveDocument.ReadFloat(rect["y"], 0f);
             float width = LegacySaveDocument.ReadFloat(rect["w"], 0f);
             float height = LegacySaveDocument.ReadFloat(rect["h"], 0f);
-            if (point.X >= x && point.X <= x + width && point.Y >= y && point.Y <= y + height)
+            if (point.X >= x && point.X < x + width && point.Y >= y && point.Y < y + height)
                 return command;
         }
         return null;

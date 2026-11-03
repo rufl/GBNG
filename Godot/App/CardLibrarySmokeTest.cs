@@ -670,12 +670,13 @@ public partial class GameBuilderApp
             if (LegacySaveDocument.ReadString(FindEmbeddedBehaviorSmoke(behaviorId)?["javascript"]) != appliedSource)
                 throw new InvalidOperationException("CodeEdit source was not applied to the embedded behavior.");
 
+            string uiButtonBoundsScreenshot = await RunBehaviorUiButtonBoundsSmoke();
             string uiCircleQualityScreenshot = await RunBehaviorUiCircleQualitySmoke();
             string uiImageFilterScreenshot = await RunBehaviorUiImageFilterSmoke();
             string screenshot = ProjectSettings.GlobalizePath("res://.godot/code-editor-smoke.png");
             if (GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
                 throw new InvalidOperationException("Could not save the native code-editor screenshot.");
-            GD.Print($"CODE_EDITOR_SMOKE_OK completion=myself zoom=true zoomBounds=8-36 inlineDiagnostics=true scrollRestoration=true syntaxDiagnostics=true runtimeDiagnostics=true managedCardValidation=true managedCardDiagnostics=true applied=true uiImageFilter=true uiImageSliceFilter=true uiCircleAdaptiveDetail=true uiCircleQualityScreenshot={uiCircleQualityScreenshot} uiImageFilterScreenshot={uiImageFilterScreenshot} zoomScreenshot={zoomScreenshot} scrollScreenshot={scrollScreenshot} diagnosticsScreenshot={diagnosticScreenshot} managedCardDiagnosticsScreenshot={managedCardDiagnosticsScreenshot} screenshot={screenshot}");
+            GD.Print($"CODE_EDITOR_SMOKE_OK completion=myself zoom=true zoomBounds=8-36 inlineDiagnostics=true scrollRestoration=true syntaxDiagnostics=true runtimeDiagnostics=true managedCardValidation=true managedCardDiagnostics=true applied=true uiButtonHalfOpenBounds=true uiButtonBoundsScreenshot={uiButtonBoundsScreenshot} uiImageFilter=true uiImageSliceFilter=true uiCircleAdaptiveDetail=true uiCircleQualityScreenshot={uiCircleQualityScreenshot} uiImageFilterScreenshot={uiImageFilterScreenshot} zoomScreenshot={zoomScreenshot} scrollScreenshot={scrollScreenshot} diagnosticsScreenshot={diagnosticScreenshot} managedCardDiagnosticsScreenshot={managedCardDiagnosticsScreenshot} screenshot={screenshot}");
         }
         catch (Exception exception)
         {
@@ -825,6 +826,84 @@ public partial class GameBuilderApp
             Color dashedSample = rendered.GetPixel(dashedSampleX, dashedSampleY);
             if (borderSample.A < 0.5f || dashedSample.A < 0.5f)
                 throw new InvalidOperationException($"Adaptive UI circle detail missed its target samples: border={borderSample}, dashed={dashedSample}. Screenshot: {screenshot}");
+            return screenshot;
+        }
+        finally
+        {
+            viewport.QueueFree();
+            await WaitForUiFrames(1);
+        }
+    }
+
+    private async System.Threading.Tasks.Task<string> RunBehaviorUiButtonBoundsSmoke()
+    {
+        var viewport = new SubViewport
+        {
+            Name = "BehaviorUiButtonBoundsSmokeViewport",
+            Size = new Vector2I(1600, 900),
+            TransparentBg = true,
+            RenderTargetUpdateMode = SubViewport.UpdateMode.Always
+        };
+        try
+        {
+            AddChild(viewport);
+            var behaviorUi = new LegacyBehaviorUi();
+            viewport.AddChild(behaviorUi);
+            behaviorUi.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+            int clickCount = 0;
+            string clickedActor = "";
+            string clickedMessage = "";
+            string clickedArgument = "";
+            behaviorUi.SetMessageHandler((actorName, messageName, argumentJson) =>
+            {
+                clickCount++;
+                clickedActor = actorName;
+                clickedMessage = messageName;
+                clickedArgument = argumentJson;
+            });
+            behaviorUi.SetCommands(new JsonArray
+            {
+                new JsonObject
+                {
+                    ["cmd"] = 3,
+                    ["actorName"] = "ButtonBoundsActor",
+                    ["clickMessageName"] = "BoundsClicked",
+                    ["clickMessageArgJson"] = "{\"test\":true}",
+                    ["rect"] = new JsonObject { ["x"] = 100f, ["y"] = 100f, ["w"] = 200f, ["h"] = 100f },
+                    ["text"] = "Bounds",
+                    ["backgroundColor"] = 0x336699,
+                    ["textColor"] = 0xffffff,
+                    ["textSize"] = 32f,
+                    ["opacity"] = 1f
+                }
+            });
+            await WaitForUiFrames(2);
+
+            string screenshot = ProjectSettings.GlobalizePath("res://.godot/behavior-ui-button-bounds-smoke.png");
+            if (viewport.GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
+                throw new InvalidOperationException("Could not save the behavior UI button-bounds screenshot.");
+            void Click(float x, float y) => behaviorUi._GuiInput(new InputEventMouseButton
+            {
+                ButtonIndex = MouseButton.Left,
+                Pressed = true,
+                Position = new Vector2(x, y)
+            });
+
+            Click(100f, 100f);
+            if (clickCount != 1)
+                throw new InvalidOperationException("The behavior button's inclusive top-left boundary did not dispatch its click.");
+            Click(300f, 150f);
+            if (clickCount != 1)
+                throw new InvalidOperationException("The behavior button incorrectly accepted a click on its exclusive right boundary.");
+            Click(150f, 200f);
+            if (clickCount != 1)
+                throw new InvalidOperationException("The behavior button incorrectly accepted a click on its exclusive bottom boundary.");
+            Click(299.99f, 199.99f);
+            if (clickCount != 2
+                || clickedActor != "ButtonBoundsActor"
+                || clickedMessage != "BoundsClicked"
+                || clickedArgument != "{\"test\":true}")
+                throw new InvalidOperationException("An interior behavior-button click did not dispatch its configured actor, message, and argument.");
             return screenshot;
         }
         finally
