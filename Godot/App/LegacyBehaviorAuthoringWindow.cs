@@ -45,6 +45,7 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
     private bool _refreshing;
     private string _selectedUseId = "";
     private string _selectedUri = "";
+    private readonly Dictionary<string, double> _scriptScrollByUri = new(StringComparer.Ordinal);
     private readonly Func<string, JsonArray?> _getPropertyDefinitions;
     private readonly Func<string, string, string?> _validateBehaviorSource;
     private readonly ScrollContainer _propertiesScroll = new();
@@ -214,6 +215,7 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
         var left = new VBoxContainer { CustomMinimumSize = new Vector2(300f, 0f) };
         columns.AddChild(left);
         left.AddChild(new Label { Text = "Assigned behaviors" });
+        _assignedUses.Name = "AssignedBehaviorUses";
         _assignedUses.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
         _assignedUses.ItemSelected += SelectAssignedUse;
         left.AddChild(_assignedUses);
@@ -427,6 +429,8 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
 
     private void LoadSelectedUse()
     {
+        if (_selectedUri.Length > 0)
+            _scriptScrollByUri[_selectedUri] = _scriptEditor.ScrollVertical;
         JsonObject? use = GetSelectedUse();
         _selectedUri = use is null ? "" : LegacySaveDocument.ReadString(use["behaviorUri"]);
         JsonObject? embeddedBehavior = _selectedUri.StartsWith("embedded:", StringComparison.Ordinal)
@@ -475,6 +479,9 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
             source = Godot.FileAccess.GetFileAsString(path);
         }
         _scriptEditor.Text = source;
+        _scriptEditor.ScrollVertical = _scriptScrollByUri.TryGetValue(_selectedUri, out double scrollVertical)
+            ? scrollVertical
+            : 0d;
         _scriptEditor.Editable = editable;
         _applyScriptButton.Disabled = !editable;
         _status.Text = use is null

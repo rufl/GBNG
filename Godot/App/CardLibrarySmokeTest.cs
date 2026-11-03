@@ -398,6 +398,58 @@ public partial class GameBuilderApp
             string behaviorValidationId = behaviorUri["embedded:".Length..];
             string originalSource = LegacySaveDocument.ReadString(FindEmbeddedBehaviorSmoke(behaviorValidationId)?["javascript"]);
             var behaviorCode = (LegacyJavaScriptCodeEdit)behaviorEditor.FindChild("BehaviorJavaScript", true, false);
+            string firstUseId = LegacySaveDocument.ReadString(selectedUse["id"]);
+            InvokeSmoke(behaviorEditor, "CreateCustomBehavior");
+            JsonObject secondUse = (JsonObject)InvokeSmoke(behaviorEditor, "GetSelectedUse")!;
+            string secondUseId = LegacySaveDocument.ReadString(secondUse["id"]);
+            string secondBehaviorUri = LegacySaveDocument.ReadString(secondUse["behaviorUri"]);
+            if (!secondBehaviorUri.StartsWith("embedded:", StringComparison.Ordinal))
+                throw new InvalidOperationException("The second smoke behavior was not embedded.");
+            string secondBehaviorId = secondBehaviorUri["embedded:".Length..];
+            var assignedUses = (ItemList)behaviorEditor.FindChild("AssignedBehaviorUses", true, false);
+            int firstUseIndex = -1;
+            int secondUseIndex = -1;
+            for (int index = 0; index < assignedUses.ItemCount; index++)
+            {
+                string useId = assignedUses.GetItemMetadata(index).AsString();
+                if (useId == firstUseId)
+                    firstUseIndex = index;
+                if (useId == secondUseId)
+                    secondUseIndex = index;
+            }
+            if (firstUseIndex < 0 || secondUseIndex < 0 || firstUseIndex == secondUseIndex)
+                throw new InvalidOperationException("The behavior editor did not list both custom behaviors for the scroll restoration smoke.");
+            var scrollLines = new string[64];
+            for (int index = 0; index < scrollLines.Length; index++)
+                scrollLines[index] = $"// Scroll persistence line {index + 1}";
+            scrollLines[^1] = "export function onCollision(msg) {}";
+            string scrollTestSource = string.Join("\n", scrollLines);
+            behaviorCode.Text = scrollTestSource;
+            InvokeSmoke(behaviorEditor, "ApplyScript");
+            if (LegacySaveDocument.ReadString(FindEmbeddedBehaviorSmoke(secondBehaviorId)?["javascript"]) != scrollTestSource)
+                throw new InvalidOperationException("The long behavior source was not applied for the scroll restoration smoke.");
+            await WaitForUiFrames(1);
+            behaviorCode.ScrollVertical = 20d;
+            await WaitForUiFrames(1);
+            double savedScroll = behaviorCode.ScrollVertical;
+            if (savedScroll < 10d)
+                throw new InvalidOperationException($"The scroll smoke source did not scroll far enough to verify restoration: {savedScroll}.");
+            assignedUses.Select(firstUseIndex);
+            InvokeSmoke(behaviorEditor, "SelectAssignedUse", (long)firstUseIndex);
+            if (behaviorCode.Text == scrollTestSource)
+                throw new InvalidOperationException("Selecting another behavior did not replace the editor source.");
+            assignedUses.Select(secondUseIndex);
+            InvokeSmoke(behaviorEditor, "SelectAssignedUse", (long)secondUseIndex);
+            await WaitForUiFrames(1);
+            if (behaviorCode.Text != scrollTestSource || Math.Abs(behaviorCode.ScrollVertical - savedScroll) > 0.001d)
+                throw new InvalidOperationException($"Switching behavior uses did not restore the second behavior's source and scroll offset: {behaviorCode.ScrollVertical}.");
+            string scrollScreenshot = ProjectSettings.GlobalizePath("res://.godot/behavior-scroll-smoke.png");
+            if (GetViewport().GetTexture().GetImage().SavePng(scrollScreenshot) != Error.Ok)
+                throw new InvalidOperationException("Could not save the behavior scroll restoration screenshot.");
+            assignedUses.Select(firstUseIndex);
+            InvokeSmoke(behaviorEditor, "SelectAssignedUse", (long)firstUseIndex);
+            if (behaviorCode.Text != originalSource)
+                throw new InvalidOperationException("Returning to the first behavior did not restore its source.");
             behaviorCode.Text = "export function onCollision(msg) {\n  const broken = ;\n}";
             InvokeSmoke(behaviorEditor, "ApplyScript");
             var diagnostics = (Label)behaviorEditor.FindChild("BehaviorScriptDiagnostics", true, false);
@@ -519,7 +571,7 @@ public partial class GameBuilderApp
             string screenshot = ProjectSettings.GlobalizePath("res://.godot/code-editor-smoke.png");
             if (GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
                 throw new InvalidOperationException("Could not save the native code-editor screenshot.");
-            GD.Print($"CODE_EDITOR_SMOKE_OK completion=myself syntaxDiagnostics=true runtimeDiagnostics=true applied=true diagnosticsScreenshot={diagnosticScreenshot} screenshot={screenshot}");
+            GD.Print($"CODE_EDITOR_SMOKE_OK completion=myself scrollRestoration=true syntaxDiagnostics=true runtimeDiagnostics=true applied=true scrollScreenshot={scrollScreenshot} diagnosticsScreenshot={diagnosticScreenshot} screenshot={screenshot}");
         }
         catch (Exception exception)
         {
