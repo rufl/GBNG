@@ -140,12 +140,16 @@ library.
 
 ## Behavior code editor
 
-The Windows 64-bit build uses the free, MIT-licensed WebViewToolkit with the
-free Microsoft Edge WebView2 runtime and the vendored Monaco editor. It
-provides syntax highlighting, completions, behavior-system typings and source
-navigation, code editing, read-only mode, error display, scroll restoration,
-and zoom. Install the WebView2 runtime to use Monaco; if it is unavailable or
-on other platforms, the editor falls back to the built-in multiline editor.
+The full Monaco behavior editor is supported in Windows x64 players using
+Direct3D 11 or 12. It uses the MIT-licensed WebViewToolkit, vendored Monaco
+and Microsoft's free [Evergreen WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/);
+no paid Unity plugin is required.
+
+It provides syntax highlighting, completions, behavior-system typings and
+source navigation, editing, read-only mode, diagnostics, scroll restoration
+and zoom. If WebView2 is missing, the graphics API is unsupported, or the
+build targets another platform, the built-in multiline editor remains
+available.
 
 ## Optional integrations available for free
 

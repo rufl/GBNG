@@ -67,14 +67,14 @@ namespace WebViewToolkit
 
             if (_nativeTexturePtr != IntPtr.Zero)
             {
-                // Create Unity texture from native pointer
-                // BGRA format matches what WebView2 produces
+                // The native plugin allocates DXGI_FORMAT_B8G8R8A8_UNORM; use a linear
+                // Unity texture so it does not request an incompatible sRGB view.
                 Texture = Texture2D.CreateExternalTexture(
                     width,
                     height,
                     TextureFormat.BGRA32,
                     mipChain: false,
-                    linear: false,
+                    linear: true,
                     _nativeTexturePtr
                 );
 

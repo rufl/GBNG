@@ -18,17 +18,21 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+#endif
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
 using WebViewToolkit;
 using WebViewToolkit.Native;
+#endif
 
 public interface ISystemSourceBrowser
 {
@@ -41,7 +45,9 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
   IPointerExitHandler, IScrollHandler
 {
   const float InitializationTimeoutSeconds = 15f;
+#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
   static readonly KeyMapping[] KeyMappings = CreateKeyMappings();
+#endif
 
   [Serializable]
   private sealed class PageMessage
@@ -76,6 +82,7 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
     public string message;
   }
 
+#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
   private struct KeyMapping
   {
     public KeyCode key;
@@ -89,13 +96,16 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
       this.printable = printable;
     }
   }
+#endif
 
   private BasicCodeBrowser fallback;
   private RawImage output;
   private Texture originalTexture;
+#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
   private WebViewInstance webView;
   private MonacoAssetServer assetServer;
   private WebViewManager manager;
+#endif
   private readonly List<Action<bool>> readinessCallbacks = new List<Action<bool>>();
   private readonly List<PendingError> pendingErrors = new List<PendingError>();
   private string code = "";
@@ -127,7 +137,7 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
 
   private void TryStartWebView()
   {
-#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
     if (fallback == null || output == null)
     {
       SwitchToFallback("The code canvas is missing its fallback editor or RawImage.");
@@ -189,7 +199,9 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
       SwitchToFallback(fallbackReason);
     }
 
-    if (usingFallback || webView == null) return;
+    if (usingFallback) return;
+#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
+    if (webView == null) return;
 
     manager?.Tick();
 
@@ -202,8 +214,10 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
     UpdateWebViewSize();
     UpdateKeyboardFocus();
     if (pageReady && keyboardFocus) ForwardKeyboardInput();
+#endif
   }
 
+#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
   private void UpdateWebViewSize()
   {
     if (output == null || webView == null || webView.IsDestroyed) return;
@@ -220,6 +234,7 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
       output.texture = webView.Texture;
     }
   }
+#endif
 
   private void UpdateKeyboardFocus()
   {
@@ -231,6 +246,7 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
     }
   }
 
+#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
   private void ForwardKeyboardInput()
   {
     string typed = Input.inputString;
@@ -268,6 +284,7 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
       webView.SendKeyEvent(mapping.virtualKey, scanCode, keyDown, systemKey);
     }
   }
+#endif
 
   private void OnNavigationCompleted(string url, bool succeeded)
   {
@@ -277,6 +294,7 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
     }
   }
 
+#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
   private void OnMessageReceived(string message)
   {
     try
@@ -335,6 +353,7 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
     for (int i = 0; i < readinessCallbacks.Count; i++) readinessCallbacks[i]?.Invoke(true);
     readinessCallbacks.Clear();
   }
+#endif
 
   private void RequestFallback(string reason)
   {
@@ -351,6 +370,7 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
 
     if (!string.IsNullOrEmpty(reason)) Debug.LogWarning(reason + " Using the built-in multiline editor instead.");
 
+#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
     if (webView != null)
     {
       webView.NavigationCompleted -= OnNavigationCompleted;
@@ -364,6 +384,7 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
       assetServer.Dispose();
       assetServer = null;
     }
+#endif
 
     if (output != null)
     {
@@ -400,6 +421,7 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
 
   private void OnDestroy()
   {
+#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
     if (webView != null)
     {
       webView.NavigationCompleted -= OnNavigationCompleted;
@@ -409,6 +431,7 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
       webView = null;
     }
     assetServer?.Dispose();
+#endif
   }
 
   public void Show(bool show)
@@ -527,48 +550,65 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
 
   private bool ExecuteScript(string script)
   {
+#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
     return webView != null && !webView.IsDestroyed && webView.ExecuteScript(script);
+#else
+    return false;
+#endif
   }
 
   public void OnPointerDown(PointerEventData eventData)
   {
     if (usingFallback) return;
+#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
     SendMouseEvent(MouseEventType.Down, ToMouseButton(eventData.button), eventData.position);
     if (eventData.button == PointerEventData.InputButton.Left)
     {
       keyboardFocus = true;
       if (EventSystem.current != null) EventSystem.current.SetSelectedGameObject(gameObject);
     }
+#endif
   }
 
   public void OnPointerUp(PointerEventData eventData)
   {
+#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
     if (!usingFallback) SendMouseEvent(MouseEventType.Up, ToMouseButton(eventData.button), eventData.position);
+#endif
   }
 
   public void OnPointerMove(PointerEventData eventData)
   {
+#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
     if (!usingFallback) SendMouseEvent(MouseEventType.Move, MouseButton.None, eventData.position);
+#endif
   }
 
   public void OnDrag(PointerEventData eventData)
   {
+#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
     if (!usingFallback) SendMouseEvent(MouseEventType.Move, ToMouseButton(eventData.button), eventData.position);
+#endif
   }
 
   public void OnPointerExit(PointerEventData eventData)
   {
+#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
     if (!usingFallback && webView != null)
     {
       webView.SendMouseEvent(MouseEventType.Leave, MouseButton.None, 0.5f, 0.5f);
     }
+#endif
   }
 
   public void OnScroll(PointerEventData eventData)
   {
+#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
     if (!usingFallback) SendMouseEvent(MouseEventType.Wheel, MouseButton.None, eventData.position, -eventData.scrollDelta.y);
+#endif
   }
 
+#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
   private void SendMouseEvent(MouseEventType eventType, MouseButton button, Vector2 screenPosition, float wheelDelta = 0f)
   {
     if (webView == null || webView.IsDestroyed || output == null) return;
@@ -594,6 +634,7 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
       default: return MouseButton.None;
     }
   }
+#endif
 
   private static string GetThirdPartyRoot()
   {
@@ -604,20 +645,21 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
 #endif
   }
 
-#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
   [DllImport("user32.dll", EntryPoint = "MapVirtualKeyW")]
   private static extern uint MapVirtualKeyCodeNative(uint virtualKey, uint mapType);
 #endif
 
   private static uint MapVirtualKeyCode(uint virtualKey)
   {
-#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
     return MapVirtualKeyCodeNative(virtualKey, 4);
 #else
     return 0;
 #endif
   }
 
+#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
   private static KeyMapping[] CreateKeyMappings()
   {
     return new[]
@@ -676,8 +718,10 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
       new KeyMapping(KeyCode.F11, 0x7A, false), new KeyMapping(KeyCode.F12, 0x7B, false)
     };
   }
+#endif
 }
 
+#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
 internal sealed class MonacoAssetServer : IDisposable
 {
   private readonly string root;
@@ -812,3 +856,4 @@ internal sealed class MonacoAssetServer : IDisposable
     activeListener?.Stop();
   }
 }
+#endif
