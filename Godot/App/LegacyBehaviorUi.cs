@@ -121,7 +121,7 @@ public partial class LegacyBehaviorUi : Control
                 DrawLine(command, background, style);
                 break;
             case 8:
-                DrawImageSlice(command);
+                DrawImageSlice(command, opacity);
                 break;
         }
     }
@@ -377,13 +377,13 @@ public partial class LegacyBehaviorUi : Control
         DrawTextureRect(texture, rect, false, new Color(1f, 1f, 1f, opacity));
     }
 
-    private void DrawImageSlice(JsonObject command)
+    private void DrawImageSlice(JsonObject command, float opacity)
     {
         if (!TryReadRect(command["rect"], out Rect2 destination) || !TryReadRect(command["srcRect"], out Rect2 source))
             return;
         if (!TryLoadImage(LegacySaveDocument.ReadString(command["imageId"]), out Texture2D? texture))
             return;
-        DrawTextureRectRegion(texture, destination, source, Colors.White);
+        DrawTextureRectRegion(texture, destination, source, new Color(1f, 1f, 1f, opacity));
     }
 
     private bool TryLoadImage(string imageId, out Texture2D? texture)
