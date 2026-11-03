@@ -86,6 +86,12 @@ bitmap atlas from the archived release; those font assets are distributed under
 the font's MIT license. The in-tree Unity GL renderer reads the BMFont XML
 directly, with no Shaper plugin dependency.
 
+The ProggyClean BMFont atlas stores glyph `y` metrics from the bottom; the
+runtime renderer converts those coordinates to Unity texture UVs. The main
+camera keeps PostProcessing's final blit enabled, while its obsolete
+`GameUiRenderer` image-effect pass-through is disabled so it cannot overwrite
+the processed scene.
+
 ## Common instructions
 
 - Running shell scripts: Whenever these instructions mention that you must run a
