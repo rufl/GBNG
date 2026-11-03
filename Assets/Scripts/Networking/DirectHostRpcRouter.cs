@@ -29,13 +29,7 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
   static readonly Dictionary<long, ObservableState> sentStates = new Dictionary<long, ObservableState>();
   NetworkManager manager;
   bool registered;
-  int debugLoggedSentPoseViewId;
-  int debugLoggedReceivedPoseViewId;
-  int debugLoggedAcceptedPoseViewId;
   float nextObservableTime;
-  long debugLoggedSentObservableKey;
-  long debugLoggedReceivedObservableKey;
-  long debugLoggedAcceptedObservableKey;
   readonly HashSet<int> knownPlayerIds = new HashSet<int>();
   readonly HashSet<int> currentPlayerIds = new HashSet<int>();
 
@@ -434,20 +428,7 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
   {
     DirectHostRpcRouter router = instance;
     if (view == null || router == null || router.manager == null || !router.manager.IsListening) return;
-    if (view.viewID <= 0)
-    {
-      if (Debug.isDebugBuild && router.debugLoggedSentPoseViewId != view.viewID)
-      {
-        router.debugLoggedSentPoseViewId = view.viewID;
-        Debug.Log($"DIRECT_POSE|send-skipped|view={view.viewID}|owner={view.ownerId}|server={router.manager.IsServer}");
-      }
-      return;
-    }
-    if (Debug.isDebugBuild && router.debugLoggedSentPoseViewId != view.viewID)
-    {
-      router.debugLoggedSentPoseViewId = view.viewID;
-      Debug.Log($"DIRECT_POSE|send|view={view.viewID}|owner={view.ownerId}|server={router.manager.IsServer}|local={router.manager.LocalClientId}|position={position}");
-    }
+    if (view.viewID <= 0) return;
     byte[] packet = Encode(writer =>
     {
       writer.Write(view.viewID);
@@ -491,22 +472,12 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
           || rotationMagnitude < 0.0001f) return;
         rotation = rotation.normalized;
         PhotonView view = PhotonView.Find(viewId);
-        if (Debug.isDebugBuild && debugLoggedReceivedPoseViewId != viewId)
-        {
-          debugLoggedReceivedPoseViewId = viewId;
-          Debug.Log($"DIRECT_POSE|receive|view={viewId}|owner={ownerPlayerId}|actual-owner={(view == null ? -1 : view.ownerId)}|server={manager.IsServer}|sender={senderClientId}|found={view != null}|position={position}");
-        }
         if (manager.IsServer)
         {
           if (ownerPlayerId != checked((int)senderClientId + 1) || view == null || view.ownerId != ownerPlayerId) return;
           UserBody body = view.GetComponent<UserBody>();
           if (body == null) return;
           body.SetDirectPose(position, rotation);
-          if (Debug.isDebugBuild && debugLoggedAcceptedPoseViewId != viewId)
-          {
-            debugLoggedAcceptedPoseViewId = viewId;
-            Debug.Log($"DIRECT_POSE|accepted-server|view={viewId}|owner={ownerPlayerId}|sender={senderClientId}|position={position}");
-          }
           SendPoseToClients(packet, senderClientId);
         }
         else if (senderClientId == NetworkManager.ServerClientId && view != null && view.ownerId == ownerPlayerId
@@ -516,11 +487,6 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
           if (body != null)
           {
             body.SetDirectPose(position, rotation);
-            if (Debug.isDebugBuild && debugLoggedAcceptedPoseViewId != viewId)
-            {
-              debugLoggedAcceptedPoseViewId = viewId;
-              Debug.Log($"DIRECT_POSE|accepted-client|view={viewId}|owner={ownerPlayerId}|position={position}");
-            }
           }
       }
     }
@@ -562,11 +528,6 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
           }
           else SendPacket(ObservableName, NetworkManager.ServerClientId, packet, NetworkDelivery.ReliableFragmentedSequenced);
           sentStates[key] = new ObservableState { bytes = state, sentAt = now };
-          if (Debug.isDebugBuild && view.GetComponent<UserBody>() != null && debugLoggedSentObservableKey != key)
-          {
-            debugLoggedSentObservableKey = key;
-            Debug.Log($"DIRECT_OBSERVABLE|send|view={view.viewID}|owner={PhotonNetwork.player.ID}|component={componentIndex}|bytes={state.Length}|server={manager.IsServer}");
-          }
         }
         componentIndex++;
       }
@@ -607,22 +568,11 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
         if (state.Length != length || input.BaseStream.Position != input.BaseStream.Length)
           throw new InvalidDataException("Truncated observable state packet.");
         PhotonView view = PhotonView.Find(viewId);
-        long key = ((long)viewId << 16) ^ (uint)componentIndex;
-        if (Debug.isDebugBuild && view != null && view.GetComponent<UserBody>() != null && debugLoggedReceivedObservableKey != key)
-        {
-          debugLoggedReceivedObservableKey = key;
-          Debug.Log($"DIRECT_OBSERVABLE|receive|view={viewId}|owner={ownerPlayerId}|component={componentIndex}|bytes={length}|server={manager.IsServer}|sender={senderClientId}");
-        }
         if (manager.IsServer)
         {
           int senderPlayerId = checked((int)senderClientId + 1);
           if (view == null || ownerPlayerId != senderPlayerId || view.ownerId != senderPlayerId) return;
           InvokeObservable(view, componentIndex, state, PhotonNetwork.GetDirectPlayer(senderClientId));
-          if (Debug.isDebugBuild && view.GetComponent<UserBody>() != null && debugLoggedAcceptedObservableKey != key)
-          {
-            debugLoggedAcceptedObservableKey = key;
-            Debug.Log($"DIRECT_OBSERVABLE|accepted-server|view={viewId}|owner={ownerPlayerId}");
-          }
           foreach (ulong clientId in manager.ConnectedClientsIds)
             if (clientId != manager.LocalClientId && clientId != senderClientId)
               SendPacket(ObservableName, clientId, packet, NetworkDelivery.ReliableFragmentedSequenced);
@@ -630,11 +580,6 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
         else if (senderClientId == NetworkManager.ServerClientId && view != null && view.ownerId == ownerPlayerId)
         {
           InvokeObservable(view, componentIndex, state, PhotonNetwork.GetDirectPlayer((ulong)(ownerPlayerId - 1)));
-          if (Debug.isDebugBuild && view.GetComponent<UserBody>() != null && debugLoggedAcceptedObservableKey != key)
-          {
-            debugLoggedAcceptedObservableKey = key;
-            Debug.Log($"DIRECT_OBSERVABLE|accepted-client|view={viewId}|owner={ownerPlayerId}");
-          }
         }
       }
     }
