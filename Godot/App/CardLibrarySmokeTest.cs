@@ -164,6 +164,211 @@ public partial class GameBuilderApp
             && Math.Abs(left.B - right.B) <= 0.001f
             && Math.Abs(left.A - right.A) <= 0.001f;
 
+    private async void RunWorldMapSizeSmoke()
+    {
+        int exitCode = 0;
+        string? originalProjectPath = _document?.SourcePath;
+        string? temporaryDirectory = null;
+        try
+        {
+            await WaitForUiFrames(2);
+            if (_document is null || originalProjectPath is null)
+                throw new InvalidOperationException("A project must be open for the map-size smoke run.");
+
+            string sourcePath = ProjectSettings.GlobalizePath(originalProjectPath);
+            if (!File.Exists(sourcePath))
+                throw new FileNotFoundException("The map-size smoke project was not found.", sourcePath);
+            temporaryDirectory = Path.Combine(Path.GetTempPath(), $"GBNG-MapSize-Smoke-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(temporaryDirectory);
+            string projectPath = Path.Combine(temporaryDirectory, Path.GetFileName(sourcePath));
+            File.Copy(sourcePath, projectPath);
+            LoadProject(projectPath);
+            await WaitForUiFrames(2);
+            if (_document?.SourcePath != projectPath || _terrain is null)
+                throw new InvalidOperationException("The writable terrain-bearing map-size smoke project did not load.");
+
+            float originalWidth = LegacySaveDocument.ReadFloat(_document.Stage?["groundSizeX"], 500f);
+            float originalDepth = LegacySaveDocument.ReadFloat(_document.Stage?["groundSizeZ"], 500f);
+            int originalTerrainWidth = _terrain.Width;
+            int originalTerrainDepth = _terrain.Depth;
+            int originalCenterX = originalTerrainWidth / 2;
+            int originalCenterZ = originalTerrainDepth / 2;
+            const byte originalShape = 0;
+            const ushort originalStyle = 27;
+            const byte originalDirection = 0;
+            if (!_terrain.SetCell(originalCenterX, 19, originalCenterZ, originalShape, originalStyle, originalDirection))
+                throw new InvalidOperationException("Could not install the centered terrain fixture in the writable smoke copy.");
+            _terrain.FlushUpdates();
+            _document.SaveTerrainPayload(_terrain.Encode());
+
+            OpenWorldSettings();
+            await WaitForUiFrames(2);
+            LegacyWorldSettingsWindow window = _worldSettingsWindow;
+            Button changeSize = (Button)window.FindChild("WorldMapSizeButton", true, false);
+            changeSize.EmitSignal("pressed");
+            await WaitForUiFrames(2);
+            var dialog = (Window)window.FindChild("WorldMapSizeDialog", true, false);
+            OptionButton choices = (OptionButton)dialog.FindChild("WorldMapSizeChoice", true, false);
+            if (!dialog.Visible || choices.ItemCount != 4)
+                throw new InvalidOperationException("The map-size dialog did not show all four legacy presets.");
+
+            SelectWorldMapSize(choices, "small");
+            ((Button)dialog.FindChild("WorldMapSizeCancel", true, false)).EmitSignal("pressed");
+            await WaitForUiFrames(1);
+            if (dialog.Visible
+                || !Mathf.IsEqualApprox(LegacySaveDocument.ReadFloat(_document.Stage?["groundSizeX"], 500f), originalWidth)
+                || !Mathf.IsEqualApprox(LegacySaveDocument.ReadFloat(_document.Stage?["groundSizeZ"], 500f), originalDepth)
+                || _terrain.Width != originalTerrainWidth || _terrain.Depth != originalTerrainDepth)
+                throw new InvalidOperationException("Canceling a map-size choice changed the project or terrain.");
+
+            changeSize.EmitSignal("pressed");
+            await WaitForUiFrames(1);
+            dialog = (Window)window.FindChild("WorldMapSizeDialog", true, false);
+            choices = (OptionButton)dialog.FindChild("WorldMapSizeChoice", true, false);
+            SelectWorldMapSize(choices, "small");
+            ((Button)dialog.FindChild("WorldMapSizeConfirm", true, false)).EmitSignal("pressed");
+            await WaitForUiFrames(3);
+            AssertWorldMapSize(50f, 50f, 20, 20, 10, 10, originalShape, originalStyle, originalDirection);
+
+            UndoEdit();
+            await WaitForUiFrames(3);
+            AssertWorldMapSize(originalWidth, originalDepth, originalTerrainWidth, originalTerrainDepth, originalCenterX, originalCenterZ,
+                originalShape, originalStyle, originalDirection);
+            RedoEdit();
+            await WaitForUiFrames(3);
+            AssertWorldMapSize(50f, 50f, 20, 20, 10, 10, originalShape, originalStyle, originalDirection);
+
+            changeSize.EmitSignal("pressed");
+            await WaitForUiFrames(1);
+            dialog = (Window)window.FindChild("WorldMapSizeDialog", true, false);
+            choices = (OptionButton)dialog.FindChild("WorldMapSizeChoice", true, false);
+            SelectWorldMapSize(choices, "long");
+            await WaitForUiFrames(2);
+            string screenshot = ProjectSettings.GlobalizePath("res://.godot/world-map-size-smoke.png");
+            if (dialog.GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
+                throw new InvalidOperationException("Could not save the map-size confirmation screenshot.");
+            ((Button)dialog.FindChild("WorldMapSizeConfirm", true, false)).EmitSignal("pressed");
+            await WaitForUiFrames(3);
+            AssertWorldMapSize(50f, 5000f, 20, 2000, 10, 1000, originalShape, originalStyle, originalDirection);
+
+            _document.Root.Remove("gridState");
+            _document.SaveTo(projectPath);
+            LoadProject(projectPath);
+            await WaitForUiFrames(2);
+            AssertFlatWorldMapSize(50f, 5000f);
+
+            OpenWorldSettings();
+            changeSize.EmitSignal("pressed");
+            await WaitForUiFrames(1);
+            dialog = (Window)window.FindChild("WorldMapSizeDialog", true, false);
+            choices = (OptionButton)dialog.FindChild("WorldMapSizeChoice", true, false);
+            SelectWorldMapSize(choices, "small");
+            ((Button)dialog.FindChild("WorldMapSizeConfirm", true, false)).EmitSignal("pressed");
+            await WaitForUiFrames(2);
+            AssertFlatWorldMapSize(50f, 50f);
+            UndoEdit();
+            await WaitForUiFrames(2);
+            AssertFlatWorldMapSize(50f, 5000f);
+            RedoEdit();
+            await WaitForUiFrames(2);
+            AssertFlatWorldMapSize(50f, 50f);
+            GD.Print($"WORLD_MAP_SIZE_SMOKE_OK cancel=true presets=4 small=20x20 long=20x2000 centered-terrain=preserved flat-ground=updated undo=redo=persistence=true screenshot={screenshot}");
+        }
+        catch (Exception exception)
+        {
+            exitCode = 1;
+            GD.PushError($"WORLD_MAP_SIZE_SMOKE_FAILED: {exception}");
+        }
+        finally
+        {
+            if (_worldSettingsWindow is not null)
+            {
+                ((Window)_worldSettingsWindow.FindChild("WorldMapSizeDialog", true, false)).Hide();
+                _worldSettingsWindow.Hide();
+            }
+            if (originalProjectPath is not null)
+            {
+                LoadProject(originalProjectPath);
+                await WaitForUiFrames(2);
+                if (!string.Equals(_document?.SourcePath, originalProjectPath, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                {
+                    exitCode = 1;
+                    GD.PushError("WORLD_MAP_SIZE_SMOKE_FAILED: the original project could not be restored.");
+                }
+            }
+            if (temporaryDirectory is not null && Directory.Exists(temporaryDirectory))
+                Directory.Delete(temporaryDirectory, recursive: true);
+            GetTree().Quit(exitCode);
+        }
+    }
+
+    private static void SelectWorldMapSize(OptionButton picker, string sizeId)
+    {
+        for (int index = 0; index < picker.ItemCount; index++)
+        {
+            if (picker.GetItemMetadata(index).AsString() != sizeId)
+                continue;
+            picker.Select(index);
+            picker.EmitSignal("item_selected", (long)index);
+            return;
+        }
+        throw new InvalidOperationException($"The map-size dialog did not expose the '{sizeId}' preset.");
+    }
+
+    private void AssertWorldMapSize(
+        float expectedWidth,
+        float expectedDepth,
+        int expectedTerrainWidth,
+        int expectedTerrainDepth,
+        int cellX,
+        int cellZ,
+        byte expectedShape,
+        ushort expectedStyle,
+        byte expectedDirection,
+        bool expectGroundBounds = true)
+    {
+        if (_document is null
+            || _terrain is null
+            || !Mathf.IsEqualApprox(LegacySaveDocument.ReadFloat(_document.Stage?["groundSizeX"], 500f), expectedWidth)
+            || !Mathf.IsEqualApprox(LegacySaveDocument.ReadFloat(_document.Stage?["groundSizeZ"], 500f), expectedDepth)
+            || _terrain.Width != expectedTerrainWidth
+            || _terrain.Depth != expectedTerrainDepth
+            || !_terrain.TryGetCell(cellX, 19, cellZ, out byte shape, out ushort style, out byte direction)
+            || shape != expectedShape || style != expectedStyle || direction != expectedDirection)
+            throw new InvalidOperationException("The map size or centered terrain data did not match the requested resize.");
+
+        if (expectGroundBounds
+            && (_stageGroundMesh is null
+                || _stageGroundMesh.Mesh is not PlaneMesh ground
+                || !Mathf.IsEqualApprox(ground.Size.X, expectedWidth)
+                || !Mathf.IsEqualApprox(ground.Size.Y, expectedDepth)
+                || _stageGroundMesh.Visible
+                || _stageGroundBody is null
+                || _stageGroundBody.GetChild(0) is not CollisionShape3D collision
+                || collision.Shape is not BoxShape3D box
+                || !Mathf.IsEqualApprox(box.Size.X, expectedWidth)
+                || !Mathf.IsEqualApprox(box.Size.Z, expectedDepth)))
+            throw new InvalidOperationException("The visible terrain ground or collision bounds did not adopt the selected map size.");
+    }
+    private void AssertFlatWorldMapSize(float expectedWidth, float expectedDepth)
+    {
+        if (_document is null
+            || _terrain is not null
+            || _document.GridState is not null
+            || !Mathf.IsEqualApprox(LegacySaveDocument.ReadFloat(_document.Stage?["groundSizeX"], 500f), expectedWidth)
+            || !Mathf.IsEqualApprox(LegacySaveDocument.ReadFloat(_document.Stage?["groundSizeZ"], 500f), expectedDepth)
+            || _stageGroundMesh?.Mesh is not PlaneMesh ground
+            || !Mathf.IsEqualApprox(ground.Size.X, expectedWidth)
+            || !Mathf.IsEqualApprox(ground.Size.Y, expectedDepth)
+            || !_stageGroundMesh.Visible
+            || _stageGroundBody?.GetChild(0) is not CollisionShape3D collision
+            || collision.Shape is not BoxShape3D box
+            || !Mathf.IsEqualApprox(box.Size.X, expectedWidth)
+            || !Mathf.IsEqualApprox(box.Size.Z, expectedDepth))
+            throw new InvalidOperationException("The flat ground and collision bounds did not adopt the selected map size.");
+    }
+
+
     private async System.Threading.Tasks.Task RunTerrainEditorSmoke()
     {
         LegacyTerrainNode terrain = _terrain

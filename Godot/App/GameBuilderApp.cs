@@ -153,6 +153,8 @@ public partial class GameBuilderApp : Node3D
             RunCodeEditorSmoke();
         if (commandLineArgs.Contains("--smoke-world-settings", StringComparer.Ordinal))
             RunWorldSettingsSmoke();
+        if (commandLineArgs.Contains("--smoke-world-map-size", StringComparer.Ordinal))
+            RunWorldMapSizeSmoke();
     }
 
 
@@ -326,7 +328,7 @@ public partial class GameBuilderApp : Node3D
         var layer = new CanvasLayer { Name = "EditorInterface", Layer = 10 };
         AddChild(layer);
         _networkWindow = new LegacyLanNetworkWindow(_lanSession, PrepareNetworkHostProjectCopy, OpenReceivedNetworkProject);
-        _worldSettingsWindow = new LegacyWorldSettingsWindow(UpdateStageProperty);
+        _worldSettingsWindow = new LegacyWorldSettingsWindow(UpdateStageProperty, ApplyWorldMapSize);
         _assetStoreWindow = new LegacyAssetStoreWindow(
             _catalog,
             () => _document is not null && !_playMode && !_lanSession.HasPendingAssetSync,
@@ -1153,6 +1155,70 @@ public partial class GameBuilderApp : Node3D
             () => SetStageProperty(property, before, hadPreviousValue),
             () => SetStageProperty(property, after, shouldExist: true));
     }
+    private void ApplyWorldMapSize(float width, float depth)
+    {
+        if (_document is null || _playMode || width <= 0f || depth <= 0f)
+            return;
+        JsonObject currentStage = LegacySaveDocument.EnsureObject(_document.Root, "stage");
+        float currentWidth = LegacySaveDocument.ReadFloat(currentStage["groundSizeX"], 500f);
+        float currentDepth = LegacySaveDocument.ReadFloat(currentStage["groundSizeZ"], 500f);
+        if (currentWidth <= 0f) currentWidth = 500f;
+        if (currentDepth <= 0f) currentDepth = 500f;
+        if (Mathf.IsEqualApprox(currentWidth, width) && Mathf.IsEqualApprox(currentDepth, depth))
+            return;
+
+        EndTerrainStroke();
+        _terrain?.FlushUpdates();
+        if (_terrain is not null)
+            _document.SaveTerrainPayload(_terrain.Encode());
+
+        bool hadStage = _document.Root.TryGetPropertyValue("stage", out JsonNode? previousStage);
+        JsonNode? beforeStage = previousStage?.DeepClone();
+        bool hadGridState = _document.Root.TryGetPropertyValue("gridState", out JsonNode? previousGridState);
+        JsonNode? beforeGridState = previousGridState?.DeepClone();
+        LegacyTerrainData? terrainData = _terrain?.Data ?? LegacyTerrainData.Decode(_document.GridState);
+        if (terrainData is not null)
+        {
+            int widthCells = Mathf.CeilToInt(width / LegacyTerrainData.CellWidth);
+            int depthCells = Mathf.CeilToInt(depth / LegacyTerrainData.CellWidth);
+            if (terrainData.Width != widthCells
+                || terrainData.Height != LegacyTerrainData.BlockSizeY
+                || terrainData.Depth != depthCells)
+                _document.SaveTerrainPayload(terrainData.ResizeCentered(
+                    widthCells,
+                    LegacyTerrainData.BlockSizeY,
+                    depthCells).Encode());
+        }
+
+        currentStage["groundSizeX"] = width;
+        currentStage["groundSizeZ"] = depth;
+        bool hasUpdatedStage = _document.Root.TryGetPropertyValue("stage", out JsonNode? updatedStage);
+        JsonNode? afterStage = updatedStage?.DeepClone();
+        bool hasUpdatedGridState = _document.Root.TryGetPropertyValue("gridState", out JsonNode? updatedGridState);
+        JsonNode? afterGridState = updatedGridState?.DeepClone();
+        RebuildNetworkEnvironment();
+        RecordHistory(
+            "Resize map",
+            () => RestoreMapSizeState(hadStage, beforeStage, hadGridState, beforeGridState),
+            () => RestoreMapSizeState(hasUpdatedStage, afterStage, hasUpdatedGridState, afterGridState));
+        _status.Text = $"Map resized to {width:0.##} × {depth:0.##}; terrain outside smaller bounds is removed.";
+    }
+
+    private void RestoreMapSizeState(bool hasStage, JsonNode? stage, bool hasGridState, JsonNode? gridState)
+    {
+        if (_document is null)
+            return;
+        if (hasStage)
+            _document.Root["stage"] = stage?.DeepClone();
+        else
+            _document.Root.Remove("stage");
+        if (hasGridState)
+            _document.Root["gridState"] = gridState?.DeepClone();
+        else
+            _document.Root.Remove("gridState");
+        RebuildNetworkEnvironment();
+    }
+
 
     private void SetStageProperty(string property, JsonNode? value, bool shouldExist, bool refreshWindow = true)
     {
@@ -1296,10 +1362,22 @@ public partial class GameBuilderApp : Node3D
     {
         if (_terrain is not null)
             return;
-        _terrain = LegacyTerrainNode.Create(LegacyTerrainData.CreateEmpty());
+        _terrain = LegacyTerrainNode.Create(CreateEmptyTerrainForCurrentMap());
         _world.AddChild(_terrain);
         if (_stageGroundMesh is not null)
             _stageGroundMesh.Visible = false;
+    }
+
+    private LegacyTerrainData CreateEmptyTerrainForCurrentMap()
+    {
+        float width = LegacySaveDocument.ReadFloat(_document?.Stage?["groundSizeX"], 500f);
+        float depth = LegacySaveDocument.ReadFloat(_document?.Stage?["groundSizeZ"], 500f);
+        if (width <= 0f) width = 500f;
+        if (depth <= 0f) depth = 500f;
+        return LegacyTerrainData.CreateEmpty(
+            Mathf.CeilToInt(width / LegacyTerrainData.CellWidth),
+            LegacyTerrainData.BlockSizeY,
+            Mathf.CeilToInt(depth / LegacyTerrainData.CellWidth));
     }
 
     private void RemoveTerrainCreatedByStroke()

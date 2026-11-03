@@ -21,19 +21,40 @@ public sealed partial class LegacyWorldSettingsWindow : Window
         ("Dark", "Dark")
     ];
 
+    private static readonly (string Id, string Label, float Width, float Depth)[] MapSizes =
+    [
+        ("small", "Small · 50 × 50", 50f, 50f),
+        ("medium", "Medium · 200 × 200", 200f, 200f),
+        ("large", "Large · 500 × 500", 500f, 500f),
+        ("long", "Long · 50 × 5000", 50f, 5000f)
+    ];
+
     private readonly Action<string, JsonNode> _setStageProperty;
+    private readonly Action<float, float> _setMapSize;
     private readonly OptionButton _skyType = new();
     private readonly ColorPickerButton _skyColor = new() { EditAlpha = false };
     private readonly OptionButton _lightingMode = new();
+    private readonly Label _mapSizeSummary = new();
+    private readonly Button _mapSizeButton = new();
+    private readonly OptionButton _mapSizeChoice = new();
+    private readonly Window _mapSizeDialog = new();
+    private readonly Button _mapSizeConfirm = new();
+    private float _mapWidth = 500f;
+    private float _mapDepth = 500f;
     private bool _refreshing;
 
-    public LegacyWorldSettingsWindow(Action<string, JsonNode> setStageProperty)
+    public LegacyWorldSettingsWindow(Action<string, JsonNode> setStageProperty, Action<float, float> setMapSize)
     {
         _setStageProperty = setStageProperty;
+        _setMapSize = setMapSize;
         Name = "WorldSettingsWindow";
         Title = "World settings";
         Size = new Vector2I(500, 360);
-        CloseRequested += () => Hide();
+        CloseRequested += () =>
+        {
+            _mapSizeDialog.Hide();
+            Hide();
+        };
         BuildInterface();
         RefreshFromStage(null);
     }
@@ -46,6 +67,9 @@ public sealed partial class LegacyWorldSettingsWindow : Window
             PopulateOptions(_skyType, SkyTypes, LegacySaveDocument.ReadString(stage?["skyType"], "Day"));
             _skyColor.Color = ReadStageColor(stage?["skyColor"]);
             PopulateOptions(_lightingMode, LightingModes, LegacySaveDocument.ReadString(stage?["sceneLightingMode"], "Day"));
+            _mapWidth = ReadStageDimension(stage?["groundSizeX"]);
+            _mapDepth = ReadStageDimension(stage?["groundSizeZ"]);
+            _mapSizeSummary.Text = $"{_mapWidth:0.##} × {_mapDepth:0.##}";
         }
         finally
         {
@@ -106,6 +130,16 @@ public sealed partial class LegacyWorldSettingsWindow : Window
                 _setStageProperty("sceneLightingMode", JsonValue.Create(_lightingMode.GetItemMetadata((int)index).AsString())!);
         };
         layout.AddChild(CreateFieldRow("Scene lighting", _lightingMode));
+        var mapSizeControls = new HBoxContainer();
+        _mapSizeSummary.Name = "WorldMapSizeSummary";
+        _mapSizeSummary.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        mapSizeControls.AddChild(_mapSizeSummary);
+        _mapSizeButton.Name = "WorldMapSizeButton";
+        _mapSizeButton.Text = "Change…";
+        _mapSizeButton.Pressed += OpenMapSizeDialog;
+        mapSizeControls.AddChild(_mapSizeButton);
+        layout.AddChild(CreateFieldRow("Map size", mapSizeControls));
+
 
         layout.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
         var footer = new HBoxContainer();
@@ -114,7 +148,89 @@ public sealed partial class LegacyWorldSettingsWindow : Window
         close.Pressed += () => Hide();
         footer.AddChild(close);
         layout.AddChild(footer);
+        BuildMapSizeDialog();
     }
+    private void BuildMapSizeDialog()
+    {
+        _mapSizeDialog.Name = "WorldMapSizeDialog";
+        _mapSizeDialog.Title = "Change map size";
+        _mapSizeDialog.Size = new Vector2I(560, 230);
+        _mapSizeDialog.CloseRequested += () => _mapSizeDialog.Hide();
+
+        var margin = new MarginContainer { AnchorRight = 1f, AnchorBottom = 1f };
+        margin.AddThemeConstantOverride("margin_left", 18);
+        margin.AddThemeConstantOverride("margin_top", 16);
+        margin.AddThemeConstantOverride("margin_right", 18);
+        margin.AddThemeConstantOverride("margin_bottom", 16);
+        _mapSizeDialog.AddChild(margin);
+
+        var layout = new VBoxContainer();
+        layout.AddThemeConstantOverride("separation", 12);
+        margin.AddChild(layout);
+        layout.AddChild(new Label
+        {
+            Text = "Shrinking destroys terrain outside the new bounds. The centered terrain that fits is preserved; use Undo to reverse the resize.",
+            AutowrapMode = TextServer.AutowrapMode.Word
+        });
+
+        _mapSizeChoice.Name = "WorldMapSizeChoice";
+        _mapSizeChoice.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        _mapSizeChoice.ItemSelected += index => _mapSizeConfirm.Disabled = index >= MapSizes.Length;
+        layout.AddChild(CreateFieldRow("Preset", _mapSizeChoice));
+
+        layout.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
+        var footer = new HBoxContainer();
+        footer.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
+        var cancel = new Button { Name = "WorldMapSizeCancel", Text = "Cancel" };
+        cancel.Pressed += () => _mapSizeDialog.Hide();
+        footer.AddChild(cancel);
+        _mapSizeConfirm.Name = "WorldMapSizeConfirm";
+        _mapSizeConfirm.Text = "Resize";
+        _mapSizeConfirm.Pressed += ConfirmMapSize;
+        footer.AddChild(_mapSizeConfirm);
+        layout.AddChild(footer);
+        AddChild(_mapSizeDialog);
+    }
+
+    private void OpenMapSizeDialog()
+    {
+        _mapSizeChoice.Clear();
+        int selectedIndex = -1;
+        for (int index = 0; index < MapSizes.Length; index++)
+        {
+            (string id, string label, float width, float depth) = MapSizes[index];
+            _mapSizeChoice.AddItem(label);
+            _mapSizeChoice.SetItemMetadata(index, id);
+            if (Mathf.IsEqualApprox(_mapWidth, width) && Mathf.IsEqualApprox(_mapDepth, depth))
+                selectedIndex = index;
+        }
+        if (selectedIndex < 0)
+        {
+            _mapSizeChoice.AddItem($"Current · {_mapWidth:0.##} × {_mapDepth:0.##}");
+            _mapSizeChoice.SetItemMetadata(_mapSizeChoice.ItemCount - 1, "current");
+            selectedIndex = _mapSizeChoice.ItemCount - 1;
+        }
+        _mapSizeChoice.Select(selectedIndex);
+        _mapSizeConfirm.Disabled = selectedIndex >= MapSizes.Length;
+        _mapSizeDialog.PopupCentered(new Vector2I(560, 230));
+    }
+
+    private void ConfirmMapSize()
+    {
+        int selectedIndex = _mapSizeChoice.Selected;
+        if ((uint)selectedIndex >= (uint)MapSizes.Length)
+            return;
+        var mapSize = MapSizes[selectedIndex];
+        _mapSizeDialog.Hide();
+        _setMapSize(mapSize.Width, mapSize.Depth);
+    }
+
+    private static float ReadStageDimension(JsonNode? node)
+    {
+        float size = LegacySaveDocument.ReadFloat(node, 500f);
+        return size > 0f ? size : 500f;
+    }
+
 
     private static HBoxContainer CreateFieldRow(string label, Control editor)
     {

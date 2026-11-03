@@ -48,6 +48,7 @@ public partial class LegacyTerrainNode : Node3D
     }
     public int Width => _data.Width;
     public int Depth => _data.Depth;
+    internal LegacyTerrainData Data => _data;
 
     public bool TryGetCell(int x, int y, int z, out byte shape, out ushort style, out byte direction)
         => _data.TryGetCell(x, y, z, out shape, out style, out direction);

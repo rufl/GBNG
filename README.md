@@ -33,6 +33,8 @@ The Godot branch loads and saves legacy `.voos` projects, supports actor selecti
 
 The **World** editor sets sky type (Day, Space, Overcast, or Solid color), sky color, and scene lighting (Day, Night, or Dark). Changes update the live scene, persist in the original `.voos` stage data, and participate in Undo/Redo and host-authoritative collaborative edits.
 
+The **World** settings also provide the original map-size presets: Small (50×50), Medium (200×200), Large (500×500), and Long (50×5000). Resizing preserves terrain cells in the centered overlap, warns before shrinking discards out-of-bounds terrain, and updates flat ground when no terrain payload exists. The resize is one undoable edit, persists in `.voos`, and uses the same host-authoritative collaboration flow as other world settings.
+
 Behavior UI image and image-slice widgets honor the legacy `noFilter` option: nearest sampling when enabled, bilinear sampling when omitted or false. Behavior UI `BORDER` and `DASHED` circles select 3–300 segments from their projected screen radius, matching the legacy renderer's adaptive detail.
 
 Behavior UI button hitboxes include their top and left edges and exclude their right and bottom edges, matching Unity's half-open rectangle containment.

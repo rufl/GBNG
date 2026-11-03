@@ -36,7 +36,44 @@ public sealed class LegacyTerrainData
     public int CellCount => _shapes.Length;
 
     public static LegacyTerrainData CreateEmpty()
-        => new(BlockSizeX, BlockSizeY, BlockSizeZ);
+        => CreateEmpty(BlockSizeX, BlockSizeY, BlockSizeZ);
+
+    public static LegacyTerrainData CreateEmpty(int width, int height, int depth)
+    {
+        ValidateDimensions(width, height, depth);
+        return new LegacyTerrainData(width, height, depth);
+    }
+
+    public LegacyTerrainData ResizeCentered(int width, int height, int depth)
+    {
+        ValidateDimensions(width, height, depth);
+        if (width == Width && height == Height && depth == Depth)
+            return this;
+
+        var resized = new LegacyTerrainData(width, height, depth);
+        int copyWidth = Math.Min(Width, width);
+        int copyHeight = Math.Min(Height, height);
+        int copyDepth = Math.Min(Depth, depth);
+        int sourceX = Width / 2 - copyWidth / 2;
+        int sourceY = Height / 2 - copyHeight / 2;
+        int sourceZ = Depth / 2 - copyDepth / 2;
+        int destinationX = width / 2 - copyWidth / 2;
+        int destinationY = height / 2 - copyHeight / 2;
+        int destinationZ = depth / 2 - copyDepth / 2;
+
+        for (int y = 0; y < copyHeight; y++)
+        {
+            for (int z = 0; z < copyDepth; z++)
+            {
+                int sourceRow = ((sourceY + y) * Depth + sourceZ + z) * Width + sourceX;
+                int destinationRow = ((destinationY + y) * depth + destinationZ + z) * width + destinationX;
+                Array.Copy(_shapes, sourceRow, resized._shapes, destinationRow, copyWidth);
+                Array.Copy(_styles, sourceRow, resized._styles, destinationRow, copyWidth);
+                Array.Copy(_directions, sourceRow, resized._directions, destinationRow, copyWidth);
+            }
+        }
+        return resized;
+    }
 
     public static LegacyTerrainData? Decode(JsonObject? gridState)
     {
@@ -220,7 +257,7 @@ public sealed class LegacyTerrainData
 
     private static void ValidateDimensions(int width, int height, int depth)
     {
-        if (width <= 0 || height <= 0 || depth <= 0 || width > 256 || height > 256 || depth > 256)
+        if (width <= 0 || height <= 0 || depth <= 0 || width > 2048 || height > 256 || depth > 2048)
             throw new InvalidDataException($"Invalid terrain dimensions: {width}x{height}x{depth}.");
 
         long count = (long)width * height * depth;
