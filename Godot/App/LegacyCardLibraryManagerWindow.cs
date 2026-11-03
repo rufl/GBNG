@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Globalization;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -32,6 +33,7 @@ public sealed partial class LegacyCardLibraryManagerWindow : Window
     private readonly Button _applyMetadataButton = new();
     private readonly Button _applyCodeButton = new();
     private readonly Label _status = new();
+    private readonly Label _scriptDiagnostics = new();
     private readonly Dictionary<string, JsonObject?> _builtinMetadata = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _builtinSources = new(StringComparer.Ordinal);
     private readonly FileDialog _importDialog = new();
@@ -185,6 +187,11 @@ public sealed partial class LegacyCardLibraryManagerWindow : Window
         _javascript.CustomMinimumSize = new Vector2(0f, 160f);
         _javascript.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
         right.AddChild(_javascript);
+        _javascript.TextChanged += ClearScriptDiagnostic;
+        _scriptDiagnostics.Name = "ManagedCardScriptDiagnostics";
+        _scriptDiagnostics.AutowrapMode = TextServer.AutowrapMode.Word;
+        _scriptDiagnostics.Visible = false;
+        right.AddChild(_scriptDiagnostics);
         _status.Name = "ManagedCardStatus";
         _status.AutowrapMode = TextServer.AutowrapMode.Word;
         layout.AddChild(_status);
@@ -319,6 +326,7 @@ public sealed partial class LegacyCardLibraryManagerWindow : Window
     {
         if (_refreshing || index < 0 || index >= _cards.ItemCount)
             return;
+        ClearScriptDiagnostic();
         _selectedUri = _cards.GetItemMetadata((int)index).AsString();
         JsonObject? metadata = GetMetadata(_selectedUri);
         JsonObject? cardData = metadata?["cardSystemCardData"] as JsonObject;
@@ -352,6 +360,7 @@ public sealed partial class LegacyCardLibraryManagerWindow : Window
 
     private void ClearEditor()
     {
+        ClearScriptDiagnostic();
         _preview.Texture = null;
         _preview.Visible = false;
         _title.Text = "";
@@ -459,11 +468,46 @@ public sealed partial class LegacyCardLibraryManagerWindow : Window
     {
         if (GetEmbeddedBehavior(_selectedUri) is not JsonObject behavior)
             return;
-        behavior["javascript"] = _javascript.Text;
+
+        string source = _javascript.Text;
+        string? diagnostic = LegacyBehaviorRuntime.ValidateBehaviorSourceWithoutRuntime(_selectedUri, source);
+        ClearScriptDiagnostic();
+        if (diagnostic is not null)
+        {
+            _scriptDiagnostics.Text = diagnostic;
+            int diagnosticLine = ParseDiagnosticLine(diagnostic);
+            if (diagnosticLine > 0)
+                _javascript.AddDiagnosticLine(diagnosticLine, diagnostic);
+            _scriptDiagnostics.Visible = true;
+            _status.Text = "JavaScript syntax error. Fix the reported line before applying.";
+            return;
+        }
+
+        behavior["javascript"] = source;
         behavior["draftJavascript"] = "";
         _onChanged();
         RefreshCards();
         _status.Text = "Updated embedded card JavaScript in memory. Use Save in GBNG to persist it.";
+    }
+
+    private void ClearScriptDiagnostic()
+    {
+        _scriptDiagnostics.Text = "";
+        _javascript.ClearDiagnosticLines();
+        _scriptDiagnostics.Visible = false;
+    }
+
+    private static int ParseDiagnosticLine(string diagnostic)
+    {
+        const string prefix = "Line ";
+        if (!diagnostic.StartsWith(prefix, StringComparison.Ordinal))
+            return 0;
+        int end = diagnostic.IndexOf(':', prefix.Length);
+        return end > prefix.Length
+               && int.TryParse(diagnostic.AsSpan(prefix.Length, end - prefix.Length), NumberStyles.None, CultureInfo.InvariantCulture, out int line)
+               && line > 0
+            ? line
+            : 0;
     }
 
     private void ConfirmDeleteSelectedCard()

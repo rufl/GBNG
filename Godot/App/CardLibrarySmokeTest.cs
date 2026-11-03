@@ -595,6 +595,40 @@ public partial class GameBuilderApp
             ((Button)manager.FindChild("ManagedCardCodeZoomReset", true, false)).EmitSignal("pressed");
             if (editor.GetThemeFontSize("font_size") != managedDefaultFontSize)
                 throw new InvalidOperationException("The card-library editor reset control did not restore the default code font size.");
+            Label cardDiagnostics = (Label)manager.FindChild("ManagedCardScriptDiagnostics", true, false);
+            string originalCardSource = LegacySaveDocument.ReadString(FindEmbeddedBehaviorSmoke(behaviorId)?["javascript"]);
+            editor.Text = "export function onCollision(msg) {\n  const broken = ;\n}";
+            InvokeSmoke(manager, "ApplyCode");
+            int cardDiagnosticGutter = FindDiagnosticGutter(editor);
+            Vector2 cardErrorPoint = GetEditorPositionOnLine(editor, 1);
+            if (!cardDiagnostics.Visible
+                || !cardDiagnostics.Text.Contains("Line 2:", StringComparison.Ordinal)
+                || cardDiagnosticGutter < 0
+                || editor.GetLineGutterText(1, cardDiagnosticGutter) != "!"
+                || !editor.GetTooltip(cardErrorPoint).Contains("SyntaxError", StringComparison.Ordinal)
+                || LegacySaveDocument.ReadString(FindEmbeddedBehaviorSmoke(behaviorId)?["javascript"]) != originalCardSource)
+                throw new InvalidOperationException("Invalid managed-card JavaScript was not rejected with a line diagnostic while preserving the last valid source.");
+            await WaitForUiFrames(1);
+            string managedCardDiagnosticsScreenshot = ProjectSettings.GlobalizePath("res://.godot/managed-card-diagnostics-smoke.png");
+            if (manager.GetViewport().GetTexture().GetImage().SavePng(managedCardDiagnosticsScreenshot) != Error.Ok)
+                throw new InvalidOperationException("Could not save the managed-card diagnostics screenshot.");
+            int cardTextLengthBeforeEdit = editor.Text.Length;
+            editor.SetCaretLine(1);
+            editor.SetCaretColumn(0);
+            editor.GrabFocus();
+            editor.InsertTextAtCaret("x");
+            await WaitForUiFrames(1);
+            int clearedCardDiagnosticGutter = FindDiagnosticGutter(editor);
+            Vector2 clearedCardDiagnosticPoint = GetEditorPositionOnLine(editor, 1);
+            if (editor.Text.Length != cardTextLengthBeforeEdit + 1
+                || cardDiagnostics.Visible
+                || cardDiagnostics.Text.Length != 0
+                || clearedCardDiagnosticGutter < 0
+                || editor.GetLineGutterText(1, clearedCardDiagnosticGutter) != ""
+                || editor.GetGutterWidth(clearedCardDiagnosticGutter) != 0
+                || editor.GetLineBackgroundColor(1).A > 0f
+                || editor.GetTooltip(clearedCardDiagnosticPoint).Length != 0)
+                throw new InvalidOperationException("Editing the managed-card source did not clear its stale syntax diagnostic.");
             editor.Text = "mys";
             editor.SetCaretLine(0);
             editor.SetCaretColumn(editor.Text.Length);
@@ -639,7 +673,7 @@ public partial class GameBuilderApp
             string screenshot = ProjectSettings.GlobalizePath("res://.godot/code-editor-smoke.png");
             if (GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
                 throw new InvalidOperationException("Could not save the native code-editor screenshot.");
-            GD.Print($"CODE_EDITOR_SMOKE_OK completion=myself zoom=true zoomBounds=8-36 inlineDiagnostics=true scrollRestoration=true syntaxDiagnostics=true runtimeDiagnostics=true applied=true zoomScreenshot={zoomScreenshot} scrollScreenshot={scrollScreenshot} diagnosticsScreenshot={diagnosticScreenshot} screenshot={screenshot}");
+            GD.Print($"CODE_EDITOR_SMOKE_OK completion=myself zoom=true zoomBounds=8-36 inlineDiagnostics=true scrollRestoration=true syntaxDiagnostics=true runtimeDiagnostics=true managedCardValidation=true managedCardDiagnostics=true applied=true zoomScreenshot={zoomScreenshot} scrollScreenshot={scrollScreenshot} diagnosticsScreenshot={diagnosticScreenshot} managedCardDiagnosticsScreenshot={managedCardDiagnosticsScreenshot} screenshot={screenshot}");
         }
         catch (Exception exception)
         {
