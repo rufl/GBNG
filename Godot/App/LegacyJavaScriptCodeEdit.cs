@@ -14,6 +14,11 @@ public sealed partial class LegacyJavaScriptCodeEdit : CodeEdit
     private const int MinimumFontSize = 8;
     private const int MaximumFontSize = 36;
     private const int FontSizeStep = 2;
+    public const string DiagnosticGutterName = "JavaScriptDiagnostics";
+    private static readonly Color DiagnosticLineBackground = new(0.48f, 0.08f, 0.08f, 0.28f);
+    private static readonly Color DiagnosticGutterColor = new(1f, 0.36f, 0.36f);
+    private readonly HashSet<int> _diagnosticLines = new();
+    private int _diagnosticGutter = -1;
 
     public LegacyJavaScriptCodeEdit()
     {
@@ -30,6 +35,12 @@ public sealed partial class LegacyJavaScriptCodeEdit : CodeEdit
         AddCommentDelimiter("/*", "*/");
         AddStringDelimiter("`", "`");
         CodeCompletionRequested += PopulateApiCompletions;
+        _diagnosticGutter = GetGutterCount();
+        AddGutter();
+        SetGutterName(_diagnosticGutter, DiagnosticGutterName);
+        SetGutterType(_diagnosticGutter, GutterType.String);
+        SetGutterWidth(_diagnosticGutter, 0);
+        SetGutterDraw(_diagnosticGutter, true);
     }
 
     public void ZoomIn() => AdjustFontSize(FontSizeStep);
@@ -37,6 +48,34 @@ public sealed partial class LegacyJavaScriptCodeEdit : CodeEdit
     public void ZoomOut() => AdjustFontSize(-FontSizeStep);
 
     public void ResetZoom() => RemoveThemeFontSizeOverride("font_size");
+
+    public void AddDiagnosticLine(int oneBasedLineNumber)
+    {
+        int line = oneBasedLineNumber - 1;
+        if (line < 0 || line >= GetLineCount())
+            return;
+
+        SetGutterWidth(_diagnosticGutter, 16);
+
+        _diagnosticLines.Add(line);
+        SetLineGutterText(line, _diagnosticGutter, "!");
+        SetLineGutterItemColor(line, _diagnosticGutter, DiagnosticGutterColor);
+        SetLineBackgroundColor(line, DiagnosticLineBackground);
+    }
+
+    public void ClearDiagnosticLines()
+    {
+        foreach (int line in _diagnosticLines)
+        {
+            if (line >= GetLineCount())
+                continue;
+            SetLineGutterText(line, _diagnosticGutter, "");
+            SetLineGutterItemColor(line, _diagnosticGutter, Colors.Transparent);
+            SetLineBackgroundColor(line, Colors.Transparent);
+        }
+        _diagnosticLines.Clear();
+        SetGutterWidth(_diagnosticGutter, 0);
+    }
 
     private void AdjustFontSize(int delta)
     {

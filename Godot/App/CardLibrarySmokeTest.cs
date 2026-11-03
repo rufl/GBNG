@@ -487,6 +487,11 @@ public partial class GameBuilderApp
             var diagnostics = (Label)behaviorEditor.FindChild("BehaviorScriptDiagnostics", true, false);
             if (!diagnostics.Visible || !diagnostics.Text.Contains("Line 2:", StringComparison.Ordinal))
                 throw new InvalidOperationException($"Invalid JavaScript did not produce a line-numbered editor diagnostic: '{diagnostics.Text}'.");
+            int syntaxErrorGutter = FindDiagnosticGutter(behaviorCode);
+            if (syntaxErrorGutter < 0
+                || behaviorCode.GetLineGutterText(1, syntaxErrorGutter) != "!"
+                || behaviorCode.GetLineBackgroundColor(1).A <= 0f)
+                throw new InvalidOperationException("The JavaScript syntax diagnostic did not mark its source line in the CodeEdit gutter and background.");
             if (LegacySaveDocument.ReadString(FindEmbeddedBehaviorSmoke(behaviorValidationId)?["javascript"]) != originalSource)
                 throw new InvalidOperationException("Invalid JavaScript replaced the last valid embedded behavior source.");
             await WaitForUiFrames(1);
@@ -510,7 +515,14 @@ public partial class GameBuilderApp
                 Unicode = 'x',
                 Pressed = false
             });
-            if (behaviorCode.Text.Length != textLengthBeforeEdit + 1 || diagnostics.Visible || diagnostics.Text.Length != 0)
+            int clearedDiagnosticGutter = FindDiagnosticGutter(behaviorCode);
+            if (behaviorCode.Text.Length != textLengthBeforeEdit + 1
+                || diagnostics.Visible
+                || diagnostics.Text.Length != 0
+                || clearedDiagnosticGutter < 0
+                || behaviorCode.GetLineGutterText(1, clearedDiagnosticGutter) != ""
+                || behaviorCode.GetGutterWidth(clearedDiagnosticGutter) != 0
+                || behaviorCode.GetLineBackgroundColor(1).A > 0f)
                 throw new InvalidOperationException("Typing in the JavaScript editor did not update the source and clear its stale diagnostic.");
 
             behaviorCode.Text = validBehaviorSource;
@@ -534,6 +546,11 @@ public partial class GameBuilderApp
                 || !diagnostics.Text.Contains("line 2:9", StringComparison.Ordinal)
                 || !diagnostics.Text.Contains("RuntimeEditorSmoke", StringComparison.Ordinal))
                 throw new InvalidOperationException($"Runtime JavaScript exceptions did not reach the open behavior editor with their source line: '{diagnostics.Text}'.");
+            int runtimeErrorGutter = FindDiagnosticGutter(behaviorCode);
+            if (runtimeErrorGutter < 0
+                || behaviorCode.GetLineGutterText(1, runtimeErrorGutter) != "!"
+                || behaviorCode.GetLineBackgroundColor(1).A <= 0f)
+                throw new InvalidOperationException("The JavaScript runtime exception did not mark its source line in the CodeEdit gutter and background.");
             await WaitForUiFrames(1);
             if (GetViewport().GetTexture().GetImage().SavePng(diagnosticScreenshot) != Error.Ok)
                 throw new InvalidOperationException("Could not save the runtime JavaScript diagnostic screenshot.");
@@ -610,7 +627,7 @@ public partial class GameBuilderApp
             string screenshot = ProjectSettings.GlobalizePath("res://.godot/code-editor-smoke.png");
             if (GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
                 throw new InvalidOperationException("Could not save the native code-editor screenshot.");
-            GD.Print($"CODE_EDITOR_SMOKE_OK completion=myself zoom=true zoomBounds=8-36 scrollRestoration=true syntaxDiagnostics=true runtimeDiagnostics=true applied=true zoomScreenshot={zoomScreenshot} scrollScreenshot={scrollScreenshot} diagnosticsScreenshot={diagnosticScreenshot} screenshot={screenshot}");
+            GD.Print($"CODE_EDITOR_SMOKE_OK completion=myself zoom=true zoomBounds=8-36 inlineDiagnostics=true scrollRestoration=true syntaxDiagnostics=true runtimeDiagnostics=true applied=true zoomScreenshot={zoomScreenshot} scrollScreenshot={scrollScreenshot} diagnosticsScreenshot={diagnosticScreenshot} screenshot={screenshot}");
         }
         catch (Exception exception)
         {
@@ -1049,6 +1066,16 @@ public partial class GameBuilderApp
         MethodInfo method = target.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
             ?? throw new MissingMethodException(target.GetType().FullName, methodName);
         return method.Invoke(target, arguments);
+    }
+
+    private static int FindDiagnosticGutter(LegacyJavaScriptCodeEdit editor)
+    {
+        for (int gutter = 0; gutter < editor.GetGutterCount(); gutter++)
+        {
+            if (editor.GetGutterName(gutter) == LegacyJavaScriptCodeEdit.DiagnosticGutterName)
+                return gutter;
+        }
+        return -1;
     }
 
     private static IEnumerable<Node> Descendants(Node node)

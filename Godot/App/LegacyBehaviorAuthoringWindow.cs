@@ -438,6 +438,7 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
 
     private void LoadSelectedUse()
     {
+        ClearScriptDiagnostic();
         if (_selectedUri.Length > 0)
             _scriptScrollByUri[_selectedUri] = _scriptEditor.ScrollVertical;
         JsonObject? use = GetSelectedUse();
@@ -685,9 +686,13 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
         }
         string source = _scriptEditor.Text;
         string? diagnostic = _validateBehaviorSource(_selectedUri, source);
+        _scriptEditor.ClearDiagnosticLines();
         if (diagnostic is not null)
         {
             _scriptDiagnostics.Text = diagnostic;
+            int diagnosticLine = ParseDiagnosticLine(diagnostic);
+            if (diagnosticLine > 0)
+                _scriptEditor.AddDiagnosticLine(diagnosticLine);
             _scriptDiagnostics.Visible = true;
             _status.Text = "JavaScript syntax error. Fix the reported line before applying.";
             return;
@@ -704,6 +709,7 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
     private void ClearScriptDiagnostic()
     {
         _scriptDiagnostics.Text = "";
+        _scriptEditor.ClearDiagnosticLines();
         _scriptDiagnostics.Visible = false;
     }
     public void AddRuntimeDiagnostic(int lineNumber, string message)
@@ -713,6 +719,20 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
             ? diagnostic
             : $"{_scriptDiagnostics.Text}\n{diagnostic}";
         _scriptDiagnostics.Visible = diagnostic.Length > 0;
+        if (lineNumber > 0)
+            _scriptEditor.AddDiagnosticLine(lineNumber);
+    }
+    private static int ParseDiagnosticLine(string diagnostic)
+    {
+        const string prefix = "Line ";
+        if (!diagnostic.StartsWith(prefix, StringComparison.Ordinal))
+            return 0;
+        int end = diagnostic.IndexOf(':', prefix.Length);
+        return end > prefix.Length
+               && int.TryParse(diagnostic.AsSpan(prefix.Length, end - prefix.Length), NumberStyles.None, CultureInfo.InvariantCulture, out int line)
+               && line > 0
+            ? line
+            : 0;
     }
 
     private void SetRawAssignmentsMode(bool raw)
