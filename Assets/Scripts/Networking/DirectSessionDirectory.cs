@@ -61,7 +61,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
   string sessionId;
   string sessionToken;
   bool browsing;
-  bool wasHosting;
+  bool wasPublishing;
   bool sessionRequestInFlight;
   bool listRequestInFlight;
   bool previousListRequestFailed;
@@ -171,12 +171,16 @@ public sealed class DirectSessionDirectory : MonoBehaviour
   void Update()
   {
     if (manager == null) manager = NetworkManager.Singleton;
-    bool hosting = manager != null && manager.IsListening && manager.IsServer;
-    if (hosting)
+    GameBuilderApplication.PlayOptions playOptions = GameBuilderApplication.CurrentGameOptions.playOptions;
+    bool shouldPublish = ShouldPublishHost(
+      manager != null && manager.IsListening,
+      manager != null && manager.IsServer,
+      playOptions);
+    if (shouldPublish)
     {
-      if (!wasHosting)
+      if (!wasPublishing)
       {
-        wasHosting = true;
+        wasPublishing = true;
         hostGeneration++;
         nextHostRequestTime = 0f;
       }
@@ -188,9 +192,9 @@ public sealed class DirectSessionDirectory : MonoBehaviour
         StartCoroutine(PublishHostRoutine(hostGeneration));
       }
     }
-    else if (wasHosting)
+    else if (wasPublishing)
     {
-      wasHosting = false;
+      wasPublishing = false;
       hostGeneration++;
       nextHostRequestTime = 0f;
       if (!string.IsNullOrEmpty(sessionId) && !string.IsNullOrEmpty(sessionToken))
@@ -208,6 +212,14 @@ public sealed class DirectSessionDirectory : MonoBehaviour
       StartCoroutine(RefreshPublicSessionsRoutine());
     }
   }
+  static bool ShouldPublishHost(
+    bool isListening,
+    bool isServer,
+    GameBuilderApplication.PlayOptions playOptions)
+  {
+    return isListening && isServer && playOptions.isMultiplayer && playOptions.startAsPublic;
+  }
+
 
   IEnumerator PublishHostRoutine(int generation)
   {
@@ -263,9 +275,13 @@ public sealed class DirectSessionDirectory : MonoBehaviour
       }
     }
 
-    bool hostStillActive = generation == hostGeneration
-      && manager != null && manager.IsListening && manager.IsServer;
-    if (!hostStillActive && !string.IsNullOrEmpty(sessionId) && !string.IsNullOrEmpty(sessionToken))
+    GameBuilderApplication.PlayOptions playOptions = GameBuilderApplication.CurrentGameOptions.playOptions;
+    bool hostStillPublic = generation == hostGeneration
+      && ShouldPublishHost(
+        manager != null && manager.IsListening,
+        manager != null && manager.IsServer,
+        playOptions);
+    if (!hostStillPublic && !string.IsNullOrEmpty(sessionId) && !string.IsNullOrEmpty(sessionToken))
     {
       string endedSessionId = sessionId;
       string endedToken = sessionToken;

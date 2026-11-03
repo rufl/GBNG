@@ -203,11 +203,13 @@ globally routable IPv6 address is needed outside the local network; a ULA works
 only where its prefix is routed. If no usable IPv6 address is found, the panel
 falls back to `::1`, which is only reachable from the host itself.
 
-- A self-hosted public session directory can provide a global room list. Hosts
-  register their name and player count; clients can select a listed host to
-  join. The directory learns the host's public IPv4 or IPv6 address from its
-  request source and rejects a source family that does not match the advertised
-  game transport. This is discovery only, not a relay or NAT traversal service.
+- A self-hosted public session directory can provide a global room list. Only
+  hosts started with **Public Multiplayer** register their name and player
+  count; private sessions remain available through local discovery or a shared
+  address but do not appear in the public list. The directory learns a public
+  IPv4 or IPv6 address from the request source and rejects a source family that
+  does not match the advertised game transport. This is discovery only, not a
+  relay or NAT traversal service.
 
 #### Self-hosted public session directory
 
