@@ -318,6 +318,7 @@ public class MultiplayerMenu : ThumbnailMenu
 #else
   GameBuilderSceneController scenes;
   LoadingScreen loadingScreen;
+  public static string LastJoinedRoomPrefsKey = "LAST_DIRECT_HOST_ADDRESS";
   int lastDiscoveryRevision = -1;
   int lastPublicSessionRevision = -1;
   float nextDiscoveryRefresh;

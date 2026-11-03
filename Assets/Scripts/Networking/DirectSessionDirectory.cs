@@ -307,6 +307,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
       catch (Exception e) { Debug.LogWarning("Could not parse public session list: " + e.Message); }
       if (result == null || result.Sessions == null)
       {
+        ClearPublicSessions();
         SetStatus("Public session directory returned an invalid list.");
       }
       else
@@ -319,7 +320,8 @@ public sealed class DirectSessionDirectory : MonoBehaviour
             || !IPAddress.TryParse(item.Address, out address)
             || address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork
             || item.Port < 1 || item.Port > 65535
-            || item.PlayerCount < 1 || item.MaxPlayers < item.PlayerCount || item.MaxPlayers > PhotonNetwork.MaximumDirectPlayers)
+            || item.PlayerCount < 1 || item.PlayerCount >= item.MaxPlayers
+            || item.MaxPlayers < item.PlayerCount || item.MaxPlayers > PhotonNetwork.MaximumDirectPlayers)
             continue;
           validSessions.Add(item);
         }
@@ -334,6 +336,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
     }
     else
     {
+      ClearPublicSessions();
       if (!previousListRequestFailed)
         Debug.LogWarning("Could not refresh public sessions: " + (requestError ?? "HTTP " + responseCode));
       previousListRequestFailed = true;
@@ -341,6 +344,13 @@ public sealed class DirectSessionDirectory : MonoBehaviour
     }
     listRequestInFlight = false;
   }
+  void ClearPublicSessions()
+  {
+    if (publicSessions.Length == 0) return;
+    publicSessions = new SessionInfo[0];
+    revision++;
+  }
+
 
   void SetStatus(string value)
   {

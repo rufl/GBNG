@@ -16,12 +16,12 @@ This is not an officially supported Google product.
 
 This fork keeps the implementations separate:
 
-* [`unity`](https://github.com/rufl/GBNG/tree/unity) preserves the original Unity project, pinned to Unity 6000.6.7f1; keep changes limited to compatibility, quality-of-life, and stability work.
+* [`unity`](https://github.com/rufl/GBNG/tree/unity) preserves the original Unity project, pinned to Unity 6000.6.6f1; keep changes limited to compatibility, quality-of-life, and stability work.
 * [`godot`](https://github.com/rufl/GBNG/tree/godot) is the GBNG — New Gen rewrite, targeting Godot 4.7.2 .NET, .NET 10, and ClearScript/V8 7.5.1.1 while reusing the original `.voos` projects and assets.
 
 ## Prerequisites
 
-* [Unity Editor 6000.6.7f1](https://unity.com/releases/editor/whats-new/6000.6.7f1). This fork is pinned to that editor release.
+* Unity Editor 6000.6.6f1. This fork is pinned to that editor release.
 * Unity's C# compiler (C# 9.0 language level). Unity controls the language version; use only the features supported by its compiler.
 * [Python 3.15.2](https://www.python.org/downloads/release/python-3152/) for code generation. `.python-version` records the selected version.
 * Unity packages: Test Framework 1.8.0, UGUI 2.6.0, and Post Processing 3.5.4. TextMesh Pro functionality is supplied by UGUI in this editor.
@@ -36,6 +36,7 @@ This fork keeps the implementations separate:
 * `ProjectSettings/` — pinned Unity editor version and project settings.
 * `tools/codegen/` — Python generators and the `gen-all.sh` entry point.
 * `tools/integrations/` — optional Photon, Steamworks, and embedded-browser setup and patches.
+* `tools/public-session-directory/` — dependency-free service for a self-hosted public player-session list.
 * `tools/licensing/`, `tools/documentation/`, and `tools/maintenance/` — license, documentation, and maintenance utilities.
 * `tools/asset-inventory/` — generated visual asset and license catalog.
 * `third_party/` and `Assets/third_party/` — vendored dependencies with their individual notices.
@@ -47,7 +48,7 @@ Run `bash tools/codegen/gen-all.sh` from the repository root with Python 3.15.2.
 
 ## Running in Unity Editor
 
-1. Open the repository root with Unity Editor 6000.6.7f1.
+1. Open the repository root with Unity Editor 6000.6.6f1.
 1. Open the splash screen scene: `Assets/splash.unity`.
 1. TextMesh Pro essential resources are included under `Assets/TextMesh Pro`; no manual import is required.
 1. Click Play.
