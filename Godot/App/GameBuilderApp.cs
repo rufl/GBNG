@@ -378,6 +378,7 @@ public partial class GameBuilderApp : Node3D
         };
         _importModelDialog.AddFilter("*.glb", "Binary glTF model");
         _importModelDialog.AddFilter("*.gltf", "glTF scene with external resources");
+        _importModelDialog.AddFilter("*.fbx", "FBX model with animations");
         _importModelDialog.FileSelected += ImportModelFromPath;
         root.AddChild(_importModelDialog);
 

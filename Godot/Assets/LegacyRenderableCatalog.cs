@@ -72,8 +72,9 @@ public sealed class LegacyRenderableCatalog
         string extension = Path.GetExtension(source);
         if (!File.Exists(source)
             || (!extension.Equals(".glb", StringComparison.OrdinalIgnoreCase)
-                && !extension.Equals(".gltf", StringComparison.OrdinalIgnoreCase)))
-            throw new InvalidDataException("Choose an existing glTF (.glb or .gltf) model.");
+                && !extension.Equals(".gltf", StringComparison.OrdinalIgnoreCase)
+                && !extension.Equals(".fbx", StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidDataException("Choose an existing glTF (.glb or .gltf) or FBX (.fbx) model.");
 
         string id = Guid.NewGuid().ToString("N");
         string uri = $"custom:{id}/{Path.GetFileNameWithoutExtension(source)}";
@@ -89,17 +90,49 @@ public sealed class LegacyRenderableCatalog
             }
             else
             {
-                var document = new GltfDocument();
-                var state = new GltfState();
                 string basePath = Path.GetDirectoryName(source) ?? string.Empty;
-                if (document.AppendFromFile(source, state, 0, basePath) != Error.Ok
-                    || document.WriteToFilesystem(state, destination) != Error.Ok)
-                    throw new InvalidDataException("Godot could not convert this glTF model to a self-contained GLB.");
+                if (extension.Equals(".fbx", StringComparison.OrdinalIgnoreCase))
+                {
+                    var document = new FbxDocument();
+                    var state = new FbxState();
+                    Error appendResult = document.AppendFromFile(source, state, 0, basePath);
+                    if (appendResult != Error.Ok)
+                        throw new InvalidDataException($"Godot could not read this FBX model ({appendResult}).");
+                    Node? importedScene = document.GenerateScene(state);
+                    if (importedScene is not Node3D modelRoot)
+                    {
+                        importedScene?.Free();
+                        throw new InvalidDataException("Godot could not generate a scene from this FBX model.");
+                    }
+                    try
+                    {
+                        var exportDocument = new GltfDocument();
+                        var exportState = new GltfState();
+                        Error sceneAppendResult = exportDocument.AppendFromScene(modelRoot, exportState);
+                        if (sceneAppendResult != Error.Ok)
+                            throw new InvalidDataException($"Godot could not prepare this FBX model for GLB export ({sceneAppendResult}).");
+                        Error writeResult = exportDocument.WriteToFilesystem(exportState, destination);
+                        if (writeResult != Error.Ok)
+                            throw new InvalidDataException($"Godot could not convert this FBX model to a self-contained GLB ({writeResult}).");
+                    }
+                    finally
+                    {
+                        modelRoot.Free();
+                    }
+                }
+                else
+                {
+                    var document = new GltfDocument();
+                    var state = new GltfState();
+                    if (document.AppendFromFile(source, state, 0, basePath) != Error.Ok
+                        || document.WriteToFilesystem(state, destination) != Error.Ok)
+                        throw new InvalidDataException("Godot could not convert this glTF model to a self-contained GLB.");
+                }
             }
 
             Node3D? validationInstance = LoadModelInstance(destination);
             if (validationInstance is null)
-                throw new InvalidDataException("Godot could not parse this glTF model.");
+                throw new InvalidDataException("Godot could not parse this imported model.");
             validationInstance.Free();
         }
         catch

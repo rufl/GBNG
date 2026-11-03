@@ -422,6 +422,7 @@ public partial class GameBuilderApp
                 throw new InvalidOperationException("The imported model was not selected in the asset browser.");
             string customUri = _assetPicker.GetItemMetadata(_assetPicker.Selected).AsString();
             string gltfUri = "";
+            string fbxUri = "";
             if (!customUri.StartsWith("custom:", StringComparison.Ordinal)
                 || !_catalog.TryGet(customUri, out RenderableEntry importedEntry)
                 || !_assetPreview.Has3DPreview)
@@ -481,13 +482,50 @@ public partial class GameBuilderApp
             if (!HasImportedActor(gltfUri))
                 throw new InvalidOperationException("Adding the imported glTF did not create a rendered actor.");
 
+            string fbxSourcePath = Path.GetFullPath(Path.Combine(
+                ProjectSettings.GlobalizePath("res://"),
+                "Assets",
+                "GameAssets",
+                "Models",
+                "NPCs",
+                "Fox",
+                "FoxNPC_RunWalkLEFT.fbx"));
+            if (!File.Exists(fbxSourcePath))
+                throw new InvalidOperationException($"The animated FBX smoke fixture is missing: {fbxSourcePath}.");
+            ImportModelFromPath(fbxSourcePath);
+            if (_assetPicker.Selected < 0)
+                throw new InvalidOperationException("The imported FBX was not selected in the asset browser.");
+            fbxUri = _assetPicker.GetItemMetadata(_assetPicker.Selected).AsString();
+            if (fbxUri == customUri
+                || fbxUri == gltfUri
+                || !fbxUri.StartsWith("custom:", StringComparison.Ordinal)
+                || !_catalog.TryGet(fbxUri, out RenderableEntry fbxEntry)
+                || !Path.GetExtension(fbxEntry.ModelPaths[0]).Equals(".glb", StringComparison.OrdinalIgnoreCase)
+                || !_assetPreview.Has3DPreview)
+                throw new InvalidOperationException($"The imported FBX was not bundled as a GLB and rendered in the 3D preview: {_errorDialog.DialogText}");
+
+            Node3D? fbxInstance = LegacyRenderableCatalog.LoadModelInstance(fbxEntry.ModelPaths[0]);
+            if (fbxInstance is null)
+                throw new InvalidOperationException("The converted FBX could not be instantiated.");
+            bool hasImportedAnimation = fbxInstance
+                .FindChildren("*", nameof(AnimationPlayer), true, false)
+                .OfType<AnimationPlayer>()
+                .Any(player => player.GetAnimationList().Length > 0);
+            fbxInstance.Free();
+            if (!hasImportedAnimation)
+                throw new InvalidOperationException("The converted FBX lost its animation clips.");
+            AddActor();
+            await WaitForUiFrames(2);
+            if (!HasImportedActor(fbxUri))
+                throw new InvalidOperationException("Adding the imported FBX did not create a rendered actor.");
+
 
             SaveTo(projectPath);
             if (!_status.Text.StartsWith("Saved ", StringComparison.Ordinal))
-                throw new InvalidOperationException("Saving the project with an imported model failed.");
+                throw new InvalidOperationException("Saving the project with imported models failed.");
             LoadProject(projectPath);
             await WaitForUiFrames(2);
-            if (!HasImportedActor(customUri) || !HasImportedActor(gltfUri))
+            if (!HasImportedActor(customUri) || !HasImportedActor(gltfUri) || !HasImportedActor(fbxUri))
                 throw new InvalidOperationException("Imported model references did not survive a .voos reload.");
 
             string copyPath = Path.Combine(temporaryDirectory, "asset-smoke-copy.voos");
@@ -497,13 +535,13 @@ public partial class GameBuilderApp
                 throw new InvalidOperationException("Save As did not copy the imported model sidecar.");
             LoadProject(copyPath);
             await WaitForUiFrames(2);
-            if (!HasImportedActor(customUri) || !HasImportedActor(gltfUri))
+            if (!HasImportedActor(customUri) || !HasImportedActor(gltfUri) || !HasImportedActor(fbxUri))
                 throw new InvalidOperationException("Imported model references did not survive Save As and reload.");
 
             string screenshot = ProjectSettings.GlobalizePath("res://.godot/imported-asset-smoke.png");
             if (GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
                 throw new InvalidOperationException("Could not save the imported-asset browser screenshot.");
-            GD.Print($"CUSTOM_ASSET_SMOKE_OK glb={customUri} gltf={gltfUri} import=preview=actor=.voos=save-as screenshot={screenshot}");
+            GD.Print($"CUSTOM_ASSET_SMOKE_OK glb={customUri} gltf={gltfUri} animatedFbx={fbxUri} import=preview=animation=actor=.voos=save-as screenshot={screenshot}");
         }
         finally
         {
