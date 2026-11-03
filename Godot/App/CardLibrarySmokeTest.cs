@@ -1,6 +1,7 @@
 using System.IO;
 using System.Reflection;
 using System.Text.Json.Nodes;
+using GBNG.Behaviors;
 using GBNG.Assets;
 using GBNG.Domain;
 using GBNG.World;
@@ -432,6 +433,26 @@ public partial class GameBuilderApp
             InvokeSmoke(behaviorEditor, "ApplyScript");
             if (LegacySaveDocument.ReadString(FindEmbeddedBehaviorSmoke(behaviorValidationId)?["javascript"]) != validBehaviorSource)
                 throw new InvalidOperationException("Valid JavaScript was not applied after fixing the syntax error.");
+            const string throwingBehaviorSource = "export function onTick() {\n  throw new Error('RuntimeEditorSmoke');\n}";
+            behaviorCode.Text = throwingBehaviorSource;
+            InvokeSmoke(behaviorEditor, "ApplyScript");
+            var runtimeSmoke = (LegacyBehaviorRuntime)InvokeSmoke(this, "CreateBehaviorRuntime", document)!;
+            try
+            {
+                runtimeSmoke.Tick(1d / 60d);
+            }
+            finally
+            {
+                runtimeSmoke.Dispose();
+            }
+            if (!diagnostics.Visible
+                || !diagnostics.Text.Contains("Line 2:", StringComparison.Ordinal)
+                || !diagnostics.Text.Contains("line 2:9", StringComparison.Ordinal)
+                || !diagnostics.Text.Contains("RuntimeEditorSmoke", StringComparison.Ordinal))
+                throw new InvalidOperationException($"Runtime JavaScript exceptions did not reach the open behavior editor with their source line: '{diagnostics.Text}'.");
+            await WaitForUiFrames(1);
+            if (GetViewport().GetTexture().GetImage().SavePng(diagnosticScreenshot) != Error.Ok)
+                throw new InvalidOperationException("Could not save the runtime JavaScript diagnostic screenshot.");
             behaviorEditor.QueueFree();
             behaviorEditor = null;
             await WaitForUiFrames(1);
@@ -498,7 +519,7 @@ public partial class GameBuilderApp
             string screenshot = ProjectSettings.GlobalizePath("res://.godot/code-editor-smoke.png");
             if (GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
                 throw new InvalidOperationException("Could not save the native code-editor screenshot.");
-            GD.Print($"CODE_EDITOR_SMOKE_OK completion=myself syntaxDiagnostics=true applied=true diagnosticsScreenshot={diagnosticScreenshot} screenshot={screenshot}");
+            GD.Print($"CODE_EDITOR_SMOKE_OK completion=myself syntaxDiagnostics=true runtimeDiagnostics=true applied=true diagnosticsScreenshot={diagnosticScreenshot} screenshot={screenshot}");
         }
         catch (Exception exception)
         {

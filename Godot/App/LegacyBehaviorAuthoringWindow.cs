@@ -690,6 +690,14 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
         _scriptDiagnostics.Text = "";
         _scriptDiagnostics.Visible = false;
     }
+    public void AddRuntimeDiagnostic(int lineNumber, string message)
+    {
+        string diagnostic = lineNumber > 0 ? $"Line {lineNumber}: {message}" : message;
+        _scriptDiagnostics.Text = _scriptDiagnostics.Text.Length == 0
+            ? diagnostic
+            : $"{_scriptDiagnostics.Text}\n{diagnostic}";
+        _scriptDiagnostics.Visible = diagnostic.Length > 0;
+    }
 
     private void SetRawAssignmentsMode(bool raw)
     {

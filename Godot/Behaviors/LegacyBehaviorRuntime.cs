@@ -17,6 +17,8 @@ public sealed partial class LegacyBehaviorRuntime : IDisposable
     private static readonly Regex GuidPattern = new(@"guid:\s*([0-9a-f]{32})", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Regex ExportPattern = new(@"(?m)^\s*export\s+(?=(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z_$][\w$]*))", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Regex JavaScriptLineColumn = new(@"(?<line>\d+):\d+\b", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex BehaviorStackLineColumn = new(@"\bline (?<line>\d+):(?<column>\d+)\b", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private const int FunctionConstructorLineOffset = 2;
     private const string BuiltinBehaviorRoot = "res://Assets/StreamingAssets/BehaviorLibrary";
     private const string ScriptingSystemsPath = "res://Assets/Prefabs/Services/ScriptingSystems.prefab";
 
@@ -30,6 +32,7 @@ public sealed partial class LegacyBehaviorRuntime : IDisposable
     private readonly Action? _actorsChanged;
     private readonly Action<Vector3>? _requestCameraOffset;
     private readonly LegacyLanSession? _lanSession;
+    private readonly Action<int, string>? _reportBehaviorException;
     private readonly V8ScriptEngine _engine;
     private long _executionDeadlineTimestamp;
     private readonly Dictionary<string, WorldActorNode> _actorsByName = new(StringComparer.Ordinal);
@@ -68,7 +71,8 @@ public sealed partial class LegacyBehaviorRuntime : IDisposable
         Action<JsonArray> requestUi,
         Action? actorsChanged = null,
         Action<Vector3>? requestCameraOffset = null,
-        LegacyLanSession? lanSession = null)
+        LegacyLanSession? lanSession = null,
+        Action<int, string>? reportBehaviorException = null)
     {
         _actors = actors;
         _document = document;
@@ -81,6 +85,7 @@ public sealed partial class LegacyBehaviorRuntime : IDisposable
         _requestCameraOffset = requestCameraOffset;
         _engine = new V8ScriptEngine();
         _lanSession = lanSession;
+        _reportBehaviorException = reportBehaviorException;
         try
         {
             _engine.ContinuationCallback = ShouldContinueScript;
@@ -255,7 +260,8 @@ public sealed partial class LegacyBehaviorRuntime : IDisposable
 const __gbBehaviorModules = new Map();
 function getVoosModule(key) { return __gbBehaviorModules.get(key); }
 function __gbRegisterModule(key, body) {
-  const module = new Function(body)();
+  const sourceUrl = String(key).replace(/[\r\n\u2028\u2029]/g, ""_"");
+  const module = new Function(body + ""\n//# sourceURL="" + sourceUrl)();
   __gbBehaviorModules.set(key, module);
 }
 function callVoosService(name, args = {}) {
@@ -1294,8 +1300,27 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
                 _requestUi(args["commands"] as JsonArray ?? new JsonArray());
                 return "true";
             case "ReportBehaviorException":
-                GD.PushError($"Behavior runtime exception: {argsJson}");
+            {
+                int generatedLineNumber = LegacySaveDocument.ReadInt(args["lineNum"], -1);
+                int editorLineNumber = generatedLineNumber;
+                string message = LegacySaveDocument.ReadString(args["message"]);
+                if (generatedLineNumber > 0)
+                {
+                    editorLineNumber = Math.Max(1, generatedLineNumber - FunctionConstructorLineOffset);
+                    message = BehaviorStackLineColumn.Replace(message, match =>
+                    {
+                        if (!int.TryParse(match.Groups["line"].Value, out int stackLine)
+                            || stackLine <= FunctionConstructorLineOffset)
+                            return match.Value;
+                        return $"line {stackLine - FunctionConstructorLineOffset}:{match.Groups["column"].Value}";
+                    });
+                }
+                args["lineNum"] = editorLineNumber;
+                args["message"] = message;
+                _reportBehaviorException?.Invoke(editorLineNumber, message);
+                GD.PushError($"Behavior runtime exception: {args.ToJsonString()}");
                 return "true";
+            }
             case "LogBehaviorMessage":
                 GD.Print(argsJson);
                 return "true";

@@ -797,7 +797,14 @@ public partial class GameBuilderApp : Node3D
             _behaviorUi.SetCommands,
             RefreshRuntimeActors,
             SetTemporaryCameraOffset,
-            _lanSession);
+            _lanSession,
+            ReportBehaviorRuntimeException);
+
+    private void ReportBehaviorRuntimeException(int lineNumber, string message)
+    {
+        foreach (LegacyBehaviorAuthoringWindow window in Descendants<LegacyBehaviorAuthoringWindow>(this))
+            window.AddRuntimeDiagnostic(lineNumber, message);
+    }
 
     private void BeginTextEdit(string property)
     {
