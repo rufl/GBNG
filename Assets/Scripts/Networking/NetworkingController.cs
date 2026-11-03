@@ -487,7 +487,8 @@ public class NetworkingController : Photon.PunBehaviour
 
     if (options.joinAddress.IsNullOrEmpty())
     {
-      directTransport.SetConnectionData("127.0.0.1", DefaultDirectHostPort, "0.0.0.0");
+      ushort hostPort = options.joinPort == 0 ? DefaultDirectHostPort : options.joinPort;
+      directTransport.SetConnectionData("127.0.0.1", hostPort, "0.0.0.0");
       PhotonNetwork.isMasterClient = true;
       PhotonNetwork.offlineMode = false;
       StartCoroutine(NonPunStartRoutine(true));

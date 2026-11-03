@@ -24,13 +24,26 @@ public sealed class DirectHostSmokeBootstrap : MonoBehaviour
         yield break;
       }
 
-      if (arg == "--direct-host-smoke")
+      const string hostPrefix = "--direct-host-smoke=";
+      bool hostRequested = arg == "--direct-host-smoke";
+      ushort hostPort = 0;
+      if (arg.StartsWith(hostPrefix, StringComparison.Ordinal))
+      {
+        hostRequested = true;
+        if (!ushort.TryParse(arg.Substring(hostPrefix.Length), out hostPort))
+        {
+          Debug.LogError($"Invalid direct host smoke port: {arg}");
+          yield break;
+        }
+      }
+      if (hostRequested)
       {
         Debug.Log("DIRECT_HOST_SMOKE|host-requested");
         StartObserver("host");
         FindObjectOfType<GameBuilderSceneController>().RestartAndLoadMinimalScene(
           new GameBuilderApplication.GameOptions
           {
+            joinPort = hostPort,
             playOptions = new GameBuilderApplication.PlayOptions { isMultiplayer = true }
           });
         yield break;
@@ -143,7 +156,10 @@ public sealed class DirectHostSmokeObserver : MonoBehaviour
     bool actorReplicated = remoteActor != null
       && Vector3.Distance(remoteActor.transform.position, remoteActorTarget) < 0.75f;
     bool passed = avatarPoseSynced && actorReplicated;
-    Debug.Log($"DIRECT_HOST_SMOKE|{role}|{(passed ? "pass" : "fail")}|avatar-pose={avatarPoseSynced}|actor-state={actorReplicated}");
+    PhotonView localView = localBody.GetComponent<PhotonView>();
+    PhotonView remoteView = remoteBody != null ? remoteBody.GetComponent<PhotonView>() : null;
+    string remotePosition = remoteBody != null ? remoteBody.transform.position.ToString() : "none";
+    Debug.Log($"DIRECT_HOST_SMOKE|{role}|{(passed ? "pass" : "fail")}|avatar-pose={avatarPoseSynced}|actor-state={actorReplicated}|local-pos={localBody.transform.position}|remote-pos={remotePosition}|local-view={localView.viewID}/{localView.ownerId}|remote-view={(remoteView == null ? "none" : remoteView.viewID + "/" + remoteView.ownerId)}");
     yield return new WaitForSecondsRealtime(2f);
     QuitSmoke(passed ? 0 : 1);
   }

@@ -29,6 +29,8 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
   static readonly Dictionary<long, ObservableState> sentStates = new Dictionary<long, ObservableState>();
   NetworkManager manager;
   bool registered;
+  int debugLoggedSentPoseViewId;
+  int debugLoggedReceivedPoseViewId;
   float nextObservableTime;
   readonly HashSet<int> knownPlayerIds = new HashSet<int>();
   readonly HashSet<int> currentPlayerIds = new HashSet<int>();
@@ -427,7 +429,21 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
   public static void SendUserBodyPose(PhotonView view, Vector3 position, Quaternion rotation)
   {
     DirectHostRpcRouter router = instance;
-    if (view == null || view.viewID <= 0 || router == null || router.manager == null || !router.manager.IsListening) return;
+    if (view == null || router == null || router.manager == null || !router.manager.IsListening) return;
+    if (view.viewID <= 0)
+    {
+      if (Debug.isDebugBuild && router.debugLoggedSentPoseViewId != view.viewID)
+      {
+        router.debugLoggedSentPoseViewId = view.viewID;
+        Debug.Log($"DIRECT_POSE|send-skipped|view={view.viewID}|owner={view.ownerId}|server={router.manager.IsServer}");
+      }
+      return;
+    }
+    if (Debug.isDebugBuild && router.debugLoggedSentPoseViewId != view.viewID)
+    {
+      router.debugLoggedSentPoseViewId = view.viewID;
+      Debug.Log($"DIRECT_POSE|send|view={view.viewID}|owner={view.ownerId}|server={router.manager.IsServer}|local={router.manager.LocalClientId}|position={position}");
+    }
     byte[] packet = Encode(writer =>
     {
       writer.Write(view.viewID);
@@ -471,6 +487,11 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
           || rotationMagnitude < 0.0001f) return;
         rotation = rotation.normalized;
         PhotonView view = PhotonView.Find(viewId);
+        if (Debug.isDebugBuild && debugLoggedReceivedPoseViewId != viewId)
+        {
+          debugLoggedReceivedPoseViewId = viewId;
+          Debug.Log($"DIRECT_POSE|receive|view={viewId}|owner={ownerPlayerId}|actual-owner={(view == null ? -1 : view.ownerId)}|server={manager.IsServer}|sender={senderClientId}|found={view != null}|position={position}");
+        }
         if (manager.IsServer)
         {
           if (ownerPlayerId != checked((int)senderClientId + 1) || view == null || view.ownerId != ownerPlayerId) return;
