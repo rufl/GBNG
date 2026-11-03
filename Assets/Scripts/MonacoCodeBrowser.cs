@@ -211,30 +211,11 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
       return;
     }
 
-    UpdateWebViewSize();
     UpdateKeyboardFocus();
     if (pageReady && keyboardFocus) ForwardKeyboardInput();
 #endif
   }
 
-#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
-  private void UpdateWebViewSize()
-  {
-    if (output == null || webView == null || webView.IsDestroyed) return;
-
-    Canvas canvas = output.canvas;
-    float scale = canvas != null ? canvas.scaleFactor : 1f;
-    Rect rect = output.rectTransform.rect;
-    int width = Mathf.Max(64, Mathf.RoundToInt(rect.width * scale));
-    int height = Mathf.Max(64, Mathf.RoundToInt(rect.height * scale));
-    if (width == webView.Width && height == webView.Height) return;
-
-    if (webView.Resize(width, height) && output != null)
-    {
-      output.texture = webView.Texture;
-    }
-  }
-#endif
 
   private void UpdateKeyboardFocus()
   {

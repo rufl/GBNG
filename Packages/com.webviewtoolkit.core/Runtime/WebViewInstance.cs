@@ -189,12 +189,13 @@ namespace WebViewToolkit
                 }
 
                 // Create new texture with updated dimensions
+                // The native surface is DXGI_FORMAT_B8G8R8A8_UNORM, so keep it linear.
                 Texture = Texture2D.CreateExternalTexture(
                     width,
                     height,
                     TextureFormat.BGRA32,
                     mipChain: false,
-                    linear: false,
+                    linear: true,
                     _nativeTexturePtr
                 );
                 Texture.name = $"WebViewTexture_{Handle}";

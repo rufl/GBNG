@@ -150,6 +150,8 @@ source navigation, editing, read-only mode, diagnostics, scroll restoration
 and zoom. If WebView2 is missing, the graphics API is unsupported, or the
 build targets another platform, the built-in multiline editor remains
 available.
+The browser uses a stable 1280x720 surface. Resizing the app scales that texture
+instead of resizing the native browser surface.
 
 ## Optional integrations available for free
 
