@@ -119,6 +119,73 @@ public partial class GameBuilderApp
         EndTerrainStroke();
     }
 
+    private async void RunAssetStoreSmoke()
+    {
+        int exitCode = 0;
+        try
+        {
+            await WaitForUiFrames(2);
+            if (_document is null)
+                throw new InvalidOperationException("The sample project did not load for the asset-store smoke run.");
+
+            const string expectedUri = "builtin:BuiltinAssets/BubblegumDreams/Arch";
+            int originalActorCount = _document.Actors.Count;
+            OpenAssetStore();
+            await WaitForUiFrames(3);
+            if (!_assetStoreWindow.Visible)
+                throw new InvalidOperationException("The offline asset store did not open.");
+
+            LineEdit search = (LineEdit)_assetStoreWindow.FindChild("AssetStoreSearch", true, false);
+            OptionButton category = (OptionButton)_assetStoreWindow.FindChild("AssetStoreCategory", true, false);
+            ItemList assets = (ItemList)_assetStoreWindow.FindChild("AssetStoreItems", true, false);
+            Button add = (Button)_assetStoreWindow.FindChild("AssetStoreAddActor", true, false);
+            Label license = (Label)_assetStoreWindow.FindChild("AssetStoreLicenseDetails", true, false);
+            var preview = (LegacyAssetPreviewControl)_assetStoreWindow.FindChild("LegacyAssetPreview", true, false);
+
+            if (category.GetItemText(category.Selected) != "All categories")
+                throw new InvalidOperationException("The asset store did not default to all categories.");
+
+            search.Text = "BubblegumDreams/Arch";
+            _assetStoreWindow.RefreshCatalog();
+            int[] selected = assets.GetSelectedItems();
+            if (assets.ItemCount != 1
+                || selected.Length != 1
+                || assets.GetItemMetadata(selected[0]).AsString() != expectedUri)
+                throw new InvalidOperationException("Asset-store search did not isolate the requested bundled model.");
+            if (!preview.Has3DPreview || !license.Text.Contains("Apache License 2.0", StringComparison.Ordinal))
+                throw new InvalidOperationException("The bundled model preview or license evidence was not shown.");
+
+            search.Text = "asset-that-does-not-exist";
+            _assetStoreWindow.RefreshCatalog();
+            if (assets.ItemCount != 0 || !add.Disabled)
+                throw new InvalidOperationException("An empty asset search left a stale selection available to add.");
+
+            search.Text = "BubblegumDreams/Arch";
+            _assetStoreWindow.RefreshCatalog();
+            add.EmitSignal("pressed");
+            await WaitForUiFrames(3);
+            if (_document.Actors.Count != originalActorCount + 1
+                || _document.Actors[^1].RenderableUri != expectedUri)
+                throw new InvalidOperationException("Adding the selected store asset did not create the expected actor.");
+
+            await WaitForUiFrames(2);
+            string screenshot = ProjectSettings.GlobalizePath("res://.godot/asset-store-smoke.png");
+            if (_assetStoreWindow.GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
+                throw new InvalidOperationException("Could not save the asset-store screenshot.");
+            _assetStoreWindow.Hide();
+            GD.Print($"ASSET_STORE_SMOKE_OK uri={expectedUri} search=filtered preview=3d license=shown add=actor screenshot={screenshot}");
+        }
+        catch (Exception exception)
+        {
+            exitCode = 1;
+            GD.PushError($"ASSET_STORE_SMOKE_FAILED: {exception}");
+        }
+        finally
+        {
+            GetTree().Quit(exitCode);
+        }
+    }
+
     private async void RunCardLibrarySmoke()
     {
         int exitCode = 0;
@@ -288,6 +355,24 @@ public partial class GameBuilderApp
         }
         GetTree().Quit(exitCode);
     }
+    private async void RunAssetImportSmoke()
+    {
+        int exitCode = 0;
+        try
+        {
+            await RunCustomAssetImportSmoke();
+        }
+        catch (Exception exception)
+        {
+            exitCode = 1;
+            GD.PushError($"ASSET_IMPORT_SMOKE_FAILED: {exception}");
+        }
+        finally
+        {
+            GetTree().Quit(exitCode);
+        }
+    }
+
     private async System.Threading.Tasks.Task RunCustomAssetImportSmoke()
     {
         string originalProjectPath = OS.GetCmdlineUserArgs()
@@ -302,6 +387,18 @@ public partial class GameBuilderApp
             await WaitForUiFrames(2);
             if (_document?.SourcePath != projectPath)
                 throw new InvalidOperationException("The writable asset-import smoke project did not load.");
+
+            OpenAssetStore();
+            await WaitForUiFrames(2);
+            Button storeImport = (Button)_assetStoreWindow.FindChild("AssetStoreImportModel", true, false);
+            bool useNativeDialog = _importModelDialog.UseNativeDialog;
+            _importModelDialog.UseNativeDialog = false;
+            storeImport.EmitSignal("pressed");
+            await WaitForUiFrames(2);
+            if (!_importModelDialog.Visible)
+                throw new InvalidOperationException("The store's local-import action did not open the model chooser.");
+            _importModelDialog.Hide();
+            _importModelDialog.UseNativeDialog = useNativeDialog;
 
             string sourceModelPath = Path.Combine(temporaryDirectory, "smoke-model.glb");
             var sourceRoot = new Node3D { Name = "ImportedSmokeModel" };
@@ -332,6 +429,22 @@ public partial class GameBuilderApp
             if (!File.Exists(importedEntry.ModelPaths[0]))
                 throw new InvalidOperationException("The imported GLB was not copied into the project sidecar.");
 
+            OpenAssetStore();
+            await WaitForUiFrames(2);
+            LineEdit storeSearch = (LineEdit)_assetStoreWindow.FindChild("AssetStoreSearch", true, false);
+            ItemList storeItems = (ItemList)_assetStoreWindow.FindChild("AssetStoreItems", true, false);
+            storeSearch.Text = "smoke-model";
+            _assetStoreWindow.RefreshCatalog();
+            int[] storeSelection = storeItems.GetSelectedItems();
+            Label storeLicense = (Label)_assetStoreWindow.FindChild("AssetStoreLicenseDetails", true, false);
+            var storePreview = (LegacyAssetPreviewControl)_assetStoreWindow.FindChild("LegacyAssetPreview", true, false);
+            if (storeItems.ItemCount != 1
+                || storeSelection.Length != 1
+                || storeItems.GetItemMetadata(storeSelection[0]).AsString() != customUri
+                || !storePreview.Has3DPreview
+                || !storeLicense.Text.Contains("does not verify its license", StringComparison.Ordinal))
+                throw new InvalidOperationException("The imported model or its unverified-license warning did not appear in the store.");
+            _assetStoreWindow.Hide();
             AddActor();
             await WaitForUiFrames(2);
             if (!HasImportedActor(customUri))

@@ -26,6 +26,7 @@ public partial class GameBuilderApp : Node3D
     private LineEdit _assetSearch = null!;
     private Label _assetCount = null!;
     private LegacyAssetPreviewControl _assetPreview = null!;
+    private LegacyAssetStoreWindow _assetStoreWindow = null!;
     private OptionButton _samplePicker = null!;
     private SpinBox[] _positionFields = Array.Empty<SpinBox>();
     private SpinBox[] _rotationFields = Array.Empty<SpinBox>();
@@ -142,6 +143,10 @@ public partial class GameBuilderApp : Node3D
         }
         if (commandLineArgs.Contains("--smoke-card-library", StringComparer.Ordinal))
             RunCardLibrarySmoke();
+        if (commandLineArgs.Contains("--smoke-asset-store", StringComparer.Ordinal))
+            RunAssetStoreSmoke();
+        if (commandLineArgs.Contains("--smoke-asset-import", StringComparer.Ordinal))
+            RunAssetImportSmoke();
     }
 
 
@@ -315,6 +320,12 @@ public partial class GameBuilderApp : Node3D
         var layer = new CanvasLayer { Name = "EditorInterface", Layer = 10 };
         AddChild(layer);
         _networkWindow = new LegacyLanNetworkWindow(_lanSession, PrepareNetworkHostProjectCopy, OpenReceivedNetworkProject);
+        _assetStoreWindow = new LegacyAssetStoreWindow(
+            _catalog,
+            () => _document is not null && !_playMode && !_lanSession.HasPendingAssetSync,
+            uri => AddActor(uri),
+            OpenModelImportDialog);
+        AddChild(_assetStoreWindow);
         AddChild(_networkWindow);
 
         var root = new Control
@@ -471,11 +482,14 @@ public partial class GameBuilderApp : Node3D
         _actorList = new ItemList { SizeFlagsVertical = Control.SizeFlags.ExpandFill, SelectMode = ItemList.SelectModeEnum.Single };
         _actorList.ItemSelected += SelectActorByIndex;
         left.AddChild(_actorList);
-        left.AddChild(CreateLabel("Add asset", 14));
+        left.AddChild(CreateLabel("Asset Store · offline", 14));
+        var browseAssetStore = new Button { Text = "Browse catalog…" };
+        browseAssetStore.Pressed += OpenAssetStore;
+        left.AddChild(browseAssetStore);
         var importGlb = new Button { Text = "Import 3D model…" };
         importGlb.Pressed += OpenModelImportDialog;
         left.AddChild(importGlb);
-        _assetSearch = new LineEdit { PlaceholderText = "Search assets by name or path…" };
+        _assetSearch = new LineEdit { PlaceholderText = "Search bundled and imported assets…" };
         _assetSearch.TextChanged += _ => PopulateAssetPicker();
         left.AddChild(_assetSearch);
         _assetPicker = new OptionButton { CustomMinimumSize = new Vector2(0f, 34f) };
@@ -487,7 +501,7 @@ public partial class GameBuilderApp : Node3D
         left.AddChild(_assetPreview);
         _assetPicker.ItemSelected += _ => ShowSelectedAssetPreview();
         var addActor = new Button { Text = "Add actor" };
-        addActor.Pressed += AddActor;
+        addActor.Pressed += () => AddActor();
         left.AddChild(addActor);
         var removeActor = new Button { Text = "Delete selected actor" };
         removeActor.Pressed += RemoveSelectedActor;
@@ -1255,6 +1269,8 @@ public partial class GameBuilderApp : Node3D
         }
         _assetPicker.Disabled = _assetPicker.ItemCount == 0;
         ShowSelectedAssetPreview();
+        if (_assetStoreWindow.Visible)
+            _assetStoreWindow.RefreshCatalog();
     }
 
     private void ShowSelectedAssetPreview()
@@ -1268,6 +1284,12 @@ public partial class GameBuilderApp : Node3D
         string uri = _assetPicker.GetItemMetadata(_assetPicker.Selected).AsString();
         _catalog.TryGet(uri, out RenderableEntry? entry);
         _assetPreview.ShowAsset(entry);
+    }
+
+    private void OpenAssetStore()
+    {
+        _assetStoreWindow.PopupCenteredClamped(new Vector2I(1080, 700));
+        _assetStoreWindow.RefreshCatalog();
     }
 
     private void OpenModelImportDialog()
@@ -1337,21 +1359,23 @@ public partial class GameBuilderApp : Node3D
         }
     }
 
-    private void AddActor()
+    private bool AddActor(string? selectedUri = null)
     {
-        if (_document is null || _assetPicker.Selected < 0 || _playMode)
-            return;
+        if (_document is null || _playMode || (selectedUri is null && _assetPicker.Selected < 0))
+            return false;
         if (_lanSession.HasPendingAssetSync)
         {
             _status.Text = "Wait for the host to finish syncing imported models before adding an actor.";
-            return;
+            return false;
         }
 
-        string uri = (string)_assetPicker.GetItemMetadata(_assetPicker.Selected);
+        string uri = selectedUri ?? _assetPicker.GetItemMetadata(_assetPicker.Selected).AsString();
+        if (!_catalog.TryGet(uri, out _))
+            return false;
         if (_lanSession.IsClient && _unsharedAssetUris.Contains(uri))
         {
             _status.Text = "This imported model is not synchronized with the host yet.";
-            return;
+            return false;
         }
         string name = $"actor-{Guid.NewGuid():N}";
         var actorData = new JsonObject
@@ -1399,6 +1423,7 @@ public partial class GameBuilderApp : Node3D
         RecordHistory($"Add {state.DisplayName}",
             () => RemoveActorFromWorld(name),
             () => RestoreActorFromJson(actorJson, index));
+        return true;
     }
 
     private void RemoveSelectedActor()
