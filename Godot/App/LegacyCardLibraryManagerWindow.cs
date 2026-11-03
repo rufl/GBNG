@@ -166,6 +166,15 @@ public sealed partial class LegacyCardLibraryManagerWindow : Window
         right.AddChild(_applyMetadataButton);
         var codeHeading = new HBoxContainer();
         codeHeading.AddChild(new Label { Text = "JavaScript · Ctrl+Space for API suggestions", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
+        var zoomOut = new Button { Name = "ManagedCardCodeZoomOut", Text = "A−", TooltipText = "Reduce JavaScript text size" };
+        zoomOut.Pressed += _javascript.ZoomOut;
+        codeHeading.AddChild(zoomOut);
+        var zoomIn = new Button { Name = "ManagedCardCodeZoomIn", Text = "A+", TooltipText = "Increase JavaScript text size" };
+        zoomIn.Pressed += _javascript.ZoomIn;
+        codeHeading.AddChild(zoomIn);
+        var zoomReset = new Button { Name = "ManagedCardCodeZoomReset", Text = "Reset zoom", TooltipText = "Restore default JavaScript text size" };
+        zoomReset.Pressed += _javascript.ResetZoom;
+        codeHeading.AddChild(zoomReset);
         _applyCodeButton.Name = "ApplyManagedCardCode";
         _applyCodeButton.Text = "Apply code";
         _applyCodeButton.Disabled = true;

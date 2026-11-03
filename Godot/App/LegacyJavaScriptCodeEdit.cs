@@ -11,6 +11,9 @@ public sealed partial class LegacyJavaScriptCodeEdit : CodeEdit
         @"(?m)^(?:async\s+)?function\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly string[] ApiFunctionNames = LoadApiFunctionNames();
+    private const int MinimumFontSize = 8;
+    private const int MaximumFontSize = 36;
+    private const int FontSizeStep = 2;
 
     public LegacyJavaScriptCodeEdit()
     {
@@ -27,6 +30,18 @@ public sealed partial class LegacyJavaScriptCodeEdit : CodeEdit
         AddCommentDelimiter("/*", "*/");
         AddStringDelimiter("`", "`");
         CodeCompletionRequested += PopulateApiCompletions;
+    }
+
+    public void ZoomIn() => AdjustFontSize(FontSizeStep);
+
+    public void ZoomOut() => AdjustFontSize(-FontSizeStep);
+
+    public void ResetZoom() => RemoveThemeFontSizeOverride("font_size");
+
+    private void AdjustFontSize(int delta)
+    {
+        int fontSize = Mathf.Clamp(GetThemeFontSize("font_size") + delta, MinimumFontSize, MaximumFontSize);
+        AddThemeFontSizeOverride("font_size", fontSize);
     }
 
     public override void _GuiInput(InputEvent @event)

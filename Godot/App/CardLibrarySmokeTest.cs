@@ -398,6 +398,38 @@ public partial class GameBuilderApp
             string behaviorValidationId = behaviorUri["embedded:".Length..];
             string originalSource = LegacySaveDocument.ReadString(FindEmbeddedBehaviorSmoke(behaviorValidationId)?["javascript"]);
             var behaviorCode = (LegacyJavaScriptCodeEdit)behaviorEditor.FindChild("BehaviorJavaScript", true, false);
+            int defaultFontSize = behaviorCode.GetThemeFontSize("font_size");
+            var behaviorZoomIn = (Button)behaviorEditor.FindChild("BehaviorCodeZoomIn", true, false);
+            var behaviorZoomOut = (Button)behaviorEditor.FindChild("BehaviorCodeZoomOut", true, false);
+            var behaviorZoomReset = (Button)behaviorEditor.FindChild("BehaviorCodeZoomReset", true, false);
+            behaviorZoomIn.EmitSignal("pressed");
+            int enlargedFontSize = behaviorCode.GetThemeFontSize("font_size");
+            if (enlargedFontSize <= defaultFontSize || enlargedFontSize > 36)
+                throw new InvalidOperationException("The behavior editor zoom-in control did not increase the bounded code font size.");
+            await WaitForUiFrames(1);
+            string zoomScreenshot = ProjectSettings.GlobalizePath("res://.godot/behavior-zoom-smoke.png");
+            if (GetViewport().GetTexture().GetImage().SavePng(zoomScreenshot) != Error.Ok)
+                throw new InvalidOperationException("Could not save the JavaScript zoom screenshot.");
+            behaviorZoomOut.EmitSignal("pressed");
+            if (behaviorCode.GetThemeFontSize("font_size") != defaultFontSize)
+                throw new InvalidOperationException("One zoom-in followed by one zoom-out did not restore the previous code font size.");
+            behaviorZoomOut.EmitSignal("pressed");
+            if (behaviorCode.GetThemeFontSize("font_size") >= defaultFontSize)
+                throw new InvalidOperationException("The behavior editor zoom-out control did not reduce the code font size.");
+            behaviorZoomReset.EmitSignal("pressed");
+            if (behaviorCode.GetThemeFontSize("font_size") != defaultFontSize)
+                throw new InvalidOperationException("Reset zoom did not restore the theme's default code font size.");
+            for (int index = 0; index < 32; index++)
+                behaviorZoomOut.EmitSignal("pressed");
+            if (behaviorCode.GetThemeFontSize("font_size") != 8)
+                throw new InvalidOperationException("The behavior editor zoom-out limit was not enforced at 8 points.");
+            for (int index = 0; index < 32; index++)
+                behaviorZoomIn.EmitSignal("pressed");
+            if (behaviorCode.GetThemeFontSize("font_size") != 36)
+                throw new InvalidOperationException("The behavior editor zoom-in limit was not enforced at 36 points.");
+            behaviorZoomReset.EmitSignal("pressed");
+            if (behaviorCode.GetThemeFontSize("font_size") != defaultFontSize)
+                throw new InvalidOperationException("Reset zoom did not restore the baseline after reaching a font-size limit.");
             string firstUseId = LegacySaveDocument.ReadString(selectedUse["id"]);
             InvokeSmoke(behaviorEditor, "CreateCustomBehavior");
             JsonObject secondUse = (JsonObject)InvokeSmoke(behaviorEditor, "GetSelectedUse")!;
@@ -527,6 +559,13 @@ public partial class GameBuilderApp
                 throw new InvalidOperationException("The code-editor smoke card was not embedded in the project.");
             string behaviorId = uri["embedded:".Length..];
             var editor = (LegacyJavaScriptCodeEdit)manager.FindChild("ManagedCardJavaScript", true, false);
+            int managedDefaultFontSize = editor.GetThemeFontSize("font_size");
+            ((Button)manager.FindChild("ManagedCardCodeZoomIn", true, false)).EmitSignal("pressed");
+            if (editor.GetThemeFontSize("font_size") <= managedDefaultFontSize)
+                throw new InvalidOperationException("The card-library editor zoom-in control did not increase the code font size.");
+            ((Button)manager.FindChild("ManagedCardCodeZoomReset", true, false)).EmitSignal("pressed");
+            if (editor.GetThemeFontSize("font_size") != managedDefaultFontSize)
+                throw new InvalidOperationException("The card-library editor reset control did not restore the default code font size.");
             editor.Text = "mys";
             editor.SetCaretLine(0);
             editor.SetCaretColumn(editor.Text.Length);
@@ -571,7 +610,7 @@ public partial class GameBuilderApp
             string screenshot = ProjectSettings.GlobalizePath("res://.godot/code-editor-smoke.png");
             if (GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
                 throw new InvalidOperationException("Could not save the native code-editor screenshot.");
-            GD.Print($"CODE_EDITOR_SMOKE_OK completion=myself scrollRestoration=true syntaxDiagnostics=true runtimeDiagnostics=true applied=true scrollScreenshot={scrollScreenshot} diagnosticsScreenshot={diagnosticScreenshot} screenshot={screenshot}");
+            GD.Print($"CODE_EDITOR_SMOKE_OK completion=myself zoom=true zoomBounds=8-36 scrollRestoration=true syntaxDiagnostics=true runtimeDiagnostics=true applied=true zoomScreenshot={zoomScreenshot} scrollScreenshot={scrollScreenshot} diagnosticsScreenshot={diagnosticScreenshot} screenshot={screenshot}");
         }
         catch (Exception exception)
         {

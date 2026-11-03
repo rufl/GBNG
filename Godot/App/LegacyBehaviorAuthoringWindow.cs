@@ -282,6 +282,15 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
         _metadataEditor.AddChild(_applyCardMetadataButton);
         right.AddChild(_metadataEditor);
         scriptToolbar.AddChild(new Label { Text = "JavaScript · Ctrl+Space for API suggestions", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
+        var zoomOut = new Button { Name = "BehaviorCodeZoomOut", Text = "A−", TooltipText = "Reduce JavaScript text size" };
+        zoomOut.Pressed += _scriptEditor.ZoomOut;
+        scriptToolbar.AddChild(zoomOut);
+        var zoomIn = new Button { Name = "BehaviorCodeZoomIn", Text = "A+", TooltipText = "Increase JavaScript text size" };
+        zoomIn.Pressed += _scriptEditor.ZoomIn;
+        scriptToolbar.AddChild(zoomIn);
+        var zoomReset = new Button { Name = "BehaviorCodeZoomReset", Text = "Reset zoom", TooltipText = "Restore default JavaScript text size" };
+        zoomReset.Pressed += _scriptEditor.ResetZoom;
+        scriptToolbar.AddChild(zoomReset);
         _copyBehaviorButton.Text = "Create editable copy";
         _copyBehaviorButton.Disabled = true;
         _copyBehaviorButton.Pressed += CopySelectedBehavior;
