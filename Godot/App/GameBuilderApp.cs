@@ -27,6 +27,8 @@ public partial class GameBuilderApp : Node3D
     private Label _assetCount = null!;
     private LegacyAssetPreviewControl _assetPreview = null!;
     private LegacyWorldSettingsWindow _worldSettingsWindow = null!;
+    private LegacyVisualEffectsWindow _visualEffectsWindow = null!;
+    private LegacyCameraEffects _cameraEffects = null!;
     private LegacyAssetStoreWindow _assetStoreWindow = null!;
     private OptionButton _samplePicker = null!;
     private SpinBox[] _positionFields = Array.Empty<SpinBox>();
@@ -155,6 +157,8 @@ public partial class GameBuilderApp : Node3D
             RunWorldSettingsSmoke();
         if (commandLineArgs.Contains("--smoke-world-map-size", StringComparer.Ordinal))
             RunWorldMapSizeSmoke();
+        if (commandLineArgs.Contains("--smoke-camera-effects", StringComparer.Ordinal))
+            RunCameraEffectsSmoke();
     }
 
 
@@ -317,6 +321,8 @@ public partial class GameBuilderApp : Node3D
 
         _camera = new Camera3D { Name = "EditorCamera", Current = true, Fov = 55f };
         AddChild(_camera);
+        _cameraEffects = new LegacyCameraEffects { Name = "CameraEffects" };
+        AddChild(_cameraEffects);
         UpdateOrbitCamera();
 
         _world = new Node3D { Name = "LoadedProject" };
@@ -329,6 +335,7 @@ public partial class GameBuilderApp : Node3D
         AddChild(layer);
         _networkWindow = new LegacyLanNetworkWindow(_lanSession, PrepareNetworkHostProjectCopy, OpenReceivedNetworkProject);
         _worldSettingsWindow = new LegacyWorldSettingsWindow(UpdateStageProperty, ApplyWorldMapSize);
+        _visualEffectsWindow = new LegacyVisualEffectsWindow(_cameraEffects);
         _assetStoreWindow = new LegacyAssetStoreWindow(
             _catalog,
             () => _document is not null && !_playMode && !_lanSession.HasPendingAssetSync,
@@ -338,6 +345,7 @@ public partial class GameBuilderApp : Node3D
         AddChild(_assetStoreWindow);
         AddChild(_networkWindow);
         AddChild(_worldSettingsWindow);
+        AddChild(_visualEffectsWindow);
 
         var root = new Control
         {
@@ -483,6 +491,7 @@ public partial class GameBuilderApp : Node3D
         _playButton.Pressed += () => SetPlayMode(!_playMode);
         toolbar.AddChild(_playButton);
         AddToolbarButton(toolbar, "World", OpenWorldSettings);
+        AddToolbarButton(toolbar, "Effects", OpenVisualEffects);
         AddToolbarButton(toolbar, "Terrain", OpenTerrainEditor);
         AddToolbarButton(toolbar, "Reset", ResetActors);
         _undoButton = new Button { Text = "Undo", CustomMinimumSize = new Vector2(70f, 36f), Disabled = true };
@@ -772,6 +781,11 @@ public partial class GameBuilderApp : Node3D
             return;
         _worldSettingsWindow.RefreshFromStage(_document.Stage);
         _worldSettingsWindow.PopupCentered(new Vector2I(500, 360));
+    }
+
+    private void OpenVisualEffects()
+    {
+        _visualEffectsWindow.PopupCentered(new Vector2I(380, 420));
     }
 
     private void OpenTerrainEditor()
