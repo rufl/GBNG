@@ -171,9 +171,9 @@ The Unity path uses Unity Netcode for GameObjects and Unity Transport; neither
 Photon PUN nor a paid Unity service is required.
 
 - From the splash screen, open **Multiplayer** and choose **Host a game**.
-- Other players on the same LAN see hosts in the room list automatically; use
-  **Join by IP** and enter the host's IPv4 address if discovery is blocked. The
-  multiplayer panel shows the host's shareable LAN address.
+- Other players on the same LAN see hosts in the room list automatically. Use
+  **Join by address** with an IPv4 address or DNS hostname (`:7777` optional)
+  if discovery is blocked; the multiplayer panel shows the host's LAN address.
 - The host listens on UDP port `7777`; LAN discovery broadcasts on UDP `47778`.
   Allow UDP `47778` through local firewalls for LAN discovery. For Internet play,
   allow UDP `7777` through the host's operating-system firewall and forward it on
@@ -184,10 +184,11 @@ Photon PUN nor a paid Unity service is required.
 The host sends an initial project snapshot (maximum 400 KiB). The direct
 adapter forwards actor-state and transform RPCs, terrain edits, player identity
 and poses, ownership changes, and observable player state (tint, visibility,
-avatar animation, and tool-effect data). A two-process LAN smoke confirms a host
-advertisement and its 1/16-player room-list thumbnail. Separate loopback smokes
-exercise host/join, identity, RPC targeting, map switching, and kicking; an
-offline smoke verifies save/load round-tripping. Internet reachability is untested.
+avatar animation, and tool-effect data). A LAN smoke confirms host discovery and
+its 1/16-player room-list thumbnail; a DNS smoke resolves `localhost:7777` to
+IPv4 and connects. Loopback smokes exercise host/join, identity, RPC targeting,
+map switching, and kicking; offline smoke verifies save/load round-tripping.
+Internet reachability is untested.
 
 Direct-host mode implements the core player-hosted flow, not every PUN/cloud
 feature. Host migration is unavailable. The transport accepts at most 16

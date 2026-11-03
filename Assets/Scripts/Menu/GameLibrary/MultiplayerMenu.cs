@@ -338,7 +338,7 @@ public class MultiplayerMenu : ThumbnailMenu
     TMPro.TMP_Text joinLabel = joinCodeButton.GetComponentInChildren<TMPro.TMP_Text>(true);
     if (joinLabel != null)
     {
-      joinLabel.text = "Join by IP";
+      joinLabel.text = "Join by address";
     }
 
     SetOpenEvent(CreateThumbnails);
@@ -432,15 +432,66 @@ public class MultiplayerMenu : ThumbnailMenu
       return;
     }
 
-    System.Net.IPAddress parsedAddress;
-    if (!System.Net.IPAddress.TryParse(address, out parsedAddress)
-      || parsedAddress.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
+    if (System.Net.IPAddress.TryParse(address, out System.Net.IPAddress parsedAddress))
     {
-      Util.LogError($"Enter a valid IPv4 address, optionally followed by :port: '{addressAndPort}'.");
+      if (parsedAddress.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
+      {
+        Util.LogError("Direct-host connections require an IPv4 address or a hostname with an IPv4 record.");
+        return;
+      }
+      JoinMultiplayerByAddress(parsedAddress.ToString(), port, addressAndPort);
       return;
     }
 
-    PlayerPrefs.SetString(LastJoinedRoomPrefsKey, addressAndPort);
+    if (string.IsNullOrWhiteSpace(address))
+    {
+      Util.LogError("Enter an IPv4 address or a hostname, optionally followed by :port.");
+      return;
+    }
+    StartCoroutine(ResolveAndJoinHost(address, port, addressAndPort));
+  }
+
+  System.Collections.IEnumerator ResolveAndJoinHost(string hostName, ushort port, string originalAddress)
+  {
+    System.Threading.Tasks.Task<System.Net.IPAddress[]> resolution;
+    try
+    {
+      resolution = System.Net.Dns.GetHostAddressesAsync(hostName);
+    }
+    catch (System.Exception e)
+    {
+      Util.LogError($"Could not resolve host '{hostName}': {e.Message}");
+      yield break;
+    }
+
+    while (!resolution.IsCompleted) yield return null;
+    if (resolution.IsCanceled || resolution.IsFaulted)
+    {
+      string detail = resolution.Exception == null ? "name lookup was cancelled" : resolution.Exception.GetBaseException().Message;
+      Util.LogError($"Could not resolve host '{hostName}': {detail}");
+      yield break;
+    }
+
+    System.Net.IPAddress resolvedAddress = null;
+    foreach (System.Net.IPAddress candidate in resolution.Result)
+    {
+      if (candidate.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+      {
+        resolvedAddress = candidate;
+        break;
+      }
+    }
+    if (resolvedAddress == null)
+    {
+      Util.LogError($"Host '{hostName}' has no IPv4 address.");
+      yield break;
+    }
+    JoinMultiplayerByAddress(resolvedAddress.ToString(), port, originalAddress);
+  }
+
+  void JoinMultiplayerByAddress(string address, ushort port, string savedAddress)
+  {
+    PlayerPrefs.SetString(LastJoinedRoomPrefsKey, savedAddress);
     PlayerPrefs.Save();
     CancelMultiplayerPopup();
     var options = new GameBuilderApplication.GameOptions
