@@ -39,13 +39,18 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
     instance = this;
     RegisterHandlers();
   }
+  public void ResetScenePlayerCallbacks()
+  {
+    knownPlayerIds.Clear();
+    currentPlayerIds.Clear();
+  }
 
   void Update()
   {
     if (manager == null) manager = NetworkManager.Singleton;
     if (manager == null || !manager.IsListening) return;
     if (!registered) RegisterHandlers();
-    PhotonNetwork.SetDirectSession(manager, Environment.UserName);
+    PhotonNetwork.SetDirectSession(manager, NetworkingController.GetLocalDirectPlayerName());
     UpdateServerPlayerCallbacks();
     if (Time.realtimeSinceStartup >= nextObservableTime)
     {
@@ -320,7 +325,10 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
             PhotonView serverView = PhotonView.Find(viewId);
             if (serverView != null) InvokeRpc(serverView, methodName, args, PhotonNetwork.GetDirectPlayer(originClientId));
           }
-          if (targetPlayerId == 0) SendRpcToClients(packet, senderClientId);
+          if (targetPlayerId == 0)
+          {
+            if (target != PhotonTargets.MasterClient) SendRpcToClients(packet, senderClientId);
+          }
           else if (targetPlayerId != checked((int)senderClientId + 1))
           {
             ulong? recipient = PhotonNetwork.GetDirectClientId(targetPlayerId);

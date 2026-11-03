@@ -103,10 +103,13 @@ public static class PhotonNetwork
   internal static bool autoJoinLobby;
   internal static Action<byte, object, int> OnEventCall { get; set; }
   static int allocatedViewCount;
+  static readonly Stack<int> reusableViewIds = new Stack<int>();
+  static readonly HashSet<int> allocatedViewIds = new HashSet<int>();
   static int directLocalId = 1;
   internal const int DirectViewIdBlockSize = 2048;
   internal const int MaximumDirectPlayers = short.MaxValue / DirectViewIdBlockSize + 1;
   static readonly Dictionary<int, PhotonPlayer> directPeers = new Dictionary<int, PhotonPlayer>();
+  static readonly Dictionary<int, string> directPeerNames = new Dictionary<int, string>();
 
   public static PhotonPlayer masterClient { get { return FindPlayer(1); } }
 
@@ -122,15 +125,31 @@ public static class PhotonNetwork
     if (eventCode is byte code) DirectHostRpcRouter.RaiseEvent(code, content);
   }
 
-  internal static void UnAllocateViewID(int viewId) { }
+  internal static void UnAllocateViewID(int viewId)
+  {
+    int firstViewId = Math.Max(0, player.ID - 1) * DirectViewIdBlockSize;
+    int maximumViewId = Math.Min(short.MaxValue, firstViewId + DirectViewIdBlockSize);
+    if (viewId <= firstViewId || viewId > maximumViewId || !allocatedViewIds.Remove(viewId)) return;
+    reusableViewIds.Push(viewId);
+  }
 
   internal static int AllocateViewID()
   {
+    if (reusableViewIds.Count > 0)
+    {
+      int reusableViewId = reusableViewIds.Pop();
+      allocatedViewIds.Add(reusableViewId);
+      return reusableViewId;
+    }
+
     int ownerBlock = Math.Max(0, player.ID - 1);
-    allocatedViewCount++;
-    int viewId = ownerBlock * DirectViewIdBlockSize + allocatedViewCount;
-    if (viewId > short.MaxValue)
-      throw new InvalidOperationException("This direct-host session has exceeded its actor view ID capacity.");
+    int firstViewId = ownerBlock * DirectViewIdBlockSize;
+    int maximumCount = Math.Min(DirectViewIdBlockSize, short.MaxValue - firstViewId);
+    if (allocatedViewCount >= maximumCount)
+      throw new InvalidOperationException("This direct-host session has exceeded this player's actor view ID capacity.");
+
+    int viewId = firstViewId + ++allocatedViewCount;
+    allocatedViewIds.Add(viewId);
     return viewId;
   }
 
@@ -146,14 +165,18 @@ public static class PhotonNetwork
     if (directLocalId != localId)
     {
       allocatedViewCount = 0;
+      reusableViewIds.Clear();
+      allocatedViewIds.Clear();
       directLocalId = localId;
     }
+    string nickname = string.IsNullOrWhiteSpace(localNickName) ? "Player" + localId : localNickName;
     player = new PhotonPlayer
     {
       ID = localId,
       DirectClientId = manager.LocalClientId,
-      NickName = string.IsNullOrEmpty(localNickName) ? "Player" + localId : localNickName
+      NickName = nickname
     };
+    directPeerNames[localId] = nickname;
     isMasterClient = manager.IsServer;
     connected = true;
     inRoom = true;
@@ -165,7 +188,12 @@ public static class PhotonNetwork
       foreach (ulong clientId in manager.ConnectedClientsIds)
       {
         int id = checked((int)clientId + 1);
-        players.Add(id == localId ? player : new PhotonPlayer { ID = id, DirectClientId = clientId, NickName = "Player" + id });
+        players.Add(id == localId ? player : new PhotonPlayer
+        {
+          ID = id,
+          DirectClientId = clientId,
+          NickName = GetDirectPeerName(id, "Player" + id)
+        });
       }
     }
     else
@@ -173,7 +201,12 @@ public static class PhotonNetwork
       if (directPeers.TryGetValue(1, out PhotonPlayer hostPlayer))
         players.Add(hostPlayer);
       else
-        players.Add(new PhotonPlayer { ID = 1, DirectClientId = NetworkManager.ServerClientId, NickName = "Host" });
+        players.Add(new PhotonPlayer
+        {
+          ID = 1,
+          DirectClientId = NetworkManager.ServerClientId,
+          NickName = GetDirectPeerName(1, "Host")
+        });
       foreach (PhotonPlayer peer in directPeers.Values)
         if (peer.ID != 1 && peer.ID != localId) players.Add(peer);
       if (localId != 1) players.Add(player);
@@ -195,8 +228,38 @@ public static class PhotonNetwork
     playerList = new PhotonPlayer[] { player };
     otherPlayers = new PhotonPlayer[0];
     allocatedViewCount = 0;
+    reusableViewIds.Clear();
+    allocatedViewIds.Clear();
     directLocalId = 1;
     directPeers.Clear();
+    directPeerNames.Clear();
+  }
+  static string GetDirectPeerName(int playerId, string fallback)
+  {
+    return directPeerNames.TryGetValue(playerId, out string nickname) && !string.IsNullOrWhiteSpace(nickname)
+      ? nickname
+      : fallback;
+  }
+
+  internal static void SetDirectPeerName(int playerId, string nickname)
+  {
+    if (playerId <= 0 || playerId > MaximumDirectPlayers || string.IsNullOrWhiteSpace(nickname)) return;
+    nickname = nickname.Trim();
+    if (nickname.Length > 32) nickname = nickname.Substring(0, 32);
+    directPeerNames[playerId] = nickname;
+    if (player.ID == playerId) player.NickName = nickname;
+    if (directPeers.TryGetValue(playerId, out PhotonPlayer directPeer)) directPeer.NickName = nickname;
+    foreach (PhotonPlayer current in playerList)
+      if (current.ID == playerId) current.NickName = nickname;
+  }
+  internal static void ResetDirectPeers()
+  {
+    directPeers.Clear();
+  }
+
+  internal static void ForgetDirectPeerName(int playerId)
+  {
+    if (playerId != player.ID) directPeerNames.Remove(playerId);
   }
   internal static bool RegisterDirectPeer(int playerId)
   {
@@ -205,7 +268,7 @@ public static class PhotonNetwork
     {
       ID = playerId,
       DirectClientId = (ulong)(playerId - 1),
-      NickName = playerId == 1 ? "Host" : "Player" + playerId
+      NickName = GetDirectPeerName(playerId, playerId == 1 ? "Host" : "Player" + playerId)
     };
     directPeers.Add(playerId, peer);
     foreach (Photon.PunBehaviour behaviour in UnityEngine.Object.FindObjectsOfType<Photon.PunBehaviour>(true))
@@ -219,6 +282,7 @@ public static class PhotonNetwork
   {
     if (!directPeers.TryGetValue(playerId, out PhotonPlayer peer)) return false;
     directPeers.Remove(playerId);
+    directPeerNames.Remove(playerId);
     foreach (Photon.PunBehaviour behaviour in UnityEngine.Object.FindObjectsOfType<Photon.PunBehaviour>(true))
       if (!(behaviour is NetworkingController)) behaviour.OnPhotonPlayerDisconnected(peer);
     return true;
@@ -229,13 +293,13 @@ public static class PhotonNetwork
     foreach (PhotonPlayer candidate in playerList) if (candidate.ID == playerId) return candidate;
     if (player.ID == playerId) return player;
     if (directPeers.TryGetValue(playerId, out PhotonPlayer directPeer)) return directPeer;
-    return playerId > 0 ? new PhotonPlayer { ID = playerId, NickName = playerId == 1 ? "Host" : "Player" + playerId, DirectClientId = (ulong)(playerId - 1) } : null;
+    return playerId > 0 ? new PhotonPlayer { ID = playerId, NickName = GetDirectPeerName(playerId, playerId == 1 ? "Host" : "Player" + playerId), DirectClientId = (ulong)(playerId - 1) } : null;
   }
 
   internal static PhotonPlayer GetDirectPlayer(ulong clientId)
   {
     return FindPlayer(checked((int)clientId + 1))
-      ?? new PhotonPlayer { ID = checked((int)clientId + 1), DirectClientId = clientId, NickName = "Player" + (clientId + 1) };
+      ?? new PhotonPlayer { ID = checked((int)clientId + 1), DirectClientId = clientId, NickName = GetDirectPeerName(checked((int)clientId + 1), "Player" + (clientId + 1)) };
   }
 
   internal static ulong? GetDirectClientId(int playerId)

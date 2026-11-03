@@ -1,7 +1,7 @@
 {
     "version": 7,
     "voosEngineState": {
-        "gameTime": 12066.6513671875,
+        "gameTime": 13272.078125,
         "actors": [
             {
                 "version": 8,
@@ -11,7 +11,7 @@
                     "player"
                 ],
                 "renderableUri": "builtin:BuiltinAssets/AvatarExplorer",
-                "memoryJson": "{\"health\":100,\"StartingHealth\":3,\"team\":1,\"jumpCooldown\":0,\"__bulm\":{\"5760f6917856484ca4291e3f7407875b\":{\"originalTintHex\":\"#d42200\",\"actionDeckState\":{\"decksInfo\":{}}},\"297615c9b4a94d619cd94f00e3e1b407\":{\"actionDeckState\":{}},\"79b1b0e7b88c462181a2aa6d7959524b\":{\"actionDeckState\":{\"decksInfo\":{}}},\"1baa9a5c80c049fea345600a43bce11d\":{\"actionDeckState\":{\"decksInfo\":{}}},\"c3a60cc6468e4f7f9160d97d00ca5cfe\":{\"actionDeckState\":{\"decksInfo\":{}},\"lastHealth\":100,\"lastDecreaseTime\":null},\"02c5f0721b1144e5b699c7700e8fc627\":{\"actionDeckState\":{\"decksInfo\":{}}},\"2a3e4685a12947ef9cb0283f34947dfb\":{\"actionDeckState\":{\"decksInfo\":{}},\"lastAutoAssignCheck\":9454.673828125,\"lastPlayerNumber\":null,\"oldSelf\":\"a0cd0762bd5e4585a0e0499371cc7ecb\"},\"b6b55feb96e44b4cb0559b4a4f20e3c9\":{\"actionDeckState\":{\"decksInfo\":{\"moveDeck\":{\"active\":true,\"endTime\":12066.8310546875,\"lastActionMessageTime\":12066.2109375}}}},\"b6196ac67f5e479397379140b8e6f43a\":{\"actionDeckState\":{\"decksInfo\":{}}},\"ca86e763c26b4d8c9d2709044c5fc19c\":{\"actionDeckState\":{\"decksInfo\":{}}},\"35e57ca917644d20a77f5204377f737d\":{\"actionDeckState\":{\"decksInfo\":{}}},\"d6a182fd49ef40bd800a78bf43616d93\":{\"actionDeckState\":{\"decksInfo\":{}}},\"08bcb680395544c88d03a397789976f1\":{\"actionDeckState\":{\"decksInfo\":{}}},\"1bd82b5d192145099e04c1b79a83fe19\":{\"actionDeckState\":{}},\"f9acbb99250a4c80b260415f49876955\":{\"actionDeckState\":{\"decksInfo\":{}}},\"ffd039b4f650473487ec73b5392eb3e7\":{\"triggered\":false,\"actionDeckState\":{\"decksInfo\":{}}},\"eb6cc2eca632405d914d5c4e456d6fe3\":{\"actionDeckState\":{\"decksInfo\":{}}},\"5155580f2c3245a9bc9a467fe104bcac\":{\"actionDeckState\":{\"decksInfo\":{}}},\"9b012819a4184d8698a90bfcd4ffde35\":{\"actionDeckState\":{\"decksInfo\":{}}},\"03642ee15bc0436a85b673c334897bd9\":{\"actionDeckState\":{\"decksInfo\":{}}},\"aadfc634264b4082ad905b2cad7e7b3f\":{\"actionDeckState\":{\"decksInfo\":{}}}},\"__attribs\":{\"isDead\":false,\"health\":3,\"startingHealth\":3},\"isDead\":false,\"__variables\":{\"isDead\":false,\"health\":100,\"startingHealth\":100,\"hasPlayerControlsPanel\":true,\"playerAutoAssignAvailable\":false,\"grabbedItem\":\"\"}}",
+                "memoryJson": "{\"health\":100,\"StartingHealth\":3,\"team\":1,\"jumpCooldown\":0,\"__bulm\":{\"5760f6917856484ca4291e3f7407875b\":{\"originalTintHex\":\"#d42200\",\"actionDeckState\":{\"decksInfo\":{}}},\"297615c9b4a94d619cd94f00e3e1b407\":{\"actionDeckState\":{}},\"79b1b0e7b88c462181a2aa6d7959524b\":{\"actionDeckState\":{\"decksInfo\":{}}},\"1baa9a5c80c049fea345600a43bce11d\":{\"actionDeckState\":{\"decksInfo\":{}}},\"c3a60cc6468e4f7f9160d97d00ca5cfe\":{\"actionDeckState\":{\"decksInfo\":{}},\"lastHealth\":100,\"lastDecreaseTime\":null},\"02c5f0721b1144e5b699c7700e8fc627\":{\"actionDeckState\":{\"decksInfo\":{}}},\"2a3e4685a12947ef9cb0283f34947dfb\":{\"actionDeckState\":{\"decksInfo\":{}},\"lastAutoAssignCheck\":9454.673828125,\"lastPlayerNumber\":null,\"oldSelf\":\"a0cd0762bd5e4585a0e0499371cc7ecb\"},\"b6b55feb96e44b4cb0559b4a4f20e3c9\":{\"actionDeckState\":{\"decksInfo\":{\"moveDeck\":{\"active\":true,\"endTime\":13272.0263671875,\"lastActionMessageTime\":13271.111328125}}}},\"b6196ac67f5e479397379140b8e6f43a\":{\"actionDeckState\":{\"decksInfo\":{}}},\"ca86e763c26b4d8c9d2709044c5fc19c\":{\"actionDeckState\":{\"decksInfo\":{}}},\"35e57ca917644d20a77f5204377f737d\":{\"actionDeckState\":{\"decksInfo\":{}}},\"d6a182fd49ef40bd800a78bf43616d93\":{\"actionDeckState\":{\"decksInfo\":{}}},\"08bcb680395544c88d03a397789976f1\":{\"actionDeckState\":{\"decksInfo\":{}}},\"1bd82b5d192145099e04c1b79a83fe19\":{\"actionDeckState\":{}},\"f9acbb99250a4c80b260415f49876955\":{\"actionDeckState\":{\"decksInfo\":{}}},\"ffd039b4f650473487ec73b5392eb3e7\":{\"triggered\":false,\"actionDeckState\":{\"decksInfo\":{}}},\"eb6cc2eca632405d914d5c4e456d6fe3\":{\"actionDeckState\":{\"decksInfo\":{}}},\"5155580f2c3245a9bc9a467fe104bcac\":{\"actionDeckState\":{\"decksInfo\":{}}},\"9b012819a4184d8698a90bfcd4ffde35\":{\"actionDeckState\":{\"decksInfo\":{}}},\"03642ee15bc0436a85b673c334897bd9\":{\"actionDeckState\":{\"decksInfo\":{}}},\"aadfc634264b4082ad905b2cad7e7b3f\":{\"actionDeckState\":{\"decksInfo\":{}}}},\"__attribs\":{\"isDead\":false,\"health\":3,\"startingHealth\":3},\"isDead\":false,\"__variables\":{\"isDead\":false,\"health\":100,\"startingHealth\":100,\"hasPlayerControlsPanel\":true,\"playerAutoAssignAvailable\":false,\"grabbedItem\":\"\"}}",
                 "displayName": "Player1",
                 "description": "",
                 "tint": {
@@ -23,14 +23,14 @@
                 "transformParent": "",
                 "position": {
                     "x": -13.5390625,
-                    "y": -16386.30078125,
+                    "y": -16387.1875,
                     "z": 15.943359375
                 },
                 "rotation": {
                     "x": 0.0,
-                    "y": -0.6861836314201355,
+                    "y": -0.683334231376648,
                     "z": 0.0,
-                    "w": 0.7274283766746521
+                    "w": 0.7301057577133179
                 },
                 "localScale": {
                     "x": 1.0,
@@ -80,12 +80,12 @@
                 "cloneParent": "",
                 "velocity": {
                     "x": 0.0,
-                    "y": 16.607418060302734,
+                    "y": 20.934703826904297,
                     "z": 0.0
                 },
                 "angularVelocity": {
                     "x": 0.0,
-                    "y": -0.053829796612262726,
+                    "y": -0.08763672411441803,
                     "z": 0.0
                 },
                 "cameraActor": "",
@@ -118,7 +118,7 @@
                     ""
                 ],
                 "renderableUri": "builtin:BuiltinAssets/BillboardTextPanel",
-                "memoryJson": "{\"__bulm\":{\"4c35cfd7ec65456a8c5fb4c9089a3f80\":{\"actionDeckState\":{\"decksInfo\":{\"moveDeck\":{\"active\":true,\"endTime\":12066.330078125,\"lastActionMessageTime\":12065.6103515625}}}},\"427035f0a5cb48b6aa77f207f5d78931\":{\"actionDeckState\":{\"decksInfo\":{}}},\"2cee40a445c5497183757f196afbe3d3\":{\"actionDeckState\":{}}},\"health\":3,\"__attribs\":{\"isDead\":false},\"isDead\":false}",
+                "memoryJson": "{\"__bulm\":{\"4c35cfd7ec65456a8c5fb4c9089a3f80\":{\"actionDeckState\":{\"decksInfo\":{\"moveDeck\":{\"active\":true,\"endTime\":13272.0263671875,\"lastActionMessageTime\":13271.111328125}}}},\"427035f0a5cb48b6aa77f207f5d78931\":{\"actionDeckState\":{\"decksInfo\":{}}},\"2cee40a445c5497183757f196afbe3d3\":{\"actionDeckState\":{}}},\"health\":3,\"__attribs\":{\"isDead\":false},\"isDead\":false}",
                 "displayName": "Text",
                 "description": "",
                 "tint": {
@@ -439,7 +439,7 @@
                     ""
                 ],
                 "renderableUri": "builtin:BuiltinAssets/BillboardTextPanel",
-                "memoryJson": "{\"__bulm\":{\"3155cb21784d4531a4ef67c22a40e0c2\":{\"actionDeckState\":{\"decksInfo\":{\"moveDeck\":{\"active\":true,\"endTime\":12066.330078125,\"lastActionMessageTime\":12066.2109375}}}},\"2ea19e901bd748459382f177fc8b2547\":{\"actionDeckState\":{\"decksInfo\":{}}},\"115573ace7154e31944a607829cfcc04\":{\"actionDeckState\":{}}},\"health\":3,\"__attribs\":{\"isDead\":false},\"isDead\":false}",
+                "memoryJson": "{\"__bulm\":{\"3155cb21784d4531a4ef67c22a40e0c2\":{\"actionDeckState\":{\"decksInfo\":{\"moveDeck\":{\"active\":true,\"endTime\":13272.0263671875,\"lastActionMessageTime\":13271.7119140625}}}},\"2ea19e901bd748459382f177fc8b2547\":{\"actionDeckState\":{\"decksInfo\":{}}},\"115573ace7154e31944a607829cfcc04\":{\"actionDeckState\":{}}},\"health\":3,\"__attribs\":{\"isDead\":false},\"isDead\":false}",
                 "displayName": "Text",
                 "description": "",
                 "tint": {
@@ -546,7 +546,7 @@
                     "player"
                 ],
                 "renderableUri": "builtin:BuiltinAssets/AvatarExplorer",
-                "memoryJson": "{\"health\":100,\"StartingHealth\":3,\"team\":1,\"jumpCooldown\":0,\"__bulm\":{\"5760f6917856484ca4291e3f7407875b\":{\"originalTintHex\":\"#d42200\",\"actionDeckState\":{\"decksInfo\":{}}},\"297615c9b4a94d619cd94f00e3e1b407\":{\"actionDeckState\":{}},\"79b1b0e7b88c462181a2aa6d7959524b\":{\"actionDeckState\":{\"decksInfo\":{}}},\"1baa9a5c80c049fea345600a43bce11d\":{\"actionDeckState\":{\"decksInfo\":{}}},\"c3a60cc6468e4f7f9160d97d00ca5cfe\":{\"actionDeckState\":{\"decksInfo\":{}},\"lastHealth\":null,\"lastDecreaseTime\":null},\"02c5f0721b1144e5b699c7700e8fc627\":{\"actionDeckState\":{\"decksInfo\":{}}},\"2a3e4685a12947ef9cb0283f34947dfb\":{\"actionDeckState\":{\"decksInfo\":{}},\"lastAutoAssignCheck\":9454.673828125,\"lastPlayerNumber\":null,\"oldSelf\":\"22d5b11354bb4245912d3cef966bbdba\"},\"b6b55feb96e44b4cb0559b4a4f20e3c9\":{\"actionDeckState\":{\"decksInfo\":{\"moveDeck\":{\"active\":true,\"endTime\":12066.8310546875,\"lastActionMessageTime\":12066.2109375}}}},\"b6196ac67f5e479397379140b8e6f43a\":{\"actionDeckState\":{\"decksInfo\":{}}},\"ca86e763c26b4d8c9d2709044c5fc19c\":{\"actionDeckState\":{\"decksInfo\":{}}},\"35e57ca917644d20a77f5204377f737d\":{\"actionDeckState\":{\"decksInfo\":{}}},\"d6a182fd49ef40bd800a78bf43616d93\":{\"actionDeckState\":{\"decksInfo\":{}}},\"08bcb680395544c88d03a397789976f1\":{\"actionDeckState\":{\"decksInfo\":{}}},\"1bd82b5d192145099e04c1b79a83fe19\":{\"actionDeckState\":{}},\"f9acbb99250a4c80b260415f49876955\":{\"actionDeckState\":{\"decksInfo\":{}}},\"ffd039b4f650473487ec73b5392eb3e7\":{\"triggered\":false,\"actionDeckState\":{\"decksInfo\":{}}},\"eb6cc2eca632405d914d5c4e456d6fe3\":{\"actionDeckState\":{\"decksInfo\":{}}},\"5155580f2c3245a9bc9a467fe104bcac\":{\"actionDeckState\":{\"decksInfo\":{}}},\"9b012819a4184d8698a90bfcd4ffde35\":{\"actionDeckState\":{\"decksInfo\":{}}},\"03642ee15bc0436a85b673c334897bd9\":{\"actionDeckState\":{\"decksInfo\":{}}},\"aadfc634264b4082ad905b2cad7e7b3f\":{\"actionDeckState\":{\"decksInfo\":{}}}},\"__attribs\":{\"isDead\":false,\"health\":3,\"startingHealth\":3},\"isDead\":false,\"__variables\":{\"isDead\":false,\"health\":100,\"startingHealth\":100,\"hasPlayerControlsPanel\":true,\"playerAutoAssignAvailable\":false,\"grabbedItem\":\"\"}}",
+                "memoryJson": "{\"health\":100,\"StartingHealth\":3,\"team\":1,\"jumpCooldown\":0,\"__bulm\":{\"5760f6917856484ca4291e3f7407875b\":{\"originalTintHex\":\"#d42200\",\"actionDeckState\":{\"decksInfo\":{}}},\"297615c9b4a94d619cd94f00e3e1b407\":{\"actionDeckState\":{}},\"79b1b0e7b88c462181a2aa6d7959524b\":{\"actionDeckState\":{\"decksInfo\":{}}},\"1baa9a5c80c049fea345600a43bce11d\":{\"actionDeckState\":{\"decksInfo\":{}}},\"c3a60cc6468e4f7f9160d97d00ca5cfe\":{\"actionDeckState\":{\"decksInfo\":{}},\"lastHealth\":null,\"lastDecreaseTime\":null},\"02c5f0721b1144e5b699c7700e8fc627\":{\"actionDeckState\":{\"decksInfo\":{}}},\"2a3e4685a12947ef9cb0283f34947dfb\":{\"actionDeckState\":{\"decksInfo\":{}},\"lastAutoAssignCheck\":9454.673828125,\"lastPlayerNumber\":null,\"oldSelf\":\"22d5b11354bb4245912d3cef966bbdba\"},\"b6b55feb96e44b4cb0559b4a4f20e3c9\":{\"actionDeckState\":{\"decksInfo\":{\"moveDeck\":{\"active\":true,\"endTime\":13271.51953125,\"lastActionMessageTime\":13271.111328125}}}},\"b6196ac67f5e479397379140b8e6f43a\":{\"actionDeckState\":{\"decksInfo\":{}}},\"ca86e763c26b4d8c9d2709044c5fc19c\":{\"actionDeckState\":{\"decksInfo\":{}}},\"35e57ca917644d20a77f5204377f737d\":{\"actionDeckState\":{\"decksInfo\":{}}},\"d6a182fd49ef40bd800a78bf43616d93\":{\"actionDeckState\":{\"decksInfo\":{}}},\"08bcb680395544c88d03a397789976f1\":{\"actionDeckState\":{\"decksInfo\":{}}},\"1bd82b5d192145099e04c1b79a83fe19\":{\"actionDeckState\":{}},\"f9acbb99250a4c80b260415f49876955\":{\"actionDeckState\":{\"decksInfo\":{}}},\"ffd039b4f650473487ec73b5392eb3e7\":{\"triggered\":false,\"actionDeckState\":{\"decksInfo\":{}}},\"eb6cc2eca632405d914d5c4e456d6fe3\":{\"actionDeckState\":{\"decksInfo\":{}}},\"5155580f2c3245a9bc9a467fe104bcac\":{\"actionDeckState\":{\"decksInfo\":{}}},\"9b012819a4184d8698a90bfcd4ffde35\":{\"actionDeckState\":{\"decksInfo\":{}}},\"03642ee15bc0436a85b673c334897bd9\":{\"actionDeckState\":{\"decksInfo\":{}}},\"aadfc634264b4082ad905b2cad7e7b3f\":{\"actionDeckState\":{\"decksInfo\":{}}}},\"__attribs\":{\"isDead\":false,\"health\":3,\"startingHealth\":3},\"isDead\":false,\"__variables\":{\"isDead\":false,\"health\":100,\"startingHealth\":100,\"hasPlayerControlsPanel\":true,\"playerAutoAssignAvailable\":false,\"grabbedItem\":\"\"}}",
                 "displayName": "Player4",
                 "description": "",
                 "tint": {
@@ -558,13 +558,13 @@
                 "transformParent": "",
                 "position": {
                     "x": -11.3984375,
-                    "y": -16386.30078125,
+                    "y": -16387.1875,
                     "z": 8.580078125
                 },
                 "rotation": {
-                    "x": -7.006492321624085e-45,
+                    "x": -3.698613996335632e-33,
                     "y": 1.4551910891558162e-11,
-                    "z": 7.006492321624085e-45,
+                    "z": 1.849306998167816e-33,
                     "w": 1.0
                 },
                 "localScale": {
@@ -615,7 +615,7 @@
                 "cloneParent": "",
                 "velocity": {
                     "x": 0.0,
-                    "y": 16.607418060302734,
+                    "y": 20.934703826904297,
                     "z": 0.0
                 },
                 "angularVelocity": {
@@ -653,7 +653,7 @@
                     "player"
                 ],
                 "renderableUri": "builtin:BuiltinAssets/AvatarExplorer",
-                "memoryJson": "{\"health\":100,\"StartingHealth\":3,\"team\":1,\"jumpCooldown\":0,\"__bulm\":{\"5760f6917856484ca4291e3f7407875b\":{\"originalTintHex\":\"#d42200\",\"actionDeckState\":{\"decksInfo\":{}}},\"297615c9b4a94d619cd94f00e3e1b407\":{\"actionDeckState\":{}},\"79b1b0e7b88c462181a2aa6d7959524b\":{\"actionDeckState\":{\"decksInfo\":{}}},\"1baa9a5c80c049fea345600a43bce11d\":{\"actionDeckState\":{\"decksInfo\":{}}},\"c3a60cc6468e4f7f9160d97d00ca5cfe\":{\"actionDeckState\":{\"decksInfo\":{}},\"lastHealth\":null,\"lastDecreaseTime\":null},\"02c5f0721b1144e5b699c7700e8fc627\":{\"actionDeckState\":{\"decksInfo\":{}}},\"2a3e4685a12947ef9cb0283f34947dfb\":{\"actionDeckState\":{\"decksInfo\":{}},\"lastAutoAssignCheck\":9454.673828125,\"lastPlayerNumber\":null,\"oldSelf\":\"8fe376a717714512adc126146436f1f5\"},\"b6b55feb96e44b4cb0559b4a4f20e3c9\":{\"actionDeckState\":{\"decksInfo\":{\"moveDeck\":{\"active\":true,\"endTime\":12066.8310546875,\"lastActionMessageTime\":12066.2109375}}}},\"b6196ac67f5e479397379140b8e6f43a\":{\"actionDeckState\":{\"decksInfo\":{}}},\"ca86e763c26b4d8c9d2709044c5fc19c\":{\"actionDeckState\":{\"decksInfo\":{}}},\"35e57ca917644d20a77f5204377f737d\":{\"actionDeckState\":{\"decksInfo\":{}}},\"d6a182fd49ef40bd800a78bf43616d93\":{\"actionDeckState\":{\"decksInfo\":{}}},\"08bcb680395544c88d03a397789976f1\":{\"actionDeckState\":{\"decksInfo\":{}}},\"1bd82b5d192145099e04c1b79a83fe19\":{\"actionDeckState\":{}},\"f9acbb99250a4c80b260415f49876955\":{\"actionDeckState\":{\"decksInfo\":{}}},\"ffd039b4f650473487ec73b5392eb3e7\":{\"triggered\":false,\"actionDeckState\":{\"decksInfo\":{}}},\"eb6cc2eca632405d914d5c4e456d6fe3\":{\"actionDeckState\":{\"decksInfo\":{}}},\"5155580f2c3245a9bc9a467fe104bcac\":{\"actionDeckState\":{\"decksInfo\":{}}},\"9b012819a4184d8698a90bfcd4ffde35\":{\"actionDeckState\":{\"decksInfo\":{}}},\"03642ee15bc0436a85b673c334897bd9\":{\"actionDeckState\":{\"decksInfo\":{}}},\"aadfc634264b4082ad905b2cad7e7b3f\":{\"actionDeckState\":{\"decksInfo\":{}}}},\"__attribs\":{\"isDead\":false,\"health\":3,\"startingHealth\":3},\"isDead\":false,\"__variables\":{\"isDead\":false,\"health\":100,\"startingHealth\":100,\"hasPlayerControlsPanel\":true,\"playerAutoAssignAvailable\":false,\"grabbedItem\":\"\"}}",
+                "memoryJson": "{\"health\":100,\"StartingHealth\":3,\"team\":1,\"jumpCooldown\":0,\"__bulm\":{\"5760f6917856484ca4291e3f7407875b\":{\"originalTintHex\":\"#d42200\",\"actionDeckState\":{\"decksInfo\":{}}},\"297615c9b4a94d619cd94f00e3e1b407\":{\"actionDeckState\":{}},\"79b1b0e7b88c462181a2aa6d7959524b\":{\"actionDeckState\":{\"decksInfo\":{}}},\"1baa9a5c80c049fea345600a43bce11d\":{\"actionDeckState\":{\"decksInfo\":{}}},\"c3a60cc6468e4f7f9160d97d00ca5cfe\":{\"actionDeckState\":{\"decksInfo\":{}},\"lastHealth\":null,\"lastDecreaseTime\":null},\"02c5f0721b1144e5b699c7700e8fc627\":{\"actionDeckState\":{\"decksInfo\":{}}},\"2a3e4685a12947ef9cb0283f34947dfb\":{\"actionDeckState\":{\"decksInfo\":{}},\"lastAutoAssignCheck\":9454.673828125,\"lastPlayerNumber\":null,\"oldSelf\":\"8fe376a717714512adc126146436f1f5\"},\"b6b55feb96e44b4cb0559b4a4f20e3c9\":{\"actionDeckState\":{\"decksInfo\":{\"moveDeck\":{\"active\":true,\"endTime\":13271.51953125,\"lastActionMessageTime\":13271.111328125}}}},\"b6196ac67f5e479397379140b8e6f43a\":{\"actionDeckState\":{\"decksInfo\":{}}},\"ca86e763c26b4d8c9d2709044c5fc19c\":{\"actionDeckState\":{\"decksInfo\":{}}},\"35e57ca917644d20a77f5204377f737d\":{\"actionDeckState\":{\"decksInfo\":{}}},\"d6a182fd49ef40bd800a78bf43616d93\":{\"actionDeckState\":{\"decksInfo\":{}}},\"08bcb680395544c88d03a397789976f1\":{\"actionDeckState\":{\"decksInfo\":{}}},\"1bd82b5d192145099e04c1b79a83fe19\":{\"actionDeckState\":{}},\"f9acbb99250a4c80b260415f49876955\":{\"actionDeckState\":{\"decksInfo\":{}}},\"ffd039b4f650473487ec73b5392eb3e7\":{\"triggered\":false,\"actionDeckState\":{\"decksInfo\":{}}},\"eb6cc2eca632405d914d5c4e456d6fe3\":{\"actionDeckState\":{\"decksInfo\":{}}},\"5155580f2c3245a9bc9a467fe104bcac\":{\"actionDeckState\":{\"decksInfo\":{}}},\"9b012819a4184d8698a90bfcd4ffde35\":{\"actionDeckState\":{\"decksInfo\":{}}},\"03642ee15bc0436a85b673c334897bd9\":{\"actionDeckState\":{\"decksInfo\":{}}},\"aadfc634264b4082ad905b2cad7e7b3f\":{\"actionDeckState\":{\"decksInfo\":{}}}},\"__attribs\":{\"isDead\":false,\"health\":3,\"startingHealth\":3},\"isDead\":false,\"__variables\":{\"isDead\":false,\"health\":100,\"startingHealth\":100,\"hasPlayerControlsPanel\":true,\"playerAutoAssignAvailable\":false,\"grabbedItem\":\"\"}}",
                 "displayName": "Player3",
                 "description": "",
                 "tint": {
@@ -665,7 +665,7 @@
                 "transformParent": "",
                 "position": {
                     "x": -12.38671875,
-                    "y": -16386.30078125,
+                    "y": -16387.1875,
                     "z": 10.601564407348633
                 },
                 "rotation": {
@@ -722,7 +722,7 @@
                 "cloneParent": "",
                 "velocity": {
                     "x": 0.0,
-                    "y": 16.607418060302734,
+                    "y": 20.934703826904297,
                     "z": 0.0
                 },
                 "angularVelocity": {
@@ -760,7 +760,7 @@
                     "player"
                 ],
                 "renderableUri": "builtin:BuiltinAssets/AvatarExplorer",
-                "memoryJson": "{\"health\":100,\"StartingHealth\":3,\"team\":1,\"jumpCooldown\":0,\"__bulm\":{\"5760f6917856484ca4291e3f7407875b\":{\"originalTintHex\":\"#d42200\",\"actionDeckState\":{\"decksInfo\":{}}},\"297615c9b4a94d619cd94f00e3e1b407\":{\"actionDeckState\":{}},\"79b1b0e7b88c462181a2aa6d7959524b\":{\"actionDeckState\":{\"decksInfo\":{}}},\"1baa9a5c80c049fea345600a43bce11d\":{\"actionDeckState\":{\"decksInfo\":{}}},\"c3a60cc6468e4f7f9160d97d00ca5cfe\":{\"actionDeckState\":{\"decksInfo\":{}},\"lastHealth\":null,\"lastDecreaseTime\":null},\"02c5f0721b1144e5b699c7700e8fc627\":{\"actionDeckState\":{\"decksInfo\":{}}},\"2a3e4685a12947ef9cb0283f34947dfb\":{\"actionDeckState\":{\"decksInfo\":{}},\"lastAutoAssignCheck\":9454.673828125,\"lastPlayerNumber\":null,\"oldSelf\":\"e5aed0bca4d9400398d07cb83f48185c\"},\"b6b55feb96e44b4cb0559b4a4f20e3c9\":{\"actionDeckState\":{\"decksInfo\":{\"moveDeck\":{\"active\":true,\"endTime\":12066.8310546875,\"lastActionMessageTime\":12066.2109375}}}},\"b6196ac67f5e479397379140b8e6f43a\":{\"actionDeckState\":{\"decksInfo\":{}}},\"ca86e763c26b4d8c9d2709044c5fc19c\":{\"actionDeckState\":{\"decksInfo\":{}}},\"35e57ca917644d20a77f5204377f737d\":{\"actionDeckState\":{\"decksInfo\":{}}},\"d6a182fd49ef40bd800a78bf43616d93\":{\"actionDeckState\":{\"decksInfo\":{}}},\"08bcb680395544c88d03a397789976f1\":{\"actionDeckState\":{\"decksInfo\":{}}},\"1bd82b5d192145099e04c1b79a83fe19\":{\"actionDeckState\":{}},\"f9acbb99250a4c80b260415f49876955\":{\"actionDeckState\":{\"decksInfo\":{}}},\"ffd039b4f650473487ec73b5392eb3e7\":{\"triggered\":false,\"actionDeckState\":{\"decksInfo\":{}}},\"eb6cc2eca632405d914d5c4e456d6fe3\":{\"actionDeckState\":{\"decksInfo\":{}}},\"5155580f2c3245a9bc9a467fe104bcac\":{\"actionDeckState\":{\"decksInfo\":{}}},\"9b012819a4184d8698a90bfcd4ffde35\":{\"actionDeckState\":{\"decksInfo\":{}}},\"03642ee15bc0436a85b673c334897bd9\":{\"actionDeckState\":{\"decksInfo\":{}}},\"aadfc634264b4082ad905b2cad7e7b3f\":{\"actionDeckState\":{\"decksInfo\":{}}}},\"__attribs\":{\"isDead\":false,\"health\":3,\"startingHealth\":3},\"isDead\":false,\"__variables\":{\"isDead\":false,\"health\":100,\"startingHealth\":100,\"hasPlayerControlsPanel\":true,\"playerAutoAssignAvailable\":false,\"grabbedItem\":\"\"}}",
+                "memoryJson": "{\"health\":100,\"StartingHealth\":3,\"team\":1,\"jumpCooldown\":0,\"__bulm\":{\"5760f6917856484ca4291e3f7407875b\":{\"originalTintHex\":\"#d42200\",\"actionDeckState\":{\"decksInfo\":{}}},\"297615c9b4a94d619cd94f00e3e1b407\":{\"actionDeckState\":{}},\"79b1b0e7b88c462181a2aa6d7959524b\":{\"actionDeckState\":{\"decksInfo\":{}}},\"1baa9a5c80c049fea345600a43bce11d\":{\"actionDeckState\":{\"decksInfo\":{}}},\"c3a60cc6468e4f7f9160d97d00ca5cfe\":{\"actionDeckState\":{\"decksInfo\":{}},\"lastHealth\":null,\"lastDecreaseTime\":null},\"02c5f0721b1144e5b699c7700e8fc627\":{\"actionDeckState\":{\"decksInfo\":{}}},\"2a3e4685a12947ef9cb0283f34947dfb\":{\"actionDeckState\":{\"decksInfo\":{}},\"lastAutoAssignCheck\":9454.673828125,\"lastPlayerNumber\":null,\"oldSelf\":\"e5aed0bca4d9400398d07cb83f48185c\"},\"b6b55feb96e44b4cb0559b4a4f20e3c9\":{\"actionDeckState\":{\"decksInfo\":{\"moveDeck\":{\"active\":true,\"endTime\":13271.51953125,\"lastActionMessageTime\":13271.111328125}}}},\"b6196ac67f5e479397379140b8e6f43a\":{\"actionDeckState\":{\"decksInfo\":{}}},\"ca86e763c26b4d8c9d2709044c5fc19c\":{\"actionDeckState\":{\"decksInfo\":{}}},\"35e57ca917644d20a77f5204377f737d\":{\"actionDeckState\":{\"decksInfo\":{}}},\"d6a182fd49ef40bd800a78bf43616d93\":{\"actionDeckState\":{\"decksInfo\":{}}},\"08bcb680395544c88d03a397789976f1\":{\"actionDeckState\":{\"decksInfo\":{}}},\"1bd82b5d192145099e04c1b79a83fe19\":{\"actionDeckState\":{}},\"f9acbb99250a4c80b260415f49876955\":{\"actionDeckState\":{\"decksInfo\":{}}},\"ffd039b4f650473487ec73b5392eb3e7\":{\"triggered\":false,\"actionDeckState\":{\"decksInfo\":{}}},\"eb6cc2eca632405d914d5c4e456d6fe3\":{\"actionDeckState\":{\"decksInfo\":{}}},\"5155580f2c3245a9bc9a467fe104bcac\":{\"actionDeckState\":{\"decksInfo\":{}}},\"9b012819a4184d8698a90bfcd4ffde35\":{\"actionDeckState\":{\"decksInfo\":{}}},\"03642ee15bc0436a85b673c334897bd9\":{\"actionDeckState\":{\"decksInfo\":{}}},\"aadfc634264b4082ad905b2cad7e7b3f\":{\"actionDeckState\":{\"decksInfo\":{}}}},\"__attribs\":{\"isDead\":false,\"health\":3,\"startingHealth\":3},\"isDead\":false,\"__variables\":{\"isDead\":false,\"health\":100,\"startingHealth\":100,\"hasPlayerControlsPanel\":true,\"playerAutoAssignAvailable\":false,\"grabbedItem\":\"\"}}",
                 "displayName": "Player2",
                 "description": "",
                 "tint": {
@@ -772,13 +772,13 @@
                 "transformParent": "",
                 "position": {
                     "x": -13.14453125,
-                    "y": -16386.30078125,
+                    "y": -16387.1875,
                     "z": 12.7890625
                 },
                 "rotation": {
-                    "x": 7.006492321624085e-45,
+                    "x": 3.698613996335632e-33,
                     "y": 4.3368073974723106e-19,
-                    "z": 7.006492321624085e-45,
+                    "z": 7.397227992671264e-33,
                     "w": 1.0
                 },
                 "localScale": {
@@ -829,7 +829,7 @@
                 "cloneParent": "",
                 "velocity": {
                     "x": 0.0,
-                    "y": 16.607418060302734,
+                    "y": 20.934703826904297,
                     "z": 0.0
                 },
                 "angularVelocity": {
