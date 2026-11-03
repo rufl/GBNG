@@ -103,6 +103,14 @@ public class UserBody : Photon.MonoBehaviour, PlayerBody.EventHandler, IPunObser
   Quaternion directTargetRotation;
   bool hasDirectTargetPose;
   float nextDirectPoseTime;
+#if !USE_PUN
+  int directDamageSequence;
+  int directDeathSequence;
+  int directRespawnSequence;
+  int receivedDirectDamageSequence;
+  int receivedDirectDeathSequence;
+  int receivedDirectRespawnSequence;
+#endif
 #endif
 
   public void SetActiveTool(Tool tool)
@@ -331,12 +339,18 @@ public class UserBody : Photon.MonoBehaviour, PlayerBody.EventHandler, IPunObser
 
   public void OnDamaged()
   {
+#if !USE_PUN
+    directDamageSequence++;
+#endif
     animator.SetTrigger("IsDamaged");
     avatarAudioController.OnDamage();
   }
 
   public void OnDied()
   {
+#if !USE_PUN
+    directDeathSequence++;
+#endif
     animator.SetTrigger("IsDead");
     avatarAudioController.OnDeath();
 
@@ -360,6 +374,9 @@ public class UserBody : Photon.MonoBehaviour, PlayerBody.EventHandler, IPunObser
 
   public void OnRespawned()
   {
+#if !USE_PUN
+    directRespawnSequence++;
+#endif
     animator.SetTrigger("IsRespawning");
     avatarAudioController.OnRespawn();
   }
@@ -403,6 +420,17 @@ public class UserBody : Photon.MonoBehaviour, PlayerBody.EventHandler, IPunObser
         stream.SendNext(locallyActiveTool.GetCreatePreviewSettingsJson());
       }
       stream.SendNext(playAvatarRendererEnabled);
+#if !USE_PUN
+      stream.SendNext(animator.GetBool("IsCrouching"));
+      stream.SendNext(animator.GetBool("IsGrounded"));
+      stream.SendNext(animator.GetBool("IsSprinting"));
+      stream.SendNext(animator.GetBool("EditorHolograms"));
+      stream.SendNext(animator.GetFloat("VelX"));
+      stream.SendNext(animator.GetFloat("VelY"));
+      stream.SendNext(directDamageSequence);
+      stream.SendNext(directDeathSequence);
+      stream.SendNext(directRespawnSequence);
+#endif
     }
     else
     {
@@ -432,6 +460,36 @@ public class UserBody : Photon.MonoBehaviour, PlayerBody.EventHandler, IPunObser
       }
       // "Render enabled" field not present in earlier versions, defaults to true:
       SetPlayerVisible((bool)stream.ReceiveNext());
+#if !USE_PUN
+      animator.SetBool("IsCrouching", (bool)stream.ReceiveNext());
+      SetGrounded((bool)stream.ReceiveNext());
+      SetSprint((bool)stream.ReceiveNext());
+      animator.SetBool("EditorHolograms", (bool)stream.ReceiveNext());
+      animator.SetFloat("VelX", (float)stream.ReceiveNext());
+      animator.SetFloat("VelY", (float)stream.ReceiveNext());
+
+      int damageSequence = (int)stream.ReceiveNext();
+      if (damageSequence != receivedDirectDamageSequence)
+      {
+        receivedDirectDamageSequence = damageSequence;
+        animator.ResetTrigger("IsDamaged");
+        animator.SetTrigger("IsDamaged");
+      }
+      int deathSequence = (int)stream.ReceiveNext();
+      if (deathSequence != receivedDirectDeathSequence)
+      {
+        receivedDirectDeathSequence = deathSequence;
+        animator.ResetTrigger("IsDead");
+        animator.SetTrigger("IsDead");
+      }
+      int respawnSequence = (int)stream.ReceiveNext();
+      if (respawnSequence != receivedDirectRespawnSequence)
+      {
+        receivedDirectRespawnSequence = respawnSequence;
+        animator.ResetTrigger("IsRespawning");
+        animator.SetTrigger("IsRespawning");
+      }
+#endif
     }
   }
 
