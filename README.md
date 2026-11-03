@@ -165,7 +165,7 @@ can crash; Unity scales the existing texture if the window layout later changes.
 
 ## Optional integrations available for free
 
-### Multiplayer: direct-host connections
+### Multiplayer: player-hosted direct connections
 
 The Unity path uses Unity Netcode for GameObjects and Unity Transport; neither
 Photon PUN nor a paid Unity service is required.
@@ -175,28 +175,56 @@ Photon PUN nor a paid Unity service is required.
   **Join by address** with an IPv4 address or DNS hostname (`:7777` optional)
   if discovery is blocked; the multiplayer panel shows the host's LAN address.
 - The host listens on UDP port `7777`; LAN discovery broadcasts on UDP `47778`.
-  Allow UDP `47778` through local firewalls for LAN discovery. For Internet play,
-  allow UDP `7777` through the host's operating-system firewall and forward it on
-  the router; players outside the LAN must enter the host's public IPv4 address.
-- The room list is LAN-only. There is no public room browser, Relay, matchmaking,
-  or NAT traversal service.
+  Allow UDP `47778` through local firewalls for LAN discovery.
+- A self-hosted public session directory can provide a global room list. When
+  configured, hosts register their name and player count; clients can select a
+  listed host to join. The directory learns the host's public IPv4 address from
+  its request source. This is discovery only, not a relay or NAT traversal
+  service: Internet hosts must allow UDP `7777` through the operating-system
+  firewall and forward it on their router. CGNAT/restrictive NAT can still block
+  connections.
+
+#### Self-hosted public session directory
+
+The dependency-free directory service is `tools/public-session-directory/server.py`.
+For local testing, run it with Python 3.7 or newer:
+
+```text
+python tools/public-session-directory/server.py --bind 127.0.0.1 --port 47800
+set GAMEBUILDER_SESSION_DIRECTORY=http://127.0.0.1:47800
+GameBuilder.exe
+```
+
+Set the same `GAMEBUILDER_SESSION_DIRECTORY` value for hosts and browsers, or
+pass `--session-directory=https://sessions.example.org` to the game executable.
+HTTP is accepted only for loopback tests; public endpoints must use HTTPS.
+Deploy the service on a publicly reachable machine behind an HTTPS reverse
+proxy. Configure it with `--trusted-proxy 127.0.0.1` when that proxy connects
+from loopback and overwrites `X-Forwarded-For`; do not expose the app port
+directly when trusting proxy headers.
+
+The service stores active sessions in memory, refreshes host data every 15
+seconds, and expires entries after 60 seconds without a heartbeat. Its free
+software does not include hosting, a public hostname, HTTPS, or a reliable
+always-on Internet endpoint; those are deployment requirements. The directory
+limits each source IP to eight new registrations per five minutes and supports
+up to 1,000 simultaneous sessions. It does not authenticate players or encrypt
+the game transport.
 
 The host sends an initial project snapshot (maximum 400 KiB). The direct
 adapter forwards actor-state and transform RPCs, terrain edits, player identity
 and poses, ownership changes, and observable player state (tint, visibility,
-avatar animation, and tool-effect data). A LAN smoke confirms host discovery and
-its 1/16-player room-list thumbnail; a DNS smoke resolves `localhost:7777` to
-IPv4 and connects. Loopback smokes exercise host/join, identity, RPC targeting,
-map switching, and kicking; offline smoke verifies save/load round-tripping.
-Internet reachability is untested.
+avatar animation, and tool-effect data). LAN/DNS/loopback smokes exercise host
+discovery, direct joins, identity, RPC targeting, map switching, and kicking;
+offline smoke verifies save/load round-tripping. Internet reachability and
+router-specific forwarding are untested.
 
 Direct-host mode implements the core player-hosted flow, not every PUN/cloud
 feature. Host migration is unavailable. The transport accepts at most 16
-players (host plus 15 clients). Direct connections have no application-level
-authentication or encryption; share the host address only with trusted players.
-Internet play requires players outside the LAN to use the host's public IPv4
-address and the host to allow and forward UDP `7777`; each router/firewall path
-remains to be tested.
+players (host plus 15 clients) and currently requires IPv4. Direct connections
+have no application-level authentication or encryption; share the host address
+only with trusted players. Manual address joins work without the directory.
+
 
 * [Crosstales File Browser](https://assetstore.unity.com/packages/tools/utilities/file-browser-standalone-98716) - Enables the system file browser UI for local disk import/export features
 

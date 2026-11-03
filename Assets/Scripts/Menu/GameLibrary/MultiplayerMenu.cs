@@ -318,8 +318,8 @@ public class MultiplayerMenu : ThumbnailMenu
 #else
   GameBuilderSceneController scenes;
   LoadingScreen loadingScreen;
-  public static string LastJoinedRoomPrefsKey = "LAST_DIRECT_HOST_ADDRESS";
   int lastDiscoveryRevision = -1;
+  int lastPublicSessionRevision = -1;
   float nextDiscoveryRefresh;
 
   public override void Setup()
@@ -330,9 +330,10 @@ public class MultiplayerMenu : ThumbnailMenu
     joinCodeButton.onClick.AddListener(JoinMultiplayerPopup);
     joinMultiplayerPopup.confirmWithInputEvent = JoinMultiplayer;
     joinMultiplayerPopup.cancelEvent = CancelMultiplayerPopup;
-    refreshButton.onClick.AddListener(Refresh);
     DirectHostDiscovery.BeginBrowsing();
+    DirectSessionDirectory.BeginBrowsing();
     lastDiscoveryRevision = DirectHostDiscovery.Revision;
+    lastPublicSessionRevision = DirectSessionDirectory.Revision;
     refreshButton.gameObject.SetActive(true);
 
     TMPro.TMP_Text joinLabel = joinCodeButton.GetComponentInChildren<TMPro.TMP_Text>(true);
@@ -347,6 +348,12 @@ public class MultiplayerMenu : ThumbnailMenu
 
   void Refresh()
   {
+    DirectSessionDirectory.RefreshNow();
+    RebuildThumbnails();
+  }
+
+  void RebuildThumbnails()
+  {
     ClearThumbnails();
     CreateThumbnails();
   }
@@ -355,10 +362,12 @@ public class MultiplayerMenu : ThumbnailMenu
   {
     if (!gameObject.activeInHierarchy || Time.unscaledTime < nextDiscoveryRefresh) return;
     nextDiscoveryRefresh = Time.unscaledTime + 0.5f;
-    int revision = DirectHostDiscovery.Revision;
-    if (revision == lastDiscoveryRevision) return;
-    lastDiscoveryRevision = revision;
-    Refresh();
+    int discoveryRevision = DirectHostDiscovery.Revision;
+    int publicSessionRevision = DirectSessionDirectory.Revision;
+    if (discoveryRevision == lastDiscoveryRevision && publicSessionRevision == lastPublicSessionRevision) return;
+    lastDiscoveryRevision = discoveryRevision;
+    lastPublicSessionRevision = publicSessionRevision;
+    RebuildThumbnails();
   }
 
   void CreateThumbnails()
@@ -384,6 +393,55 @@ public class MultiplayerMenu : ThumbnailMenu
       discovered.GetPlayerCount = () => host.PlayerCount;
       AddThumbnail(discovered);
     }
+    DirectSessionDirectory.SessionInfo[] publicSessions = DirectSessionDirectory.GetPublicSessions();
+    if (!DirectSessionDirectory.IsConfigured)
+    {
+      AddPublicStatusThumbnail("Public list not configured", DirectSessionDirectory.StatusMessage);
+    }
+    else if (publicSessions.Length == 0)
+    {
+      string status = DirectSessionDirectory.StatusMessage;
+      string title = status == "Public directory connected."
+        ? "No public games online"
+        : "Public list unavailable";
+      AddPublicStatusThumbnail(title, status + " Public hosts must forward UDP port 7777.");
+    }
+    else
+    {
+      foreach (DirectSessionDirectory.SessionInfo session in publicSessions)
+      {
+        DirectHostDiscovery.HostInfo host = new DirectHostDiscovery.HostInfo
+        {
+          Address = session.Address,
+          Port = (ushort)session.Port,
+          Name = session.Name,
+          PlayerCount = session.PlayerCount,
+          MaxPlayers = session.MaxPlayers
+        };
+        GameThumbnail publicThumbnail = Instantiate(gameThumbnailPrefab).GetComponent<GameThumbnail>();
+        publicThumbnail.SetThumbnail(spoofGameTexture);
+        publicThumbnail.SetGameSource(GameDetail.GameSource.Multiplayer);
+        publicThumbnail.SetName(session.Name);
+        publicThumbnail.OnClick = () => JoinDiscoveredHost(host);
+        publicThumbnail.GetWriteTime = () => System.DateTime.Today;
+        publicThumbnail.GetDescription = () => $"{session.PlayerCount}/{session.MaxPlayers} players - {session.Address}:{session.Port} (public)";
+        publicThumbnail.GetPlayerCount = () => session.PlayerCount;
+        AddThumbnail(publicThumbnail);
+      }
+    }
+  }
+
+  void AddPublicStatusThumbnail(string title, string description)
+  {
+    GameThumbnail status = Instantiate(gameThumbnailPrefab).GetComponent<GameThumbnail>();
+    status.SetThumbnail(spoofGameTexture);
+    status.SetGameSource(GameDetail.GameSource.Multiplayer);
+    status.SetName(title);
+    status.OnClick = () => { };
+    status.GetWriteTime = () => System.DateTime.Today;
+    status.GetDescription = () => description;
+    status.GetPlayerCount = () => 0;
+    AddThumbnail(status);
   }
 
   void JoinDiscoveredHost(DirectHostDiscovery.HostInfo host)
