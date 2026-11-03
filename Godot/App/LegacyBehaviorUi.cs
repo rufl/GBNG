@@ -8,6 +8,7 @@ public partial class LegacyBehaviorUi : Control
 {
     private const float GameUiWidth = 1600f;
     private readonly HashSet<string> _unresolvedImages = new(StringComparer.Ordinal);
+    private readonly Dictionary<(Texture2D Texture, bool NoFilter), CanvasTexture> _filteredImages = new();
     private JsonArray _commands = new();
     private readonly Vector2[] _triangleOutline = new Vector2[4];
     private readonly Vector2[] _points = new Vector2[3];
@@ -374,17 +375,34 @@ public partial class LegacyBehaviorUi : Control
             rect.Size = new Vector2(texture.GetWidth(), rect.Size.Y);
         if (rect.Size.Y < 0f)
             rect.Size = new Vector2(rect.Size.X, texture.GetHeight() * rect.Size.X / Math.Max(1f, texture.GetWidth()));
-        DrawTextureRect(texture, rect, false, new Color(1f, 1f, 1f, opacity));
+        bool noFilter = LegacySaveDocument.ReadBool(command["noFilter"]);
+        DrawTextureRect(GetFilteredImage(texture, noFilter), rect, false, new Color(1f, 1f, 1f, opacity));
     }
 
     private void DrawImageSlice(JsonObject command, float opacity)
     {
         if (!TryReadRect(command["rect"], out Rect2 destination) || !TryReadRect(command["srcRect"], out Rect2 source))
             return;
-        if (!TryLoadImage(LegacySaveDocument.ReadString(command["imageId"]), out Texture2D? texture))
+        if (!TryLoadImage(LegacySaveDocument.ReadString(command["imageId"]), out Texture2D? texture) || texture is null)
             return;
-        DrawTextureRectRegion(texture, destination, source, new Color(1f, 1f, 1f, opacity));
+        bool noFilter = LegacySaveDocument.ReadBool(command["noFilter"]);
+        DrawTextureRectRegion(GetFilteredImage(texture, noFilter), destination, source, new Color(1f, 1f, 1f, opacity));
     }
+    private Texture2D GetFilteredImage(Texture2D texture, bool noFilter)
+    {
+        var key = (texture, noFilter);
+        if (_filteredImages.TryGetValue(key, out CanvasTexture? filteredImage))
+            return filteredImage;
+
+        filteredImage = new CanvasTexture
+        {
+            DiffuseTexture = texture,
+            TextureFilter = noFilter ? CanvasItem.TextureFilterEnum.Nearest : CanvasItem.TextureFilterEnum.Linear
+        };
+        _filteredImages.Add(key, filteredImage);
+        return filteredImage;
+    }
+
 
     private bool TryLoadImage(string imageId, out Texture2D? texture)
     {

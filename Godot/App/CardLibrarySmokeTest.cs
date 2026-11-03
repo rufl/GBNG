@@ -670,10 +670,11 @@ public partial class GameBuilderApp
             if (LegacySaveDocument.ReadString(FindEmbeddedBehaviorSmoke(behaviorId)?["javascript"]) != appliedSource)
                 throw new InvalidOperationException("CodeEdit source was not applied to the embedded behavior.");
 
+            string uiImageFilterScreenshot = await RunBehaviorUiImageFilterSmoke();
             string screenshot = ProjectSettings.GlobalizePath("res://.godot/code-editor-smoke.png");
             if (GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
                 throw new InvalidOperationException("Could not save the native code-editor screenshot.");
-            GD.Print($"CODE_EDITOR_SMOKE_OK completion=myself zoom=true zoomBounds=8-36 inlineDiagnostics=true scrollRestoration=true syntaxDiagnostics=true runtimeDiagnostics=true managedCardValidation=true managedCardDiagnostics=true applied=true zoomScreenshot={zoomScreenshot} scrollScreenshot={scrollScreenshot} diagnosticsScreenshot={diagnosticScreenshot} managedCardDiagnosticsScreenshot={managedCardDiagnosticsScreenshot} screenshot={screenshot}");
+            GD.Print($"CODE_EDITOR_SMOKE_OK completion=myself zoom=true zoomBounds=8-36 inlineDiagnostics=true scrollRestoration=true syntaxDiagnostics=true runtimeDiagnostics=true managedCardValidation=true managedCardDiagnostics=true applied=true uiImageFilter=true uiImageSliceFilter=true uiImageFilterScreenshot={uiImageFilterScreenshot} zoomScreenshot={zoomScreenshot} scrollScreenshot={scrollScreenshot} diagnosticsScreenshot={diagnosticScreenshot} managedCardDiagnosticsScreenshot={managedCardDiagnosticsScreenshot} screenshot={screenshot}");
         }
         catch (Exception exception)
         {
@@ -689,6 +690,85 @@ public partial class GameBuilderApp
         }
     }
 
+
+    private async System.Threading.Tasks.Task<string> RunBehaviorUiImageFilterSmoke()
+    {
+        const string textureUri = "user://behavior-ui-filter-smoke.tres";
+        string texturePath = ProjectSettings.GlobalizePath(textureUri);
+        var image = Image.CreateEmpty(2, 1, false, Image.Format.Rgba8);
+        image.SetPixel(0, 0, new Color(1f, 0f, 0f, 1f));
+        image.SetPixel(1, 0, new Color(0f, 0f, 1f, 1f));
+        if (ResourceSaver.Save(ImageTexture.CreateFromImage(image), textureUri) != Error.Ok)
+            throw new InvalidOperationException("Could not save the generated behavior UI filter-smoke texture.");
+
+        SubViewport? viewport = null;
+        try
+        {
+            if (ResourceLoader.Load<Texture2D>(textureUri) is null)
+                throw new InvalidOperationException("The generated behavior UI filter-smoke texture could not be loaded.");
+
+            viewport = new SubViewport
+            {
+                Name = "BehaviorUiImageFilterSmokeViewport",
+                Size = new Vector2I(512, 256),
+                TransparentBg = true,
+                RenderTargetUpdateMode = SubViewport.UpdateMode.Always
+            };
+            AddChild(viewport);
+            var behaviorUi = new LegacyBehaviorUi();
+            viewport.AddChild(behaviorUi);
+            behaviorUi.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+
+            JsonObject CreateCommand(int commandId, float x, float y, bool noFilter)
+            {
+                var rect = new JsonObject { ["x"] = x, ["y"] = y, ["w"] = 600f, ["h"] = 100f };
+                var command = new JsonObject
+                {
+                    ["cmd"] = commandId,
+                    ["imageId"] = textureUri,
+                    ["rect"] = rect,
+                    ["noFilter"] = noFilter
+                };
+                if (commandId == 8)
+                    command["srcRect"] = new JsonObject { ["x"] = 0f, ["y"] = 0f, ["w"] = 2f, ["h"] = 1f };
+                return command;
+            }
+
+            behaviorUi.SetCommands(new JsonArray
+            {
+                CreateCommand(4, 50f, 20f, false),
+                CreateCommand(4, 850f, 20f, true),
+                CreateCommand(8, 50f, 200f, false),
+                CreateCommand(8, 850f, 200f, true)
+            });
+            await WaitForUiFrames(2);
+
+            Image rendered = viewport.GetTexture().GetImage();
+            Color linearImage = rendered.GetPixel(112, 22);
+            Color nearestImage = rendered.GetPixel(368, 22);
+            Color linearSlice = rendered.GetPixel(112, 80);
+            Color nearestSlice = rendered.GetPixel(368, 80);
+            static bool IsInterpolated(Color color) => color.R > 0.1f && color.B > 0.1f;
+            static bool IsPointSample(Color color) =>
+                (color.R > 0.9f && color.B < 0.1f) || (color.B > 0.9f && color.R < 0.1f);
+            if (!IsInterpolated(linearImage) || !IsPointSample(nearestImage)
+                || !IsInterpolated(linearSlice) || !IsPointSample(nearestSlice))
+                throw new InvalidOperationException(
+                    $"Behavior UI image filtering differed from the legacy contract: image linear={linearImage}, nearest={nearestImage}; slice linear={linearSlice}, nearest={nearestSlice}.");
+
+            string screenshot = ProjectSettings.GlobalizePath("res://.godot/behavior-ui-filter-smoke.png");
+            if (rendered.SavePng(screenshot) != Error.Ok)
+                throw new InvalidOperationException("Could not save the behavior UI image-filter screenshot.");
+            return screenshot;
+        }
+        finally
+        {
+            viewport?.QueueFree();
+            await WaitForUiFrames(1);
+            if (File.Exists(texturePath))
+                File.Delete(texturePath);
+        }
+    }
 
     private async System.Threading.Tasks.Task RunCustomAssetImportSmoke()
     {
