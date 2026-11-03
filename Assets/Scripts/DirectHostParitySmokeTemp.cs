@@ -75,6 +75,12 @@ public sealed class DirectHostParitySmokeTemp : MonoBehaviour
       return mainSceneLoads >= 1 && networking != null && networking.GetIsInMultiplayer();
     }, "Direct host/client did not enter the multiplayer session.", 90f);
     if (failed) yield break;
+    scenes = FindObjectOfType<GameBuilderSceneController>();
+    if (scenes == null)
+    {
+      Fail("The main scene GameBuilderSceneController was missing.");
+      yield break;
+    }
 
     string expectedNickname = GetExpectedNickname();
     NetworkingController controller = FindObjectOfType<NetworkingController>();

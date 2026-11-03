@@ -29,7 +29,16 @@ namespace Photon
     public virtual void OnPhotonPlayerConnected(PhotonPlayer newPlayer) { }
     public virtual void OnJoinedRoom() { }
 
-    public PhotonView photonView;
+    PhotonView cachedPhotonView;
+    public PhotonView photonView
+    {
+      get
+      {
+        if (cachedPhotonView == null) cachedPhotonView = GetComponent<PhotonView>();
+        return cachedPhotonView;
+      }
+      set { cachedPhotonView = value; }
+    }
 
     void Awake()
     {
