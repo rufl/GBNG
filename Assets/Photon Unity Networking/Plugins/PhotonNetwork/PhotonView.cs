@@ -25,6 +25,8 @@ using UnityEngine;
 public class PhotonView : MonoBehaviour
 {
   static readonly List<PhotonView> views = new List<PhotonView>();
+  static readonly HashSet<int> viewIdsInUse = new HashSet<int>();
+  bool registeredViewId;
 
   public int viewID = 0;
   public int ownerId = 1;
@@ -38,11 +40,38 @@ public class PhotonView : MonoBehaviour
   void Awake()
   {
     if (!views.Contains(this)) views.Add(this);
+    RegisterViewId();
   }
 
   void OnDestroy()
   {
+    if (registeredViewId) UnregisterViewId(viewID);
+    registeredViewId = false;
     views.Remove(this);
+  }
+
+  internal void SetViewId(int id)
+  {
+    if (viewID == id)
+    {
+      RegisterViewId();
+      return;
+    }
+    if (registeredViewId) UnregisterViewId(viewID);
+    viewID = id;
+    RegisterViewId();
+  }
+
+  void RegisterViewId()
+  {
+    if (registeredViewId) return;
+    if (viewID != 0) viewIdsInUse.Add(viewID);
+    registeredViewId = true;
+  }
+
+  static void UnregisterViewId(int id)
+  {
+    if (id != 0) viewIdsInUse.Remove(id);
   }
 
   public void RPC(string methodName, PhotonTargets target, params object[] rpcParams)
@@ -75,11 +104,19 @@ public class PhotonView : MonoBehaviour
     PhotonView[] found = UnityEngine.Object.FindObjectsOfType<PhotonView>(true);
     for (int i = 0; i < found.Length; i++)
     {
-      if (found[i] != null && !views.Contains(found[i])) views.Add(found[i]);
+      PhotonView view = found[i];
+      if (view == null) continue;
+      if (!views.Contains(view)) views.Add(view);
+      view.RegisterViewId();
     }
     views.RemoveAll(view => view == null);
     return views.ToArray();
   }
+  internal static bool IsViewIdInUse(int id)
+  {
+    return viewIdsInUse.Contains(id);
+  }
+
 
   internal static void InitializeSceneViews()
   {
@@ -88,8 +125,11 @@ public class PhotonView : MonoBehaviour
     int id = -1;
     foreach (PhotonView view in sceneViews)
     {
-      if (view == null || view.viewID != 0) continue;
-      view.viewID = id--;
+      if (view == null) continue;
+      if (!views.Contains(view)) views.Add(view);
+      view.RegisterViewId();
+      if (view.viewID != 0) continue;
+      view.SetViewId(id--);
       view.ApplyOwnership(1);
     }
   }

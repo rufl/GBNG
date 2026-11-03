@@ -77,29 +77,36 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
     currentPlayerIds.Clear();
     foreach (PhotonPlayer directPlayer in PhotonNetwork.playerList)
     {
+      if (directPlayer.ID != PhotonNetwork.player.ID && !PhotonNetwork.HasDirectPlayerIdentity(directPlayer.ID)) continue;
       currentPlayerIds.Add(directPlayer.ID);
-      if (directPlayer.ID != PhotonNetwork.player.ID && knownPlayerIds.Add(directPlayer.ID))
-      {
-        foreach (Photon.PunBehaviour behaviour in FindObjectsOfType<Photon.PunBehaviour>(true))
-        {
-          if (!(behaviour is NetworkingController)) behaviour.OnPhotonPlayerConnected(directPlayer);
-        }
-        foreach (GlobalUnreliableData sync in FindObjectsOfType<GlobalUnreliableData>(true))
-          sync.OnPhotonPlayerConnected(directPlayer);
-      }
+      NotifyServerPlayerConnected(directPlayer);
     }
     knownPlayerIds.Remove(PhotonNetwork.player.ID);
     foreach (int playerId in new List<int>(knownPlayerIds))
     {
       if (currentPlayerIds.Contains(playerId)) continue;
-      PhotonPlayer disconnectedPlayer = PhotonNetwork.FindPlayer(playerId);
-      foreach (Photon.PunBehaviour behaviour in FindObjectsOfType<Photon.PunBehaviour>(true))
-      {
-        if (!(behaviour is NetworkingController)) behaviour.OnPhotonPlayerDisconnected(disconnectedPlayer);
-      }
-      knownPlayerIds.Remove(playerId);
+      NotifyServerPlayerDisconnected(PhotonNetwork.FindPlayer(playerId));
     }
     knownPlayerIds.UnionWith(currentPlayerIds);
+  }
+
+  public void NotifyServerPlayerConnected(PhotonPlayer directPlayer)
+  {
+    if (manager == null || !manager.IsServer || directPlayer == null
+      || directPlayer.ID == PhotonNetwork.player.ID || !PhotonNetwork.HasDirectPlayerIdentity(directPlayer.ID)
+      || !knownPlayerIds.Add(directPlayer.ID)) return;
+    foreach (Photon.PunBehaviour behaviour in FindObjectsOfType<Photon.PunBehaviour>(true))
+      if (!(behaviour is NetworkingController)) behaviour.OnPhotonPlayerConnected(directPlayer);
+    foreach (GlobalUnreliableData sync in FindObjectsOfType<GlobalUnreliableData>(true))
+      sync.OnPhotonPlayerConnected(directPlayer);
+  }
+
+  public void NotifyServerPlayerDisconnected(PhotonPlayer directPlayer)
+  {
+    if (manager == null || !manager.IsServer || directPlayer == null
+      || directPlayer.ID == PhotonNetwork.player.ID || !knownPlayerIds.Remove(directPlayer.ID)) return;
+    foreach (Photon.PunBehaviour behaviour in FindObjectsOfType<Photon.PunBehaviour>(true))
+      if (!(behaviour is NetworkingController)) behaviour.OnPhotonPlayerDisconnected(directPlayer);
   }
 
   void OnDestroy()
@@ -258,7 +265,7 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
     DirectHostRpcRouter router = instance;
     NetworkManager network = router != null ? router.manager : null;
     bool active = network != null && network.IsListening;
-    int localPlayerId = active ? checked((int)network.LocalClientId + 1) : PhotonNetwork.player.ID;
+    int localPlayerId = PhotonNetwork.player.ID;
     bool localTarget = targetPlayerId != 0
       ? targetPlayerId == localPlayerId
       : target != PhotonTargets.Others && (target != PhotonTargets.MasterClient || !active || network.IsServer);
@@ -315,11 +322,12 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
         object[] args = new object[count];
         for (int i = 0; i < count; i++) args[i] = ReadValue(input);
         if (input.BaseStream.Position != input.BaseStream.Length) throw new InvalidDataException("Unexpected RPC packet data.");
-        if (manager.IsServer && originClientId != senderClientId) return;
+        if (manager.IsServer && (originClientId != senderClientId || PhotonNetwork.GetDirectPlayerId(senderClientId) <= 0)) return;
 
         if (manager.IsServer)
         {
-          bool invokeServer = targetPlayerId == 0 || targetPlayerId == checked((int)manager.LocalClientId + 1);
+          int senderPlayerId = PhotonNetwork.GetDirectPlayerId(senderClientId);
+          bool invokeServer = targetPlayerId == 0 || targetPlayerId == PhotonNetwork.player.ID;
           if (invokeServer)
           {
             PhotonView serverView = PhotonView.Find(viewId);
@@ -329,7 +337,7 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
           {
             if (target != PhotonTargets.MasterClient) SendRpcToClients(packet, senderClientId);
           }
-          else if (targetPlayerId != checked((int)senderClientId + 1))
+          else if (targetPlayerId != senderPlayerId)
           {
             ulong? recipient = PhotonNetwork.GetDirectClientId(targetPlayerId);
             if (recipient.HasValue && recipient.Value != manager.LocalClientId)
@@ -338,7 +346,7 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
         }
         else if (senderClientId == NetworkManager.ServerClientId)
         {
-          int localPlayerId = checked((int)manager.LocalClientId + 1);
+          int localPlayerId = PhotonNetwork.player.ID;
           if (targetPlayerId == 0 && target != PhotonTargets.MasterClient || targetPlayerId == localPlayerId)
           {
             PhotonView clientView = PhotonView.Find(viewId);
@@ -419,14 +427,18 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
         byte code = input.ReadByte();
         ulong originClientId = input.ReadUInt64();
         object content = ReadValue(input);
-        if (manager.IsServer && originClientId != senderClientId) return;
         if (manager.IsServer)
         {
+          int originPlayerId = PhotonNetwork.GetDirectPlayerId(senderClientId);
+          if (originClientId != senderClientId || originPlayerId <= 0) return;
           SendEventToClients(packet, senderClientId);
-          PhotonNetwork.DeliverDirectEvent(code, content, checked((int)originClientId + 1));
+          PhotonNetwork.DeliverDirectEvent(code, content, originPlayerId);
         }
         else if (senderClientId == NetworkManager.ServerClientId)
-          PhotonNetwork.DeliverDirectEvent(code, content, checked((int)originClientId + 1));
+        {
+          int originPlayerId = PhotonNetwork.GetDirectPlayerId(originClientId);
+          if (originPlayerId > 0) PhotonNetwork.DeliverDirectEvent(code, content, originPlayerId);
+        }
       }
     }
     catch (Exception e) { Debug.LogError($"Invalid direct multiplayer event from client {senderClientId}: {e}"); }
@@ -482,22 +494,22 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
         PhotonView view = PhotonView.Find(viewId);
         if (manager.IsServer)
         {
-          if (ownerPlayerId != checked((int)senderClientId + 1) || view == null || view.ownerId != ownerPlayerId) return;
+          if (ownerPlayerId != PhotonNetwork.GetDirectPlayerId(senderClientId) || view == null || view.ownerId != ownerPlayerId) return;
           UserBody body = view.GetComponent<UserBody>();
           if (body == null) return;
           body.SetDirectPose(position, rotation);
           SendPoseToClients(packet, senderClientId);
         }
         else if (senderClientId == NetworkManager.ServerClientId && view != null && view.ownerId == ownerPlayerId
-          && ownerPlayerId != checked((int)manager.LocalClientId + 1))
+          && ownerPlayerId != PhotonNetwork.player.ID)
         {
           UserBody body = view.GetComponent<UserBody>();
           if (body != null)
           {
             body.SetDirectPose(position, rotation);
           }
+        }
       }
-    }
     }
     catch (Exception e) { Debug.LogError($"Invalid direct player pose from client {senderClientId}: {e}"); }
   }
@@ -578,7 +590,7 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
         PhotonView view = PhotonView.Find(viewId);
         if (manager.IsServer)
         {
-          int senderPlayerId = checked((int)senderClientId + 1);
+          int senderPlayerId = PhotonNetwork.GetDirectPlayerId(senderClientId);
           if (view == null || ownerPlayerId != senderPlayerId || view.ownerId != senderPlayerId) return;
           InvokeObservable(view, componentIndex, state, PhotonNetwork.GetDirectPlayer(senderClientId));
           foreach (ulong clientId in manager.ConnectedClientsIds)
@@ -587,7 +599,8 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
         }
         else if (senderClientId == NetworkManager.ServerClientId && view != null && view.ownerId == ownerPlayerId)
         {
-          InvokeObservable(view, componentIndex, state, PhotonNetwork.GetDirectPlayer((ulong)(ownerPlayerId - 1)));
+          PhotonPlayer sender = PhotonNetwork.FindPlayer(ownerPlayerId);
+          if (sender != null) InvokeObservable(view, componentIndex, state, sender);
         }
       }
     }
@@ -634,7 +647,7 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
         if (view == null) return;
         if (manager.IsServer)
         {
-          if (view.ownerId != checked((int)senderClientId + 1)) return;
+          if (view.ownerId != PhotonNetwork.GetDirectPlayerId(senderClientId)) return;
           view.ApplyOwnership(newOwnerId);
           foreach (ulong clientId in manager.ConnectedClientsIds)
             if (clientId != manager.LocalClientId && clientId != senderClientId)

@@ -38,6 +38,7 @@ public class NetworkingController : Photon.PunBehaviour
   public const ushort DefaultDirectHostPort = 7777;
   const string DirectHostInitMessageName = "GB_DIRECT_HOST_INIT_V1";
   const string DirectPlayerIdentityMessageName = "GB_DIRECT_PLAYER_IDENTITY_V1";
+  const string DirectPlayerAssignmentMessageName = "GB_DIRECT_PLAYER_ASSIGNMENT_V1";
   const string DirectPlayerInitRequestMessageName = "GB_DIRECT_PLAYER_INIT_REQUEST_V1";
   const string DirectPlayerReadyMessageName = "GB_DIRECT_PLAYER_READY_V1";
   const string DirectPlayerSpawnMessageName = "GB_DIRECT_PLAYER_SPAWN_V1";
@@ -47,6 +48,7 @@ public class NetworkingController : Photon.PunBehaviour
   DirectHostRpcRouter directRpcRouter;
   bool registeredDirectInitHandler;
   bool registeredDirectPlayerHandlers;
+  bool directClientAssignmentReceived;
   bool directWorldReady;
   readonly HashSet<ulong> directInitResponseClients = new HashSet<ulong>();
   string directHostShareAddress;
@@ -611,12 +613,15 @@ public class NetworkingController : Photon.PunBehaviour
     registeredDirectInitHandler = true;
     if (registeredDirectPlayerHandlers)
     {
+      directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerAssignmentMessageName);
       directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerReadyMessageName);
       directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerSpawnMessageName);
       directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerDespawnMessageName);
       directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerIdentityMessageName);
       directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerInitRequestMessageName);
     }
+    directNetworkManager.CustomMessagingManager.RegisterNamedMessageHandler(
+      DirectPlayerAssignmentMessageName, OnDirectPlayerAssignment);
     directNetworkManager.CustomMessagingManager.RegisterNamedMessageHandler(DirectPlayerReadyMessageName, OnDirectPlayerReady);
     directNetworkManager.CustomMessagingManager.RegisterNamedMessageHandler(DirectPlayerSpawnMessageName, OnDirectPlayerSpawn);
     directNetworkManager.CustomMessagingManager.RegisterNamedMessageHandler(DirectPlayerDespawnMessageName, OnDirectPlayerDespawn);
@@ -632,15 +637,15 @@ public class NetworkingController : Photon.PunBehaviour
     {
       if (clientId == directNetworkManager.LocalClientId)
       {
-        PhotonNetwork.SetDirectSession(directNetworkManager, GetLocalDirectPlayerName());
-        SendDirectPlayerIdentity(NetworkManager.ServerClientId, PhotonNetwork.player.ID, PhotonNetwork.player.NickName);
+        directClientAssignmentReceived = false;
+        PhotonNetwork.ResetDirectPeers();
       }
       return;
     }
     if (clientId == directNetworkManager.LocalClientId) return;
-    if (clientId >= (ulong)PhotonNetwork.MaximumDirectPlayers)
+    if (!PhotonNetwork.TryAssignDirectPlayerId(clientId, out int joiningPlayerId))
     {
-      Util.LogError($"Direct hosting supports at most {PhotonNetwork.MaximumDirectPlayers} player IDs.");
+      Util.LogError($"Direct hosting is full ({PhotonNetwork.MaximumDirectPlayers} players).");
       directNetworkManager.DisconnectClient(clientId);
       return;
     }
@@ -648,20 +653,59 @@ public class NetworkingController : Photon.PunBehaviour
     try
     {
       PhotonNetwork.SetDirectSession(directNetworkManager, GetLocalDirectPlayerName());
-      int joiningPlayerId = checked((int)clientId + 1);
+      SendDirectPlayerAssignment(clientId, joiningPlayerId);
       foreach (PhotonPlayer connectedPlayer in PhotonNetwork.playerList)
       {
         if (connectedPlayer.ID != joiningPlayerId)
           SendDirectPlayerIdentity(clientId, connectedPlayer.ID, connectedPlayer.NickName);
       }
-
-      SendDirectHostInit(clientId);
-      directInitResponseClients.Add(clientId);
     }
     catch (Exception e)
     {
-      Util.LogError($"Could not send the initial world state to direct client {clientId}: {e}");
+      Util.LogError($"Could not initialize direct client {clientId}: {e}");
+      directRpcRouter.NotifyServerPlayerDisconnected(PhotonNetwork.FindPlayer(joiningPlayerId));
+      PhotonNetwork.ForgetDirectPeerName(joiningPlayerId);
+      PhotonNetwork.ReleaseDirectPlayerId(clientId);
       directNetworkManager.DisconnectClient(clientId);
+    }
+  }
+
+  void SendDirectPlayerAssignment(ulong clientId, int playerId)
+  {
+    using (FastBufferWriter writer = new FastBufferWriter(sizeof(int), Allocator.Temp))
+    {
+      writer.WriteValueSafe(playerId);
+      directNetworkManager.CustomMessagingManager.SendNamedMessage(
+        DirectPlayerAssignmentMessageName, clientId, writer, NetworkDelivery.ReliableSequenced);
+    }
+  }
+
+  void OnDirectPlayerAssignment(ulong senderClientId, FastBufferReader reader)
+  {
+    if (directNetworkManager == null || directNetworkManager.IsServer
+      || senderClientId != NetworkManager.ServerClientId) return;
+    try
+    {
+      reader.ReadValueSafe(out int playerId);
+      if (directClientAssignmentReceived)
+      {
+        if (PhotonNetwork.player.ID != playerId)
+          throw new InvalidDataException("The host assigned more than one player ID to this connection.");
+        return;
+      }
+      if (!PhotonNetwork.AssignDirectLocalPlayerId(directNetworkManager, playerId))
+        throw new InvalidDataException($"The host assigned invalid or occupied player ID {playerId}.");
+
+      directClientAssignmentReceived = true;
+      PhotonNetwork.SetDirectSession(directNetworkManager, GetLocalDirectPlayerName());
+      SendDirectPlayerIdentity(NetworkManager.ServerClientId, PhotonNetwork.player.ID, PhotonNetwork.player.NickName);
+      StartCoroutine(RequestDirectHostInitRoutine());
+    }
+    catch (Exception e)
+    {
+      Util.LogError($"Invalid direct player assignment: {e}");
+      directNetworkManager.Shutdown();
+      OnFatalError("Could not initialize your player slot with the host.");
     }
   }
   void SendDirectHostInit(ulong clientId)
@@ -683,9 +727,14 @@ public class NetworkingController : Photon.PunBehaviour
     byte[] nicknameBytes = Encoding.UTF8.GetBytes(nickname ?? string.Empty);
     if (nicknameBytes.Length == 0 || nicknameBytes.Length > 128)
       throw new InvalidDataException("Direct player nicknames must contain 1–128 UTF-8 bytes.");
-    using (FastBufferWriter writer = new FastBufferWriter(nicknameBytes.Length + 2 * sizeof(int), Allocator.Temp))
+    ulong sourceClientId = directNetworkManager.IsServer
+      ? PhotonNetwork.GetDirectClientId(playerId)
+        ?? throw new InvalidOperationException($"Player {playerId} has no direct client mapping.")
+      : directNetworkManager.LocalClientId;
+    using (FastBufferWriter writer = new FastBufferWriter(nicknameBytes.Length + sizeof(int) * 2 + sizeof(ulong), Allocator.Temp))
     {
       writer.WriteValueSafe(playerId);
+      writer.WriteValueSafe(sourceClientId);
       writer.WriteValueSafe(nicknameBytes.Length);
       writer.WriteBytesSafe(nicknameBytes);
       directNetworkManager.CustomMessagingManager.SendNamedMessage(
@@ -699,6 +748,7 @@ public class NetworkingController : Photon.PunBehaviour
     try
     {
       reader.ReadValueSafe(out int playerId);
+      reader.ReadValueSafe(out ulong sourceClientId);
       reader.ReadValueSafe(out int nicknameLength);
       if (nicknameLength <= 0 || nicknameLength > 128) throw new InvalidDataException("Invalid direct player nickname length.");
       byte[] nicknameBytes = new byte[nicknameLength];
@@ -709,23 +759,32 @@ public class NetworkingController : Photon.PunBehaviour
       if (directNetworkManager.IsServer)
       {
         if (senderClientId == directNetworkManager.LocalClientId
-          || playerId != checked((int)senderClientId + 1)
-          || playerId > PhotonNetwork.MaximumDirectPlayers) return;
+          || playerId != PhotonNetwork.GetDirectPlayerId(senderClientId)
+          || sourceClientId != senderClientId)
+          throw new InvalidDataException("Direct player identity did not match its assigned transport client.");
         PhotonNetwork.SetDirectPeerName(playerId, nickname);
         if (kickedPlayerNickNames.Contains(nickname))
         {
+          PhotonNetwork.ForgetDirectPeerName(playerId);
           KickPlayer(PhotonNetwork.FindPlayer(playerId));
           return;
         }
+        directRpcRouter.NotifyServerPlayerConnected(PhotonNetwork.FindPlayer(playerId));
         foreach (ulong clientId in directNetworkManager.ConnectedClientsIds)
           if (clientId != directNetworkManager.LocalClientId && clientId != senderClientId)
             SendDirectPlayerIdentity(clientId, playerId, nickname);
       }
-      else if (senderClientId == NetworkManager.ServerClientId
-        && playerId > 0 && playerId <= PhotonNetwork.MaximumDirectPlayers)
+      else if (senderClientId == NetworkManager.ServerClientId)
       {
+        if (playerId <= 0 || playerId > PhotonNetwork.MaximumDirectPlayers
+          || playerId == PhotonNetwork.player.ID
+          || sourceClientId == directNetworkManager.LocalClientId
+          || (playerId == 1) != (sourceClientId == NetworkManager.ServerClientId))
+          throw new InvalidDataException("Host sent an invalid direct player identity.");
         PhotonNetwork.SetDirectPeerName(playerId, nickname);
-        PhotonNetwork.RegisterDirectPeer(playerId);
+        if (!PhotonNetwork.RegisterDirectPeer(playerId, sourceClientId)
+          && PhotonNetwork.GetDirectPlayerId(sourceClientId) != playerId)
+          throw new InvalidDataException("Host reused a direct player ID for a different transport client.");
       }
     }
     catch (Exception e)
@@ -735,16 +794,19 @@ public class NetworkingController : Photon.PunBehaviour
         directNetworkManager.DisconnectClient(senderClientId);
     }
   }
+
   void OnDirectPlayerInitRequest(ulong senderClientId, FastBufferReader reader)
   {
     if (directNetworkManager == null || !directNetworkManager.IsServer || senderClientId == directNetworkManager.LocalClientId) return;
     try
     {
       reader.ReadValueSafe(out int playerId);
-      if (playerId != checked((int)senderClientId + 1)
-        || playerId > PhotonNetwork.MaximumDirectPlayers
+      if (playerId <= 1 || playerId > PhotonNetwork.MaximumDirectPlayers
+        || playerId != PhotonNetwork.GetDirectPlayerId(senderClientId)
+        || !PhotonNetwork.HasDirectPlayerIdentity(playerId)
         || !directWorldReady
         || !directInitResponseClients.Add(senderClientId)) return;
+      directRpcRouter.NotifyServerPlayerConnected(PhotonNetwork.FindPlayer(playerId));
 
       foreach (PhotonPlayer connectedPlayer in PhotonNetwork.playerList)
         if (connectedPlayer.ID != playerId)
@@ -761,7 +823,7 @@ public class NetworkingController : Photon.PunBehaviour
 
   IEnumerator RequestDirectHostInitRoutine()
   {
-    SendDirectPlayerIdentity(NetworkManager.ServerClientId, PhotonNetwork.player.ID, PhotonNetwork.player.NickName);
+
     while (!receivedPlayerInitPayload)
     {
       if (directNetworkManager == null || !directNetworkManager.IsConnectedClient)
@@ -789,7 +851,8 @@ public class NetworkingController : Photon.PunBehaviour
       reader.ReadValueSafe(out int viewId);
       Vector3 position = ReadDirectVector3(ref reader);
       Quaternion rotation = ReadDirectQuaternion(ref reader);
-      if (playerId != checked((int)senderClientId + 1) || !IsDirectAvatarViewIdValid(playerId, viewId)
+      if (playerId != PhotonNetwork.GetDirectPlayerId(senderClientId)
+        || !IsDirectAvatarViewIdValid(playerId, viewId)
         || !IsFinite(position) || !IsFinite(rotation)) return;
 
       UserBody localBody = localUserInstance != null ? localUserInstance.GetComponent<UserBody>() : null;
@@ -919,8 +982,14 @@ public class NetworkingController : Photon.PunBehaviour
       Quaternion rotation = ReadDirectQuaternion(ref reader);
       if (playerId == PhotonNetwork.player.ID || !IsDirectAvatarViewIdValid(playerId, viewId)
         || !IsFinite(position) || !IsFinite(rotation)) return;
-      PhotonNetwork.RegisterDirectPeer(playerId);
+      ulong? peerClientId = PhotonNetwork.GetDirectClientId(playerId);
+      if (!peerClientId.HasValue)
+        throw new InvalidDataException($"Direct player {playerId} has no transport mapping.");
+      if (!PhotonNetwork.RegisterDirectPeer(playerId, peerClientId.Value)
+        && PhotonNetwork.GetDirectPlayerId(peerClientId.Value) != playerId)
+        throw new InvalidDataException($"Direct player {playerId} maps to a different transport client.");
       SpawnDirectRemotePlayer(playerId, viewId, position, rotation);
+      return;
     }
     catch (Exception e) { Util.LogError($"Invalid direct player spawn: {e}"); }
   }
@@ -945,8 +1014,13 @@ public class NetworkingController : Photon.PunBehaviour
     GameObject instance = Instantiate(userBodyPrefab.gameObject, position, rotation);
     UserBody body = instance.GetComponent<UserBody>();
     PhotonView view = instance.GetComponent<PhotonView>();
+#if !USE_PUN
+    view.SetViewId(viewId);
+    view.ApplyOwnership(playerId);
+#else
     view.viewID = viewId;
     view.ApplyOwnership(playerId);
+#endif
     body.Setup(false);
     body.SetDirectPose(position, rotation);
     directRemoteBodies[playerId] = body;
@@ -995,9 +1069,12 @@ public class NetworkingController : Photon.PunBehaviour
     if (directNetworkManager == null) return;
     if (directNetworkManager.IsServer && clientId != directNetworkManager.LocalClientId)
     {
-      int playerId = checked((int)clientId + 1);
+      int playerId = PhotonNetwork.GetDirectPlayerId(clientId);
+      if (playerId <= 1) return;
       directInitResponseClients.Remove(clientId);
       PhotonPlayer disconnectedPlayer = PhotonNetwork.FindPlayer(playerId);
+      if (directRpcRouter != null)
+        directRpcRouter.NotifyServerPlayerDisconnected(disconnectedPlayer);
       RemoveDirectRemotePlayer(playerId);
       BroadcastDirectPlayerDespawn(playerId);
       ReclaimDirectPlayerActors(playerId);
@@ -1005,6 +1082,8 @@ public class NetworkingController : Photon.PunBehaviour
       voosEngine.BroadcastMessage("PlayerLeft", message);
       Util.Log($"Direct player {playerId} disconnected.");
       PhotonNetwork.ForgetDirectPeerName(playerId);
+      PhotonNetwork.ReleaseDirectPlayerId(clientId);
+      PhotonNetwork.SetDirectSession(directNetworkManager, GetLocalDirectPlayerName());
       return;
     }
 
@@ -1299,6 +1378,7 @@ public class NetworkingController : Photon.PunBehaviour
       }
       if (registeredDirectPlayerHandlers && directNetworkManager.CustomMessagingManager != null)
       {
+        directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerAssignmentMessageName);
         directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerReadyMessageName);
         directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerSpawnMessageName);
         directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerDespawnMessageName);
@@ -1470,7 +1550,7 @@ public class NetworkingController : Photon.PunBehaviour
         if (directNetworkManager != null && directNetworkManager.IsListening)
           PhotonNetwork.SetDirectSession(directNetworkManager, GetLocalDirectPlayerName());
         PhotonView userView = localUserBody.GetComponent<PhotonView>();
-        userView.viewID = PhotonNetwork.AllocateViewID();
+        userView.SetViewId(PhotonNetwork.AllocateViewID());
         userView.ApplyOwnership(PhotonNetwork.player.ID);
       }
 #endif

@@ -405,7 +405,7 @@ public class MultiplayerMenu : ThumbnailMenu
       string title = status == "Public directory connected."
         ? "No public games online"
         : "Public list unavailable";
-      AddPublicStatusThumbnail(title, status + " Public hosts must forward UDP port 7777.");
+      AddPublicStatusThumbnail(title, status + " Automatic UDP port mapping is attempted; if it fails, forward UDP port 7777 and allow Game Builder through your firewall.");
     }
     else
     {

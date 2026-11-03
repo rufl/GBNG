@@ -1714,9 +1714,12 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
     VoosActor actor = GameObject.Instantiate(actorPrefab, position, rotation).GetComponent<VoosActor>();
     Debug.Assert(behaviorSystem != null, "CreateLocalActor: behaviorSystem is null?");
     actor.Initialize(scene, this, assetCache, behaviorSystem);
-    actor.reliablePhotonView.viewID = viewId;
 #if !USE_PUN
+    actor.reliablePhotonView.SetViewId(viewId);
+    PhotonNetwork.RegisterViewID(viewId);
     actor.reliablePhotonView.ApplyOwnership(PhotonNetwork.player.ID);
+#else
+    actor.reliablePhotonView.viewID = viewId;
 #endif
     globalUnreliableData.AddActor(actor);
     return actor;

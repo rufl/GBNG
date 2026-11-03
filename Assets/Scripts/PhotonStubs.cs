@@ -119,6 +119,9 @@ public static class PhotonNetwork
   internal const int MaximumDirectPlayers = short.MaxValue / DirectViewIdBlockSize + 1;
   static readonly Dictionary<int, PhotonPlayer> directPeers = new Dictionary<int, PhotonPlayer>();
   static readonly Dictionary<int, string> directPeerNames = new Dictionary<int, string>();
+  static readonly Dictionary<ulong, int> directPlayerIdsByClient = new Dictionary<ulong, int>();
+  static readonly Dictionary<int, ulong> directClientIdsByPlayer = new Dictionary<int, ulong>();
+  static readonly HashSet<int> directPlayersWithIdentity = new HashSet<int>();
 
   public static PhotonPlayer masterClient { get { return FindPlayer(1); } }
 
@@ -157,11 +160,22 @@ public static class PhotonNetwork
     reusableViewIds.Push(viewId);
   }
 
+  // Loaded actors in this player's view-ID block remain reserved after a reconnect.
+  internal static void RegisterViewID(int viewId)
+  {
+    if (viewId <= 0) return;
+    int firstViewId = Math.Max(0, player.ID - 1) * DirectViewIdBlockSize;
+    int maximumViewId = Math.Min(short.MaxValue, firstViewId + DirectViewIdBlockSize);
+    if (viewId > firstViewId && viewId <= maximumViewId) allocatedViewIds.Add(viewId);
+  }
+
   internal static int AllocateViewID()
   {
-    if (reusableViewIds.Count > 0)
+    // A recycled player slot can still own persistent objects in the world.
+    while (reusableViewIds.Count > 0)
     {
       int reusableViewId = reusableViewIds.Pop();
+      if (PhotonView.IsViewIdInUse(reusableViewId)) continue;
       allocatedViewIds.Add(reusableViewId);
       return reusableViewId;
     }
@@ -169,12 +183,14 @@ public static class PhotonNetwork
     int ownerBlock = Math.Max(0, player.ID - 1);
     int firstViewId = ownerBlock * DirectViewIdBlockSize;
     int maximumCount = Math.Min(DirectViewIdBlockSize, short.MaxValue - firstViewId);
-    if (allocatedViewCount >= maximumCount)
-      throw new InvalidOperationException("This direct-host session has exceeded this player's actor view ID capacity.");
-
-    int viewId = firstViewId + ++allocatedViewCount;
-    allocatedViewIds.Add(viewId);
-    return viewId;
+    while (allocatedViewCount < maximumCount)
+    {
+      int viewId = firstViewId + ++allocatedViewCount;
+      if (allocatedViewIds.Contains(viewId) || PhotonView.IsViewIdInUse(viewId)) continue;
+      allocatedViewIds.Add(viewId);
+      return viewId;
+    }
+    throw new InvalidOperationException("This direct-host session has exceeded this player's actor view ID capacity.");
   }
 
   internal static void ReleaseIdOfView(PhotonView reliablePhotonView) { }
@@ -185,7 +201,19 @@ public static class PhotonNetwork
   internal static void SetDirectSession(NetworkManager manager, string localNickName)
   {
     if (manager == null || !manager.IsListening) return;
-    int localId = checked((int)manager.LocalClientId + 1);
+    ulong localClientId = manager.LocalClientId;
+    int localId;
+    if (manager.IsServer)
+    {
+      localId = 1;
+      if (!MapDirectPlayerId(localId, localClientId))
+        throw new InvalidOperationException("The host player ID is already assigned to another client.");
+    }
+    else if (!directPlayerIdsByClient.TryGetValue(localClientId, out localId))
+    {
+      return;
+    }
+
     if (directLocalId != localId)
     {
       allocatedViewCount = 0;
@@ -197,10 +225,11 @@ public static class PhotonNetwork
     player = new PhotonPlayer
     {
       ID = localId,
-      DirectClientId = manager.LocalClientId,
+      DirectClientId = localClientId,
       NickName = nickname
     };
     directPeerNames[localId] = nickname;
+    directPlayersWithIdentity.Add(localId);
     isMasterClient = manager.IsServer;
     connected = true;
     inRoom = true;
@@ -211,7 +240,7 @@ public static class PhotonNetwork
     {
       foreach (ulong clientId in manager.ConnectedClientsIds)
       {
-        int id = checked((int)clientId + 1);
+        if (!directPlayerIdsByClient.TryGetValue(clientId, out int id)) continue;
         players.Add(id == localId ? player : new PhotonPlayer
         {
           ID = id,
@@ -222,6 +251,7 @@ public static class PhotonNetwork
     }
     else
     {
+      MapDirectPlayerId(1, NetworkManager.ServerClientId);
       if (directPeers.TryGetValue(1, out PhotonPlayer hostPlayer))
         players.Add(hostPlayer);
       else
@@ -242,6 +272,62 @@ public static class PhotonNetwork
     otherPlayers = others.ToArray();
   }
 
+  static bool MapDirectPlayerId(int playerId, ulong clientId)
+  {
+    if (playerId <= 0 || playerId > MaximumDirectPlayers) return false;
+    if (directPlayerIdsByClient.TryGetValue(clientId, out int mappedPlayerId) && mappedPlayerId != playerId) return false;
+    if (directClientIdsByPlayer.TryGetValue(playerId, out ulong mappedClientId) && mappedClientId != clientId) return false;
+    directPlayerIdsByClient[clientId] = playerId;
+    directClientIdsByPlayer[playerId] = clientId;
+    return true;
+  }
+
+  internal static bool TryAssignDirectPlayerId(ulong clientId, out int playerId)
+  {
+    if (directPlayerIdsByClient.TryGetValue(clientId, out playerId))
+      return playerId > 1;
+    for (int candidate = 2; candidate <= MaximumDirectPlayers; candidate++)
+    {
+      if (directClientIdsByPlayer.ContainsKey(candidate)) continue;
+      if (!MapDirectPlayerId(candidate, clientId)) continue;
+      directPeerNames[candidate] = "Player" + candidate;
+      playerId = candidate;
+      return true;
+    }
+    playerId = 0;
+    return false;
+  }
+
+  internal static bool AssignDirectLocalPlayerId(NetworkManager manager, int playerId)
+  {
+    if (manager == null || !manager.IsListening || manager.IsServer
+      || playerId <= 1 || playerId > MaximumDirectPlayers
+      || (directLocalId > 1 && directLocalId != playerId)
+      || !MapDirectPlayerId(playerId, manager.LocalClientId)) return false;
+    if (directLocalId != playerId)
+    {
+      allocatedViewCount = 0;
+      reusableViewIds.Clear();
+      allocatedViewIds.Clear();
+      directLocalId = playerId;
+    }
+    return true;
+  }
+
+  internal static int GetDirectPlayerId(ulong clientId)
+  {
+    return directPlayerIdsByClient.TryGetValue(clientId, out int playerId) ? playerId : 0;
+  }
+
+  internal static int ReleaseDirectPlayerId(ulong clientId)
+  {
+    if (!directPlayerIdsByClient.TryGetValue(clientId, out int playerId) || playerId <= 1) return 0;
+    directPlayerIdsByClient.Remove(clientId);
+    directClientIdsByPlayer.Remove(playerId);
+    directPlayersWithIdentity.Remove(playerId);
+    return playerId;
+  }
+
   internal static void ClearDirectSession()
   {
     connected = false;
@@ -257,6 +343,9 @@ public static class PhotonNetwork
     directLocalId = 1;
     directPeers.Clear();
     directPeerNames.Clear();
+    directPlayerIdsByClient.Clear();
+    directClientIdsByPlayer.Clear();
+    directPlayersWithIdentity.Clear();
   }
   static string GetDirectPeerName(int playerId, string fallback)
   {
@@ -271,27 +360,59 @@ public static class PhotonNetwork
     nickname = nickname.Trim();
     if (nickname.Length > 32) nickname = nickname.Substring(0, 32);
     directPeerNames[playerId] = nickname;
+    directPlayersWithIdentity.Add(playerId);
     if (player.ID == playerId) player.NickName = nickname;
     if (directPeers.TryGetValue(playerId, out PhotonPlayer directPeer)) directPeer.NickName = nickname;
     foreach (PhotonPlayer current in playerList)
       if (current.ID == playerId) current.NickName = nickname;
   }
+  internal static bool HasDirectPlayerIdentity(int playerId)
+  {
+    return directPlayersWithIdentity.Contains(playerId);
+  }
   internal static void ResetDirectPeers()
   {
+    NetworkManager manager = NetworkManager.Singleton;
+    int localId = 0;
+    string localName = null;
+    bool preserveLocalAssignment = manager != null && manager.IsListening && !manager.IsServer
+      && directPlayerIdsByClient.TryGetValue(manager.LocalClientId, out localId);
+    if (preserveLocalAssignment)
+      directPeerNames.TryGetValue(localId, out localName);
+
     directPeers.Clear();
+    directPeerNames.Clear();
+    directPlayerIdsByClient.Clear();
+    directClientIdsByPlayer.Clear();
+    directPlayersWithIdentity.Clear();
+    directLocalId = preserveLocalAssignment ? localId : 0;
+    if (preserveLocalAssignment)
+    {
+      MapDirectPlayerId(localId, manager.LocalClientId);
+      MapDirectPlayerId(1, NetworkManager.ServerClientId);
+      directPeerNames[localId] = string.IsNullOrWhiteSpace(localName) ? "Player" + localId : localName;
+      directPlayersWithIdentity.Add(localId);
+    }
+    connected = false;
+    inRoom = false;
+    isMasterClient = false;
+    offlineMode = false;
   }
 
   internal static void ForgetDirectPeerName(int playerId)
   {
-    if (playerId != player.ID) directPeerNames.Remove(playerId);
+    if (playerId == player.ID) return;
+    directPeerNames.Remove(playerId);
+    directPlayersWithIdentity.Remove(playerId);
   }
-  internal static bool RegisterDirectPeer(int playerId)
+  internal static bool RegisterDirectPeer(int playerId, ulong clientId)
   {
-    if (playerId <= 0 || playerId == player.ID || directPeers.ContainsKey(playerId)) return false;
+    if (playerId <= 0 || playerId > MaximumDirectPlayers || playerId == player.ID
+      || directPeers.ContainsKey(playerId) || !MapDirectPlayerId(playerId, clientId)) return false;
     PhotonPlayer peer = new PhotonPlayer
     {
       ID = playerId,
-      DirectClientId = (ulong)(playerId - 1),
+      DirectClientId = clientId,
       NickName = GetDirectPeerName(playerId, playerId == 1 ? "Host" : "Player" + playerId)
     };
     directPeers.Add(playerId, peer);
@@ -307,34 +428,42 @@ public static class PhotonNetwork
     if (!directPeers.TryGetValue(playerId, out PhotonPlayer peer)) return false;
     directPeers.Remove(playerId);
     directPeerNames.Remove(playerId);
+    directPlayersWithIdentity.Remove(playerId);
+    directPlayerIdsByClient.Remove(peer.DirectClientId);
+    directClientIdsByPlayer.Remove(playerId);
     foreach (Photon.PunBehaviour behaviour in UnityEngine.Object.FindObjectsOfType<Photon.PunBehaviour>(true))
       if (!(behaviour is NetworkingController)) behaviour.OnPhotonPlayerDisconnected(peer);
     return true;
   }
+
 
   internal static PhotonPlayer FindPlayer(int playerId)
   {
     foreach (PhotonPlayer candidate in playerList) if (candidate.ID == playerId) return candidate;
     if (player.ID == playerId) return player;
     if (directPeers.TryGetValue(playerId, out PhotonPlayer directPeer)) return directPeer;
-    return playerId > 0 ? new PhotonPlayer { ID = playerId, NickName = GetDirectPeerName(playerId, playerId == 1 ? "Host" : "Player" + playerId), DirectClientId = (ulong)(playerId - 1) } : null;
+    ulong clientId = directClientIdsByPlayer.TryGetValue(playerId, out ulong mappedClientId)
+      ? mappedClientId
+      : NetworkManager.ServerClientId;
+    return playerId > 0 ? new PhotonPlayer
+    {
+      ID = playerId,
+      NickName = GetDirectPeerName(playerId, playerId == 1 ? "Host" : "Player" + playerId),
+      DirectClientId = clientId
+    } : null;
   }
 
   internal static PhotonPlayer GetDirectPlayer(ulong clientId)
   {
-    return FindPlayer(checked((int)clientId + 1))
-      ?? new PhotonPlayer { ID = checked((int)clientId + 1), DirectClientId = clientId, NickName = GetDirectPeerName(checked((int)clientId + 1), "Player" + (clientId + 1)) };
+    int playerId = GetDirectPlayerId(clientId);
+    return playerId > 0 ? FindPlayer(playerId) : null;
   }
 
   internal static ulong? GetDirectClientId(int playerId)
   {
-    if (playerId <= 0) return null;
-    ulong clientId = (ulong)(playerId - 1);
     NetworkManager manager = NetworkManager.Singleton;
-    if (manager == null || !manager.IsListening) return null;
-    if (clientId == manager.LocalClientId) return clientId;
-    if (manager.IsServer && manager.ConnectedClientsIds.Contains(clientId)) return clientId;
-    return clientId == NetworkManager.ServerClientId ? clientId : (ulong?)null;
+    if (playerId <= 0 || manager == null || !manager.IsListening) return null;
+    return directClientIdsByPlayer.TryGetValue(playerId, out ulong clientId) ? clientId : (ulong?)null;
   }
 
   internal static void DeliverDirectEvent(byte eventCode, object content, int senderId)

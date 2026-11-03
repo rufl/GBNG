@@ -250,9 +250,11 @@ router-specific forwarding are untested.
 
 Direct-host mode implements the core player-hosted flow, not every PUN/cloud
 feature. Host migration is unavailable. The transport accepts at most 16
-players (host plus 15 clients) and currently requires IPv4. Direct connections
-have no application-level authentication or encryption; share the host address
-only with trusted players. Manual address joins work without the directory.
+players (host plus 15 clients); the host assigns reusable player IDs so
+disconnect/rejoin cycles do not exhaust player slots. It currently requires
+IPv4. Direct connections have no application-level authentication or encryption;
+share the host address only with trusted players. Manual address joins work
+without the directory.
 
 
 * [Crosstales File Browser](https://assetstore.unity.com/packages/tools/utilities/file-browser-standalone-98716) - Enables the system file browser UI for local disk import/export features
