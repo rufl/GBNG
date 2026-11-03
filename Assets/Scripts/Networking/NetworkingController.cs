@@ -485,6 +485,7 @@ public class NetworkingController : Photon.PunBehaviour
       OnFatalError(e.ToString());
     }
 #else
+    EnsureDirectNetworkManager();
     GameBuilderApplication.GameOptions options = GameBuilderApplication.CurrentGameOptions;
     if (!options.playOptions.isMultiplayer)
     {
@@ -756,6 +757,7 @@ public class NetworkingController : Photon.PunBehaviour
 
   IEnumerator RequestDirectHostInitRoutine()
   {
+    SendDirectPlayerIdentity(NetworkManager.ServerClientId, PhotonNetwork.player.ID, PhotonNetwork.player.NickName);
     while (!receivedPlayerInitPayload)
     {
       if (directNetworkManager == null || !directNetworkManager.IsConnectedClient)
@@ -990,6 +992,7 @@ public class NetworkingController : Photon.PunBehaviour
     if (directNetworkManager.IsServer && clientId != directNetworkManager.LocalClientId)
     {
       int playerId = checked((int)clientId + 1);
+      directInitResponseClients.Remove(clientId);
       PhotonPlayer disconnectedPlayer = PhotonNetwork.FindPlayer(playerId);
       RemoveDirectRemotePlayer(playerId);
       BroadcastDirectPlayerDespawn(playerId);
@@ -997,6 +1000,7 @@ public class NetworkingController : Photon.PunBehaviour
       PlayerLeftMessage message = new PlayerLeftMessage { id = playerId, nickName = disconnectedPlayer.NickName };
       voosEngine.BroadcastMessage("PlayerLeft", message);
       Util.Log($"Direct player {playerId} disconnected.");
+      PhotonNetwork.ForgetDirectPeerName(playerId);
       return;
     }
 
@@ -1668,8 +1672,9 @@ public class NetworkingController : Photon.PunBehaviour
 #endif
 
   [PunRPC]
-  void KickRPC()
+  void KickRPC(PhotonMessageInfo info)
   {
+    if (info.sender == null || PhotonNetwork.masterClient == null || info.sender.ID != PhotonNetwork.masterClient.ID) return;
     wasDirectlyKicked = true;
     PhotonNetwork.Disconnect();
     popups.Show("You were kicked.", "Back to Main Menu", () =>
@@ -1689,8 +1694,9 @@ public class NetworkingController : Photon.PunBehaviour
     scenes.LoadMainSceneAsync(new GameBuilderApplication.GameOptions { playOptions = new GameBuilderApplication.PlayOptions { isMultiplayer = true }, joinCode = joinCode });
   }
   [PunRPC]
-  void SwitchDirectMapRPC()
+  void SwitchDirectMapRPC(PhotonMessageInfo info)
   {
+    if (info.sender == null || PhotonNetwork.masterClient == null || info.sender.ID != PhotonNetwork.masterClient.ID) return;
 #if !USE_PUN
     if (directNetworkManager == null || directNetworkManager.IsServer || !directNetworkManager.IsListening) return;
     GameBuilderApplication.GameOptions currentOptions = GameBuilderApplication.CurrentGameOptions;
