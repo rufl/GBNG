@@ -1,6 +1,8 @@
 {
   "dependencies": {
     "com.donghok.meshimporter": "https://github.com/eastskykang/UnityMeshImporter.git#d3b2be29d6eec3a8a05799001acaa38c37e6a596",
+    "com.unity.netcode.gameobjects": "2.13.3",
+    "com.unity.transport": "2.6.0",
     "com.unity.postprocessing": "3.5.4",
     "com.unity.test-framework": "1.8.0",
     "com.unity.ugui": "2.6.0",

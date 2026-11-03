@@ -2721,7 +2721,6 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
 
   public void DeserializePlayerInitV2(VoosBinaryReader reader)
   {
-#if USE_PUN
     Debug.Assert(state == State.Uninit, "DeserializePlayerInitV2 called before init'd?");
     Debug.Assert(actorsByName.Count == 0, "There should be no actors before we're initialized!!");
 
@@ -2730,7 +2729,6 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
     for (int i = 0; i < numActors; i++)
     {
       int viewId = reader.ReadInt32();
-      Debug.AssertFormat(PhotonView.Find(viewId) == null, "View ID {0} that was given in init payload was already taken locally by game object: {1}", viewId, PhotonView.Find(viewId)?.gameObject?.name);
       var state = new VoosActor.PersistedState();
       state.Deserialize(reader);
       VoosActor actor = CreateLocalActor(state.position, state.rotation, viewId);
@@ -2746,7 +2744,6 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
 
     // Intentionally call the RPC directly. To avoid triggering unnecesary RPCs to other clients (who already have the right value).
     SetIsRunningRPC(startRunning);
-#endif
   }
 
   void OnApplicationQuit()

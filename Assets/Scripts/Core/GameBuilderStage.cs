@@ -438,6 +438,8 @@ public class GameBuilderStage : MonoBehaviour
 
   static int[] PossibleGroundTintShaderProperties = new int[] {
     Shader.PropertyToID("_ColorTint"),
+    Shader.PropertyToID("_BaseColor"),
+    Shader.PropertyToID("_BaseColorTint"),
     Shader.PropertyToID("_Color"),
     Shader.PropertyToID("_MainTint")
   };
@@ -452,7 +454,10 @@ public class GameBuilderStage : MonoBehaviour
         return;
       }
     }
-    throw new System.Exception($"Ground material {ground.name} does not have a tint shader property that we know about.");
+
+    string shaderName = ground.shader == null ? "<missing shader>" : ground.shader.name;
+    Debug.LogWarning(
+      $"Ground material {ground.name} uses shader '{shaderName}' without a supported tint property; keeping its authored color.");
   }
 
   // TODO Should rename these generated functions to "OnGroundColorChanged"

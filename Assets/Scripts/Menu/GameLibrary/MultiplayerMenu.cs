@@ -316,6 +316,101 @@ public class MultiplayerMenu : ThumbnailMenu
     joinMultiplayerPopup.Deactivate();
   }
 #else
+  GameBuilderSceneController scenes;
+  LoadingScreen loadingScreen;
+  public static string LastJoinedRoomPrefsKey = "LAST_DIRECT_HOST_ADDRESS";
+
+  public override void Setup()
+  {
+    base.Setup();
+    Util.FindIfNotSet(this, ref scenes);
+    Util.FindIfNotSet(this, ref loadingScreen);
+    joinCodeButton.onClick.AddListener(JoinMultiplayerPopup);
+    joinMultiplayerPopup.confirmWithInputEvent = JoinMultiplayer;
+    joinMultiplayerPopup.cancelEvent = CancelMultiplayerPopup;
+    refreshButton.gameObject.SetActive(false);
+
+    TMPro.TMP_Text joinLabel = joinCodeButton.GetComponentInChildren<TMPro.TMP_Text>(true);
+    if (joinLabel != null)
+    {
+      joinLabel.text = "Join by IP";
+    }
+
+    SetOpenEvent(CreateThumbnails);
+    AddCategory(null, "");
+  }
+
+  void CreateThumbnails()
+  {
+    GameThumbnail thumbnail = Instantiate(gameThumbnailPrefab).GetComponent<GameThumbnail>();
+    thumbnail.SetThumbnail(newGameTexture);
+    thumbnail.SetGameSource(GameDetail.GameSource.Local);
+    thumbnail.SetName("Host a game");
+    thumbnail.OnClick = OpenNew;
+    thumbnail.GetWriteTime = () => System.DateTime.Today;
+    thumbnail.GetDescription = () => "Host a free direct-connect multiplayer game";
+    thumbnail.GetPlayerCount = () => 1;
+    AddThumbnail(thumbnail);
+  }
+
+  void OpenNew()
+  {
+    var options = new GameBuilderApplication.GameOptions
+    {
+      playOptions = new GameBuilderApplication.PlayOptions { isMultiplayer = true }
+    };
+    loadingScreen.ShowAndDo(() => scenes.RestartAndLoadMinimalScene(options));
+  }
+
+  public void JoinMultiplayerPopup()
+  {
+    joinMultiplayerPopup.Activate();
+    joinMultiplayerPopupBackground.SetActive(true);
+    joinMultiplayerPopup.SetInputFieldText(PlayerPrefs.GetString(
+      LastJoinedRoomPrefsKey,
+      $"127.0.0.1:{NetworkingController.DefaultDirectHostPort}"));
+  }
+
+  void JoinMultiplayer(string addressAndPort)
+  {
+    addressAndPort = addressAndPort.Trim();
+    int separator = addressAndPort.LastIndexOf(':');
+    string address = separator < 0 ? addressAndPort : addressAndPort.Substring(0, separator);
+    ushort port = NetworkingController.DefaultDirectHostPort;
+
+    if (separator >= 0
+      && (!ushort.TryParse(addressAndPort.Substring(separator + 1), out port) || port == 0))
+    {
+      Util.LogError($"Invalid direct-host port in '{addressAndPort}'.");
+      return;
+    }
+
+    System.Net.IPAddress parsedAddress;
+    if (!System.Net.IPAddress.TryParse(address, out parsedAddress)
+      || parsedAddress.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
+    {
+      Util.LogError($"Enter a valid IPv4 address, optionally followed by :port: '{addressAndPort}'.");
+      return;
+    }
+
+    PlayerPrefs.SetString(LastJoinedRoomPrefsKey, addressAndPort);
+    PlayerPrefs.Save();
+    CancelMultiplayerPopup();
+    var options = new GameBuilderApplication.GameOptions
+    {
+      joinAddress = address,
+      joinPort = port,
+      playOptions = new GameBuilderApplication.PlayOptions { isMultiplayer = true }
+    };
+    loadingScreen.ShowAndDo(() => scenes.LoadMainSceneAsync(options));
+  }
+
+  public void CancelMultiplayerPopup()
+  {
+    joinMultiplayerPopupBackground.SetActive(false);
+    joinMultiplayerPopup.Deactivate();
+  }
+
   protected override void ChangeSort(Direction direction)
   {
   }

@@ -162,41 +162,23 @@ can crash; Unity scales the existing texture if the window layout later changes.
 
 ## Optional integrations available for free
 
-* [Photon Unity Networking](https://assetstore.unity.com/packages/tools/network/photon-unity-networking-classic-free-1786) - Enables multiplayer and collaborative-editing
-    - NOTE: Because PUN integration is complex, we recommend you start with a
-      *fresh* checkout of the codebase before following these steps. This
-      reduces the likelihood of prefabs losing important property values after
-      being edited without PUN.
-    - First run the project as-is, freshly checked out, just to make sure it's working.
-    - Don't forget to confirm TMPro's import dialog (import TMP Essentials).
-    - Import the plugin from the Asset Store link above.
-    - Define the directive `USE_PUN`
-    - *Close* Unity before the next step
-    - Run `bash tools/integrations/setup-photon.sh` from the repository root.
-    - Sign up for a PUN account (https://www.photonengine.com/)
-    - In the PUN website, create a new application (type: *Photon PUN*)
-    - Copy your new application's *AppId*.
-    - Open the Unity project again and wait for importing to finish
-    - Enter your AppId if prompted, but if not, go to the next step (the dialog
-      might freeze while Unity imports assets, but don't worry, just wait until
-      it finishes).
-    - Finally, inspect the "PhotonServerSettings" asset and change the following:
-        - "Hosting" to "Best Region"
-        - "Regions" to "Everything"
-        - Paste your AppId into the "AppId" field
+### Multiplayer: direct-host connections
 
-    - Making sure it's all working:
-      - After the above steps, make a build (`Game Builder | Build`).
-      - Run the build and create a private multiplayer game (`New Project | Empty | Private MP`).
-      - Run another instance (using the same build copy is fine) and join that game (`Multiplayer | Use Join Code`).
-      - Confirm that both "players" can run around as their robots (red and green), and that movements are seen by both.
-      - Confirm that when one player scales an actor (like the text box), the other player sees the size change as well.
-      - If these don't work, try this: In Unity's project window, inspect the
-        Actor prefab. In its PhotonView component, does it have
-        "ActorNetworking" as one of its "Observed components"? If it does not,
-        then something went wrong, and you should start over with a fresh
-        checkout.
+The Unity path uses Unity Netcode for GameObjects and Unity Transport; neither
+Photon PUN nor a paid Unity service is required.
 
+- From the splash screen, open **Multiplayer** and choose **Host a game**.
+- Other players choose **Join by IP** and enter the host's IPv4 address, with
+  `:7777` optional. The in-game multiplayer panel shows the host address.
+- The host listens on UDP port `7777`. For Internet play, the host must allow
+  this port through the operating-system firewall and forward UDP `7777` on the
+  router. On a LAN, use the host's LAN address.
+- This is direct-connect only: no public room browser, Relay, matchmaking, or
+  NAT traversal service.
+
+Current limitation: joining transfers the initial project state (up to 400 KB)
+once. Ongoing actor, tool, and player-state replication is not yet migrated;
+connected instances do not yet share live gameplay changes.
 * [Crosstales File Browser](https://assetstore.unity.com/packages/tools/utilities/file-browser-standalone-98716) - Enables the system file browser UI for local disk import/export features
 
     - Import the plugin from the Asset Store link above.

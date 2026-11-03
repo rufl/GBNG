@@ -175,15 +175,7 @@ public class HeaderMenu : MonoBehaviour
     multiplayerGameMenu.GetJoinMultiplayerButton().onClick.AddListener(ShowMultiplayerPopup);
 
     windowHeaderUI.openButton.onClick.AddListener(OnOpenButton);
-#if USE_PUN
-
     windowHeaderUI.multiplayerToggle.onValueChanged.AddListener(multiplayerGameMenu.SetOpen);
-#else
-    windowHeaderUI.multiplayerToggle.gameObject.SetActive(false);
-    RectTransform playHeaderBGRect = windowHeaderUI.playHeaderBackground.GetComponent<RectTransform>();
-    float bgRectX = playHeaderBGRect.sizeDelta.x;
-    playHeaderBGRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, bgRectX - 50);
-#endif
 
     windowHeaderUI.systemToggle.onValueChanged.AddListener(RequestSystemMenu);
     windowHeaderUI.saveToggle.onValueChanged.AddListener(SetOpenSaveOrWorkshop);
@@ -446,9 +438,7 @@ public class HeaderMenu : MonoBehaviour
 #endif
     ;
 
-#if USE_PUN
     windowHeaderUI.multiplayerToggle.isOn = multiplayerGameMenu.IsOpen();
-#endif
     if (editMain.ActorsEditable())
     {
       windowHeaderUI.cameraFocusToggle.isOn = editMain.GetCameraFollowingActor();
@@ -565,11 +555,9 @@ public class HeaderMenu : MonoBehaviour
       windowHeaderUI.saveToggle.GetComponent<RectTransform>());
 #endif
 
-#if USE_PUN
     AlignSettingsMenu(
       multiplayerGameMenu.GetComponent<RectTransform>(),
       windowHeaderUI.multiplayerToggle.GetComponent<RectTransform>());
-#endif
 
     AlignSettingsMenu(
       worldSettings.GetComponent<RectTransform>(),

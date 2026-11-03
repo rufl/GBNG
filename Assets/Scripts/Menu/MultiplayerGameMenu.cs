@@ -47,7 +47,8 @@ public class MultiplayerGameMenu : MonoBehaviour
 
     multiplayerMenuUI.copyCodeButton.onClick.AddListener(OnCopyClicked);
     multiplayerMenuUI.closeButton.onClick.AddListener(Close);
-    multiplayerMenuUI.joinCodeField.text = PhotonNetwork.room.Name;
+    multiplayerMenuUI.joinCodeField.text = networkingController.GetJoinedRoomName();
+    multiplayerMenuUI.copyButtonTextField.text = "Copy address";
 
     multiplayerMenuUI.hideCodeButton.onClick.AddListener(() => showingJoinCode = false);
     multiplayerMenuUI.showCodeButton.onClick.AddListener(() => showingJoinCode = true);
@@ -142,6 +143,8 @@ public class MultiplayerGameMenu : MonoBehaviour
       return;
     }
 
+    multiplayerMenuUI.joinCodeField.text = networkingController.GetJoinedRoomName();
+
     RefreshUserList();
 
     if (playerControlsManager.GetMyPlayerNumber() == 0)
@@ -209,7 +212,7 @@ public class MultiplayerGameMenu : MonoBehaviour
 
   IEnumerator OnCopyClickedRoutine()
   {
-    Util.CopyToUserClipboard(PhotonNetwork.room.Name);
+    Util.CopyToUserClipboard(networkingController.GetJoinedRoomName());
     multiplayerMenuUI.copyCodeButton.onClick.RemoveListener(OnCopyClicked);
     string orig = multiplayerMenuUI.copyButtonTextField.text;
     multiplayerMenuUI.copyButtonTextField.text = "Copied!";

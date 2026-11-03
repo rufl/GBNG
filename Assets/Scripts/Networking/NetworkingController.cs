@@ -20,6 +20,13 @@ using System.Collections;
 using System.Collections.Generic;
 using GameBuilder;
 using System.Text;
+using System.IO;
+using System.Net;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
+using Unity.Collections;
+using Unity.Netcode;
+using Unity.Netcode.Transports.UTP;
 
 // Based off of Photon's utility script.
 // TODO probably should rename this to just MainController...but also cordone off some of the networking-specific stuff into a new utility.
@@ -28,6 +35,11 @@ public class NetworkingController : Photon.PunBehaviour
   // From experiments, it seems like 490kb for that one RPC was a guaranteed
   // disconnect. So, let's stay under 400kb to be safe.
   static int MaximumPlayerInitKbs = 400;
+  public const ushort DefaultDirectHostPort = 7777;
+  const string DirectHostInitMessageName = "GB_DIRECT_HOST_INIT_V1";
+  NetworkManager directNetworkManager;
+  UnityTransport directTransport;
+  bool registeredDirectInitHandler;
 
   public static string SteamIdPlayerProperty = "SteamID";
   public static string SteamProfileNamePlayerProperty = "SteamProfileName";
@@ -123,12 +135,71 @@ public class NetworkingController : Photon.PunBehaviour
 
   public bool GetIsInMultiplayer()
   {
+#if USE_PUN
     return mode == Mode.Online && PhotonUtil.ActuallyConnected();
+#else
+    return mode == Mode.Online
+      && directNetworkManager != null
+      && directNetworkManager.IsConnectedClient;
+#endif
+  }
+
+  public bool IsDirectHost()
+  {
+#if USE_PUN
+    return PhotonNetwork.isMasterClient;
+#else
+    return directNetworkManager != null && directNetworkManager.IsHost;
+#endif
   }
 
   public string GetJoinedRoomName()
   {
+#if USE_PUN
     return PhotonNetwork.room.name;
+#else
+    GameBuilderApplication.GameOptions options = GameBuilderApplication.CurrentGameOptions;
+    if (!IsDirectHost())
+    {
+      return $"{options.joinAddress}:{(options.joinPort == 0 ? DefaultDirectHostPort : options.joinPort)}";
+    }
+
+    string fallback = "127.0.0.1";
+    foreach (NetworkInterface networkInterface in NetworkInterface.GetAllNetworkInterfaces())
+    {
+      if (networkInterface.OperationalStatus != OperationalStatus.Up)
+      {
+        continue;
+      }
+
+      IPInterfaceProperties properties = networkInterface.GetIPProperties();
+      bool hasGateway = properties.GatewayAddresses.Count > 0;
+      foreach (UnicastIPAddressInformation unicast in properties.UnicastAddresses)
+      {
+        IPAddress address = unicast.Address;
+        if (address.AddressFamily != AddressFamily.InterNetwork || IPAddress.IsLoopback(address))
+        {
+          continue;
+        }
+
+        byte[] octets = address.GetAddressBytes();
+        bool isPrivate = octets[0] == 10
+          || (octets[0] == 172 && octets[1] >= 16 && octets[1] <= 31)
+          || (octets[0] == 192 && octets[1] == 168);
+        if (!isPrivate)
+        {
+          continue;
+        }
+
+        if (hasGateway)
+        {
+          return $"{address}:{DefaultDirectHostPort}";
+        }
+        fallback = address.ToString();
+      }
+    }
+    return $"{fallback}:{DefaultDirectHostPort}";
+#endif
   }
 
   void Awake()
@@ -269,18 +340,12 @@ public class NetworkingController : Photon.PunBehaviour
 
     try
     {
-      // Don't destroy things created by clients. We will need to clean up the
-      // player ghost object only. Even if we're not the master client, we still
-      // need this. Because if the master quits, we might become the master, and
-      // we need to prevent Photon from destroying all objects!
       if (!PhotonNetwork.inRoom)
       {
         PhotonNetwork.autoCleanUpPlayerObjects = false;
       }
       else
       {
-        // Setting this causes an error if we're in a room, but we should make
-        // sure it's false still.
         Debug.Assert(PhotonNetwork.autoCleanUpPlayerObjects == false);
       }
 
@@ -304,13 +369,9 @@ public class NetworkingController : Photon.PunBehaviour
         mode = Mode.Online;
         PhotonNetwork.offlineMode = false;
       }
-      else
-      {
-      }
 
       if (PhotonNetwork.connected && PhotonNetwork.inRoom)
       {
-        // We are still connected and in a room. This is a map switch.
         mode = Mode.Online;
         Util.Log($"StayOnline mode. Pretending we just joined the room.");
         didSwitchMaps = true;
@@ -318,19 +379,14 @@ public class NetworkingController : Photon.PunBehaviour
       }
       else if (PhotonNetwork.connected && PhotonNetwork.insideLobby && isMultiplayer)
       {
-        // Joining or creating.
-
         string roomToJoin = GameBuilderApplication.CurrentGameOptions.joinCode;
         if (!roomToJoin.IsNullOrEmpty())
         {
-          // We're joining a room from the lobby
           Util.Log($"Trying to join room {roomToJoin}..");
-          // Try to join existing room
           PhotonNetwork.JoinRoom(roomToJoin.ToLower());
         }
         else
         {
-          // We're creating a new game, and happen to be in a lobby already.
           TryCreateRoom();
         }
       }
@@ -340,11 +396,9 @@ public class NetworkingController : Photon.PunBehaviour
         {
           case Mode.Online:
             string gameVersion = GetPhotonGameVersion();
-            // If we're trying to join a game, make sure we connect to their region.
             string joinCode = GameBuilderApplication.CurrentGameOptions.joinCode;
             if (joinCode == "*")
             {
-              // TEMP join random visible game in best region
               PhotonNetwork.ConnectToBestCloudServer(gameVersion);
             }
             else if (joinCode != null)
@@ -362,7 +416,6 @@ public class NetworkingController : Photon.PunBehaviour
             }
             else
             {
-              // Ok we're starting a new game, so just connect to the best.
               PhotonNetwork.ConnectToBestCloudServer(gameVersion);
             }
             break;
@@ -378,7 +431,7 @@ public class NetworkingController : Photon.PunBehaviour
         }
       }
     }
-    catch (System.FormatException e)
+    catch (System.FormatException)
     {
       OnFatalError(BadJoinCodeMessage);
     }
@@ -387,23 +440,246 @@ public class NetworkingController : Photon.PunBehaviour
       OnFatalError(e.ToString());
     }
 #else
+    GameBuilderApplication.GameOptions options = GameBuilderApplication.CurrentGameOptions;
+    if (!options.playOptions.isMultiplayer)
+    {
+      mode = Mode.Offline;
+      StartCoroutine(NonPunStartRoutine(false));
+      return;
+    }
 
-    // Non-PUN route
-    mode = Mode.Offline;
-    StartCoroutine(NonPunStartRoutine());
+    mode = Mode.Online;
+    EnsureDirectNetworkManager();
 
+    if (options.joinAddress.IsNullOrEmpty())
+    {
+      directTransport.SetConnectionData("127.0.0.1", DefaultDirectHostPort, "0.0.0.0");
+      PhotonNetwork.isMasterClient = true;
+      PhotonNetwork.offlineMode = false;
+      StartCoroutine(NonPunStartRoutine(true));
+    }
+    else
+    {
+      ushort port = options.joinPort == 0 ? DefaultDirectHostPort : options.joinPort;
+      directTransport.SetConnectionData(options.joinAddress, port);
+      if (!directNetworkManager.StartClient())
+      {
+        OnFatalError($"Could not connect to {options.joinAddress}:{port}.");
+        return;
+      }
+      PhotonNetwork.isMasterClient = false;
+      PhotonNetwork.offlineMode = false;
+      RegisterDirectNetworkHandlers();
+    }
 #endif
   }
 
-  IEnumerator NonPunStartRoutine()
+  IEnumerator NonPunStartRoutine(bool startHost)
   {
-    // Wait a few frames to be async...
     yield return null;
     yield return null;
     yield return null;
     MasterClientInit();
+    if (startHost)
+    {
+      if (!directNetworkManager.IsListening && !directNetworkManager.StartHost())
+      {
+        OnFatalError($"Could not start a direct-host server on UDP port {DefaultDirectHostPort}.");
+        yield break;
+      }
+      RegisterDirectNetworkHandlers();
+    }
   }
 
+  void EnsureDirectNetworkManager()
+  {
+    directNetworkManager = NetworkManager.Singleton;
+    if (directNetworkManager == null)
+    {
+      GameObject networkObject = new GameObject("DirectHostNetworkManager");
+      networkObject.SetActive(false);
+      DontDestroyOnLoad(networkObject);
+      directTransport = networkObject.AddComponent<UnityTransport>();
+      directNetworkManager = networkObject.AddComponent<NetworkManager>();
+      directNetworkManager.NetworkConfig = new NetworkConfig
+      {
+        NetworkTransport = directTransport,
+        EnableSceneManagement = false
+      };
+      networkObject.SetActive(true);
+    }
+    else
+    {
+      directTransport = directNetworkManager.GetComponent<UnityTransport>();
+      if (directTransport == null)
+      {
+        throw new InvalidOperationException("The existing NetworkManager has no UnityTransport.");
+      }
+    }
+  }
+
+  void RegisterDirectNetworkHandlers()
+  {
+    directNetworkManager.OnClientConnectedCallback -= OnDirectClientConnected;
+    directNetworkManager.OnClientConnectedCallback += OnDirectClientConnected;
+    directNetworkManager.OnClientDisconnectCallback -= OnDirectClientDisconnected;
+    directNetworkManager.OnClientDisconnectCallback += OnDirectClientDisconnected;
+    if (registeredDirectInitHandler)
+    {
+      directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectHostInitMessageName);
+    }
+    directNetworkManager.CustomMessagingManager.RegisterNamedMessageHandler(
+      DirectHostInitMessageName, OnDirectHostInitMessage);
+    registeredDirectInitHandler = true;
+  }
+
+  void OnDirectClientConnected(ulong clientId)
+  {
+    if (!directNetworkManager.IsServer || clientId == directNetworkManager.LocalClientId)
+    {
+      return;
+    }
+
+    try
+    {
+      byte[] initPacket = CreateDirectHostInitPacket();
+      using (FastBufferWriter writer = new FastBufferWriter(initPacket.Length + sizeof(int), Allocator.Temp))
+      {
+        writer.WriteValueSafe(initPacket.Length);
+        writer.WriteBytesSafe(initPacket);
+        directNetworkManager.CustomMessagingManager.SendNamedMessage(
+          DirectHostInitMessageName,
+          clientId,
+          writer,
+          NetworkDelivery.ReliableFragmentedSequenced);
+      }
+      Util.Log($"Sent initial world state ({initPacket.Length / 1024} KB) to direct client {clientId}.");
+    }
+    catch (Exception e)
+    {
+      Util.LogError($"Could not send the initial world state to direct client {clientId}: {e}");
+      directNetworkManager.DisconnectClient(clientId);
+    }
+  }
+
+  void OnDirectClientDisconnected(ulong clientId)
+  {
+    if (directNetworkManager != null
+      && clientId == directNetworkManager.LocalClientId
+      && !receivedPlayerInitPayload
+      && GameBuilderApplication.CurrentGameOptions.playOptions.isMultiplayer)
+    {
+      OnFatalError("The host disconnected before sending the game state.");
+    }
+  }
+
+  byte[] CreateDirectHostInitPacket()
+  {
+    NewPlayerInitPayload payload;
+    payload.version = NewPlayerInitPayload.CurrentVersion;
+    payload.behaviorDatabase = behaviorSystem.SaveDatabase();
+    payload.sojoDatabase = sojoSystem.SaveDatabase();
+    payload.terrainMeta = terrain.GetMetadata();
+    payload.stage = stage.Save();
+
+    byte[] metaBytes = Util.GZip(Encoding.UTF8.GetBytes(JsonUtility.ToJson(payload)));
+    byte[] voosBytes = GetVoosInitBytes();
+    byte[] terrainBytes = terrain.SerializeTerrainV2();
+    int totalBytes = metaBytes.Length + voosBytes.Length + terrainBytes.Length;
+    if (totalBytes > MaximumPlayerInitKbs * 1024)
+    {
+      throw new InvalidOperationException(
+        $"This game is too large for direct multiplayer ({totalBytes / 1024} KB; limit {MaximumPlayerInitKbs} KB).");
+    }
+
+    using (MemoryStream stream = new MemoryStream(totalBytes + 3 * sizeof(int)))
+    using (BinaryWriter writer = new BinaryWriter(stream))
+    {
+      writer.Write(metaBytes.Length);
+      writer.Write(metaBytes);
+      writer.Write(voosBytes.Length);
+      writer.Write(voosBytes);
+      writer.Write(terrainBytes.Length);
+      writer.Write(terrainBytes);
+      return stream.ToArray();
+    }
+  }
+
+  void OnDirectHostInitMessage(ulong senderClientId, FastBufferReader reader)
+  {
+    if (directNetworkManager.IsServer || senderClientId != NetworkManager.ServerClientId)
+    {
+      return;
+    }
+
+    try
+    {
+      reader.ReadValueSafe(out int packetLength);
+      if (packetLength <= 0 || packetLength > MaximumPlayerInitKbs * 1024 + 3 * sizeof(int))
+      {
+        throw new InvalidDataException($"Invalid direct-host initial-state size: {packetLength} bytes.");
+      }
+
+      byte[] packet = new byte[packetLength];
+      reader.ReadBytesSafe(ref packet, packetLength);
+      using (MemoryStream stream = new MemoryStream(packet, false))
+      using (BinaryReader binaryReader = new BinaryReader(stream))
+      {
+        byte[] metaBytes = ReadInitPacketPart(binaryReader, stream);
+        byte[] voosBytes = ReadInitPacketPart(binaryReader, stream);
+        byte[] terrainBytes = ReadInitPacketPart(binaryReader, stream);
+        if (stream.Position != stream.Length)
+        {
+          throw new InvalidDataException("Unexpected bytes at the end of the direct-host initial state.");
+        }
+
+        InitNewPlayerRPC(metaBytes, voosBytes);
+        if (!receivedPlayerInitPayload)
+        {
+          return;
+        }
+        InitNewPlayerTerrainRPC(terrainBytes);
+      }
+
+      StartCoroutine(DirectClientInitRoutine());
+    }
+    catch (Exception e)
+    {
+      OnFatalError($"Could not load the game state from the host.\n{e.Message}");
+    }
+  }
+
+  byte[] ReadInitPacketPart(BinaryReader reader, MemoryStream stream)
+  {
+    int length = reader.ReadInt32();
+    if (length < 0 || length > MaximumPlayerInitKbs * 1024 || length > stream.Length - stream.Position)
+    {
+      throw new InvalidDataException($"Invalid initial-state section length: {length} bytes.");
+    }
+
+    byte[] bytes = reader.ReadBytes(length);
+    if (bytes.Length != length)
+    {
+      throw new EndOfStreamException("The host's initial state ended unexpectedly.");
+    }
+    return bytes;
+  }
+
+  IEnumerator DirectClientInitRoutine()
+  {
+    while (!receivedPlayerInitPayload)
+    {
+      if (directNetworkManager == null || !directNetworkManager.IsConnectedClient)
+      {
+        OnFatalError("The connection to the host was lost before the game loaded.");
+        yield break;
+      }
+      yield return null;
+    }
+
+    SpawnLocalObjects();
+    StartCoroutine(LoadingSequence());
+  }
   void OnFatalError(string error, string errorForAnalytics = null)
   {
     Util.LogError(error);
@@ -547,16 +823,31 @@ public class NetworkingController : Photon.PunBehaviour
 
   private void OnDestroy()
   {
-    // Important to do this for scene reload.
+#if USE_PUN
     switch (state)
     {
       case State.SwitchingScene:
-        // Do NOT disconnect or leave the room.
         return;
       default:
         PhotonNetwork.Disconnect();
         return;
     }
+#else
+    if (directNetworkManager != null)
+    {
+      directNetworkManager.OnClientConnectedCallback -= OnDirectClientConnected;
+      directNetworkManager.OnClientDisconnectCallback -= OnDirectClientDisconnected;
+      if (registeredDirectInitHandler && directNetworkManager.CustomMessagingManager != null)
+      {
+        directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectHostInitMessageName);
+        registeredDirectInitHandler = false;
+      }
+      if (directNetworkManager.IsListening)
+      {
+        directNetworkManager.Shutdown();
+      }
+    }
+#endif
   }
 
   public string lastLoadedBundleId { get; private set; }
@@ -914,11 +1205,9 @@ public class NetworkingController : Photon.PunBehaviour
 
   void OnBeforeReloadMainScene()
   {
+#if USE_PUN
     if (mode == Mode.Online && PhotonNetwork.connected)
     {
-      // If the master client is loading a new map and we're in multiplayer,
-      // just always keep the room and consider this a map change for the room.
-
       string newJoinCode = GameBuilderApplication.CurrentGameOptions.joinCode;
       bool tryingToJoinNewRoom = !newJoinCode.IsNullOrEmpty() && newJoinCode != PhotonNetwork.room.Name;
       bool keepRoom = PhotonNetwork.isMasterClient && !tryingToJoinNewRoom;
@@ -930,17 +1219,13 @@ public class NetworkingController : Photon.PunBehaviour
       }
       else
       {
-        Util.Log("Staying connected, just switching scenes. Telling other players to reconnect to the same room..");
+        Util.Log("Staying online while switching multiplayer maps.");
         photonView.RPC("JoinRoomRPC", PhotonTargets.Others, GetJoinedRoomName());
-
-        // This DestroyAll is crucial. If we don't call it, the UserBody's of
-        // non-master players seem to stick around in a weird way..where the
-        // master doesn't see them, but new players (and reconnects) do..
         PhotonNetwork.DestroyAll();
-
         state = State.SwitchingScene;
       }
     }
+#endif
   }
 
   void Update()
@@ -971,7 +1256,17 @@ public class NetworkingController : Photon.PunBehaviour
 
   public int GetNumOtherPlayers()
   {
+#if USE_PUN
     return PhotonNetwork.otherPlayers.Length;
+#else
+    if (directNetworkManager == null || !directNetworkManager.IsConnectedClient)
+    {
+      return 0;
+    }
+    return Mathf.Max(
+      directNetworkManager.IsServer ? 0 : 1,
+      directNetworkManager.ConnectedClientsIds.Count - (directNetworkManager.IsServer ? 1 : 0));
+#endif
   }
 
   public int GetMaxPlayers()

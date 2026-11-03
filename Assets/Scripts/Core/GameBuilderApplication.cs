@@ -134,6 +134,10 @@ public class GameBuilderApplication
     public string displayName;
 
     public string joinCode;
+    // Direct host connection settings. Empty address means this instance hosts.
+    public string joinAddress;
+    public ushort joinPort;
+
 
     public PlayOptions playOptions;
 

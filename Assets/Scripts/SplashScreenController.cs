@@ -86,11 +86,7 @@ public class SplashScreenController : Photon.PunBehaviour, GameResuming.ResumeOp
     menuPanelManager.Setup();
     quitButton.onClick.AddListener(Application.Quit);
 
-#if USE_PUN
     multiplayerButton.onClick.AddListener(menuPanelManager.OpenMultiplayerMenu);
-#else
-    multiplayerButton.gameObject.SetActive(false);
-#endif
 
     moreGamesButton.onClick.AddListener(MoreGames);
 
