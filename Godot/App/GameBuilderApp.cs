@@ -14,6 +14,9 @@ public partial class GameBuilderApp : Node3D
     private readonly List<WorldActorNode> _actors = new();
     private LegacyRenderableCatalog _catalog = null!;
     private LegacySaveDocument? _document;
+    private JsonObject? _collaborationSnapshot;
+    private bool _applyingCollaborativePatch;
+    private string? _networkHostProjectPath;
     private LegacyBehaviorRuntime? _behaviorRuntime;
     private LegacyBehaviorUi _behaviorUi = null!;
     private Node3D _world = null!;
@@ -105,6 +108,23 @@ public partial class GameBuilderApp : Node3D
                 SetPlayMode(enabled, fromHost: true);
         };
         _lanSession.ActorStructureReceived += ApplyNetworkActorStructure;
+        _lanSession.ClientDocumentPatchReceived += ApplyClientDocumentPatch;
+        _lanSession.DocumentPatchReceived += ApplyNetworkDocumentPatch;
+        _lanSession.DocumentPatchRejected += message =>
+        {
+            _status.Text = $"Collaborative edit rejected: {message}";
+            GD.PushWarning($"Collaborative edit rejected: {message}");
+        };
+        _lanSession.ClientAssetBundleReceived += ApplyClientAssetBundle;
+        _lanSession.AssetBundleReceived += ApplyNetworkAssetBundle;
+        _lanSession.AssetBundleRejected += message =>
+        {
+            _status.Text = $"Project asset sync failed: {message}";
+            GD.PushWarning($"Project asset sync failed: {message}");
+        };
+        _lanSession.ClientProjectReadyReceived += OnClientProjectReady;
+        _lanSession.HostProjectCopyEnding += PreserveHostProjectAssetsBeforeLeave;
+        _lanSession.StateChanged += OnLanSessionStateChanged;
         AddChild(_lanSession);
         BuildWorldServices();
         BuildInterface();
@@ -737,6 +757,7 @@ public partial class GameBuilderApp : Node3D
             GD.PushError($"Could not reload edited behavior database: {exception}");
             ShowError($"Behavior data changed, but the runtime rejected it:\n{exception.Message}");
         }
+        NotifyCollaborativeEdits();
     }
 
     private LegacyBehaviorRuntime CreateBehaviorRuntime(LegacySaveDocument document)
@@ -912,6 +933,11 @@ public partial class GameBuilderApp : Node3D
 
     private void LoadProject(string path)
     {
+        if (_lanSession.IsHost)
+        {
+            ShowError("Leave the hosted session before opening a different project.");
+            return;
+        }
         _terrainEditorWindow?.SetBrushActive(false);
         EndTerrainStroke();
         try
@@ -919,7 +945,8 @@ public partial class GameBuilderApp : Node3D
             LegacySaveDocument document = LegacySaveDocument.Load(path);
             ClearWorld();
             _document = document;
-            _catalog.LoadProjectAssets(path);
+            DiscardRetainedHostAssetsForDifferentProject(document.SourcePath);
+            _catalog.LoadProjectAssets(GetProjectAssetSourcePath());
             ClearHistory();
             LegacyTerrainData? terrainData = LegacyTerrainData.Decode(document.GridState);
             if (terrainData is not null)
@@ -945,6 +972,7 @@ public partial class GameBuilderApp : Node3D
             SelectActor(_actors.FirstOrDefault());
             _cameraTarget = ComputeWorldCenter();
             UpdateOrbitCamera();
+            ResetCollaborativeSnapshot();
         }
         catch (Exception exception)
         {
@@ -1249,7 +1277,7 @@ public partial class GameBuilderApp : Node3D
             ShowError("Open a .voos project before importing a model.");
             return;
         }
-        if (_document.SourcePath.StartsWith("res://", StringComparison.Ordinal))
+        if (GetProjectAssetSourcePath().StartsWith("res://", StringComparison.Ordinal))
         {
             ShowError("Save a writable .voos copy before importing a model.");
             return;
@@ -1263,7 +1291,28 @@ public partial class GameBuilderApp : Node3D
             return;
         try
         {
-            RenderableEntry entry = _catalog.ImportProjectModel(_document.SourcePath, path);
+            string assetProjectPath = GetProjectAssetSourcePath();
+            RenderableEntry entry = _catalog.ImportProjectModel(assetProjectPath, path);
+            if (_lanSession.IsClient)
+            {
+                if (_lanSession.SubmitAssetBundle(assetProjectPath, out long transferId))
+                {
+                    _unsharedAssetUris.Add(entry.Uri);
+                    _pendingAssetUrisByTransferId.Add(transferId, entry.Uri);
+                }
+                else
+                {
+                    _unsharedAssetUris.Add(entry.Uri);
+                }
+            }
+            else if (_lanSession.IsHost && _networkHostProjectPath is string hostProjectPath)
+            {
+                if (!_document.SourcePath.StartsWith("res://", StringComparison.Ordinal))
+                    _catalog.CopyProjectAssets(hostProjectPath, _document.SourcePath);
+                PersistNetworkHostProjectCopy();
+                _catalog.LoadProjectAssets(hostProjectPath);
+                _lanSession.BroadcastAssetBundle(hostProjectPath, _lanSession.LocalPeerId, 0);
+            }
             bool clearedSearch = _assetSearch.Text.Length > 0;
             _assetSearch.Text = "";
             if (!clearedSearch)
@@ -1276,7 +1325,11 @@ public partial class GameBuilderApp : Node3D
                 ShowSelectedAssetPreview();
                 break;
             }
-            _status.Text = $"Imported {Path.GetFileName(path)} into this project.";
+            _status.Text = _lanSession.IsClient
+                ? _unsharedAssetUris.Contains(entry.Uri)
+                    ? $"Imported {Path.GetFileName(path)} locally; wait for host asset sync before adding it."
+                    : $"Imported {Path.GetFileName(path)} into this project."
+                : $"Imported {Path.GetFileName(path)} into this project.";
         }
         catch (Exception exception)
         {
@@ -1288,8 +1341,18 @@ public partial class GameBuilderApp : Node3D
     {
         if (_document is null || _assetPicker.Selected < 0 || _playMode)
             return;
+        if (_lanSession.HasPendingAssetSync)
+        {
+            _status.Text = "Wait for the host to finish syncing imported models before adding an actor.";
+            return;
+        }
 
         string uri = (string)_assetPicker.GetItemMetadata(_assetPicker.Selected);
+        if (_lanSession.IsClient && _unsharedAssetUris.Contains(uri))
+        {
+            _status.Text = "This imported model is not synchronized with the host yet.";
+            return;
+        }
         string name = $"actor-{Guid.NewGuid():N}";
         var actorData = new JsonObject
         {
@@ -1436,7 +1499,7 @@ public partial class GameBuilderApp : Node3D
     {
         RefreshActorList();
         RefreshBrainChoices();
-        if (_lanSession.IsHost)
+        if (_lanSession.IsHost && !_applyingCollaborativePatch)
             _lanSession.MarkActorStructureChanged();
         if (_selectedActor is not null && !_actors.Contains(_selectedActor))
             SelectActor(_actors.FirstOrDefault());
@@ -1612,8 +1675,9 @@ public partial class GameBuilderApp : Node3D
                 _terrain.FlushUpdates();
                 _document.SaveTerrainPayload(_terrain.Encode());
             }
-            _catalog.CopyProjectAssets(_document.SourcePath, hostProjectPath);
+            _catalog.CopyProjectAssets(GetProjectAssetSourcePath(), hostProjectPath);
             _document.SaveCopyTo(hostProjectPath);
+            _networkHostProjectPath = hostProjectPath;
             return hostProjectPath;
         }
         catch
@@ -1675,9 +1739,8 @@ public partial class GameBuilderApp : Node3D
 
     private void ApplyNetworkActorStructure(string actorStatesJson)
     {
-        if (!_lanSession.IsClient || _document is null)
+        if ((!_lanSession.IsClient && !_applyingCollaborativePatch) || _document is null)
             return;
-
         string[]? serializedActors;
         try
         {
@@ -1759,6 +1822,8 @@ public partial class GameBuilderApp : Node3D
             actor.GlobalTransform = globalTransform;
         }
         RefreshRuntimeActors();
+        if (!_applyingCollaborativePatch)
+            ResetCollaborativeSnapshot();
     }
 
     private void SaveProject()
@@ -1801,10 +1866,11 @@ public partial class GameBuilderApp : Node3D
                 _terrain.FlushUpdates();
                 _document.SaveTerrainPayload(_terrain.Encode());
             }
-            _catalog.CopyProjectAssets(_document.SourcePath, path);
+            _catalog.CopyProjectAssets(GetProjectAssetSourcePath(), path);
             _document.SaveTo(path);
             _catalog.LoadProjectAssets(path);
             PopulateAssetPicker();
+            ReleaseRetainedHostAssetsAfterSave();
             _status.Text = $"Saved {Path.GetFileName(path)} — {_actors.Count} actors.";
         }
         catch (Exception exception)
@@ -1890,6 +1956,7 @@ public partial class GameBuilderApp : Node3D
         }
         _historyPosition = _history.Count;
         UpdateHistoryButtons();
+        NotifyCollaborativeEdits();
     }
 
     private void UndoEdit()
@@ -1906,6 +1973,7 @@ public partial class GameBuilderApp : Node3D
         {
             _applyingHistory = false;
         }
+        NotifyCollaborativeEdits();
         _status.Text = $"Undid: {entry.Label}";
         UpdateHistoryButtons();
     }
@@ -1924,6 +1992,7 @@ public partial class GameBuilderApp : Node3D
         {
             _applyingHistory = false;
         }
+        NotifyCollaborativeEdits();
         _status.Text = $"Redid: {entry.Label}";
         UpdateHistoryButtons();
     }

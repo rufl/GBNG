@@ -105,6 +105,29 @@ public sealed partial class LegacyPanelCanvasWindow : Window
         RefreshCardLibrary();
     }
 
+    public void RefreshFromDocument()
+    {
+        if (!_document.Actors.Contains(_actor))
+        {
+            QueueFree();
+            return;
+        }
+
+        string selectedPanelUri = _panelPicker.Selected >= 0
+            ? _panelPicker.GetItemMetadata(_panelPicker.Selected).AsString()
+            : "";
+        PopulatePanelChoices();
+        for (int index = 0; index < _panelPicker.ItemCount; index++)
+        {
+            if (_panelPicker.GetItemMetadata(index).AsString() == selectedPanelUri)
+            {
+                _panelPicker.Select(index);
+                break;
+            }
+        }
+        RebuildCanvas();
+    }
+
     public override void _Ready()
     {
         GetTree().CreateTimer(0.1).Timeout += InitializeCanvasView;

@@ -19,6 +19,13 @@ public sealed partial class LegacyLanSession : Node
     private const int ActorStructureChunksPerFrame = 16;
     private const int MaximumActorStructureBytes = 16 * 1024 * 1024;
     private const int MaximumActorStructureChunkCount = (MaximumActorStructureBytes + ActorStructureChunkCharacters - 1) / ActorStructureChunkCharacters;
+    private const int DocumentPatchChunkCharacters = 4 * 1024;
+    private const int DocumentPatchChunksPerFrame = 16;
+    private const int MaximumDocumentPatchBytes = 16 * 1024 * 1024;
+    private const int MaximumDocumentPatchChunkCount = (MaximumDocumentPatchBytes + DocumentPatchChunkCharacters - 1) / DocumentPatchChunkCharacters;
+    private const int AssetBundleChunksPerFrame = 16;
+    private const int MaximumAssetBundleBytes = LegacyProjectPackage.MaximumPackageBytes;
+    private const int MaximumAssetBundleChunkCount = (MaximumAssetBundleBytes + PackageChunkBytes - 1) / PackageChunkBytes;
     private const string DiscoveryRequest = "GBNG-LAN-DISCOVER/1";
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
@@ -29,6 +36,15 @@ public sealed partial class LegacyLanSession : Node
     private readonly Dictionary<long, long> _lastInputSequences = new();
     private readonly Queue<long> _packageTransferQueue = new();
     private readonly Dictionary<long, ActorStructureTransfer> _actorStructureTransfers = new();
+    private readonly Dictionary<long, OutgoingDocumentPatch> _outgoingDocumentPatches = new();
+    private readonly Dictionary<long, IncomingDocumentPatch> _incomingClientDocumentPatches = new();
+    private IncomingDocumentPatch? _incomingHostDocumentPatch;
+    private readonly Dictionary<long, OutgoingAssetBundle> _outgoingAssetBundles = new();
+    private readonly Dictionary<long, IncomingAssetBundle> _incomingClientAssetBundles = new();
+    private readonly HashSet<long> _pendingAssetBundleTransferIds = new();
+    private IncomingAssetBundle? _incomingHostAssetBundle;
+    private long _nextAssetBundleTransferId;
+    private long _nextDocumentPatchTransferId;
     private ENetMultiplayerPeer? _enetPeer;
     private PacketPeerUdp? _discoveryListener;
     private PacketPeerUdp? _discoveryClient;
@@ -36,7 +52,7 @@ public sealed partial class LegacyLanSession : Node
     private string _roomName = "Game Builder room";
     private string _roomId = string.Empty;
     private string? _hostProjectPath;
-    private byte[]? _hostPackage;
+    private byte[]? _activeTransferPackage;
     private byte[]? _incomingPackage;
     private bool[]? _receivedChunks;
     private char[]? _incomingActorStructure;
@@ -45,6 +61,9 @@ public sealed partial class LegacyLanSession : Node
     private int _incomingChunkCount;
     private int _receivedChunkCount;
     private string _incomingProjectName = string.Empty;
+    public event Action<long, long, string>? ClientAssetBundleReceived;
+    public event Action<long, long, string>? AssetBundleReceived;
+    public event Action<string>? AssetBundleRejected;
     private double _discoveryRemaining;
     private bool _isHost;
     private bool _hostPlayMode;
@@ -56,6 +75,11 @@ public sealed partial class LegacyLanSession : Node
     public event Action<string>? SnapshotReceived;
     public event Action<bool>? HostPlayModeChanged;
     public event Action<string>? ActorStructureReceived;
+    public event Action<long, string>? ClientDocumentPatchReceived;
+    public event Action<string>? DocumentPatchReceived;
+    public event Action<long>? ClientProjectReadyReceived;
+    public event Action<string, bool>? HostProjectCopyEnding;
+    public event Action<string>? DocumentPatchRejected;
 
     public string Status => _status;
     public IReadOnlyCollection<LegacyLanPlayer> Players { get; private set; } = Array.Empty<LegacyLanPlayer>();
@@ -66,7 +90,11 @@ public sealed partial class LegacyLanSession : Node
     public bool IsMultiplayer => HasPeer;
     public bool IsMaster => !HasPeer || _isHost;
     public string LocalPlayerName => _localPlayerName;
-    public bool HostPlayMode => _hostPlayMode;
+    public long LocalPeerId => HasPeer ? Multiplayer.GetUniqueId() : 1;
+    public bool HasPendingAssetSync
+        => IsClient
+            ? _pendingAssetBundleTransferIds.Count > 0 || _incomingHostAssetBundle is not null
+            : IsHost && _outgoingAssetBundles.Values.Any(transfer => transfer.Current is not null || transfer.Pending.Count > 0);
     public int LocalPlayerSlot
     {
         get
@@ -95,6 +123,8 @@ public sealed partial class LegacyLanSession : Node
         PollDiscovery(_discoveryClient, isHostListener: false);
         PumpProjectTransfer();
         PumpActorStructureTransfers();
+        PumpDocumentPatchTransfers();
+        PumpAssetBundleTransfers();
         if (_discoveryRemaining > 0d)
         {
             _discoveryRemaining -= delta;
@@ -112,10 +142,9 @@ public sealed partial class LegacyLanSession : Node
         if (port is < 1 or > 65_535)
             return Fail("Port must be between 1 and 65535.");
 
-        byte[] package;
         try
         {
-            package = LegacyProjectPackage.Create(projectPath);
+            _ = LegacyProjectPackage.Create(projectPath);
         }
         catch (Exception exception)
         {
@@ -129,7 +158,6 @@ public sealed partial class LegacyLanSession : Node
         _hostPort = port;
         _snapshotElapsed = 0d;
         _hostProjectPath = projectPath;
-        _hostPackage = package;
         _playerNames[1] = _localPlayerName;
         var peer = new ENetMultiplayerPeer();
         Error error = peer.CreateServer(port, MaximumPlayers - 1);
@@ -205,6 +233,7 @@ public sealed partial class LegacyLanSession : Node
 
     public void Leave()
     {
+        bool wasHost = IsHost;
         bool wasConnected = HasPeer;
         bool wasClient = IsClient;
         string? previousHostPath = _hostProjectPath;
@@ -220,7 +249,14 @@ public sealed partial class LegacyLanSession : Node
         _receivedActorStructureChunks = null;
         _receivedActorStructureChunkCount = 0;
         _actorStructureTransfers.Clear();
-        _hostPackage = null;
+        _outgoingDocumentPatches.Clear();
+        _incomingClientDocumentPatches.Clear();
+        _incomingHostDocumentPatch = null;
+        _outgoingAssetBundles.Clear();
+        _incomingClientAssetBundles.Clear();
+        _pendingAssetBundleTransferIds.Clear();
+        _incomingHostAssetBundle = null;
+        _activeTransferPackage = null;
         _packageTransferQueue.Clear();
         _activeTransferPeer = 0;
         _nextPackageChunk = 0;
@@ -247,6 +283,7 @@ public sealed partial class LegacyLanSession : Node
         _lastActors = Array.Empty<GBNG.World.WorldActorNode>();
         if (previousHostPath is not null)
         {
+            HostProjectCopyEnding?.Invoke(previousHostPath, wasHost);
             string generatedRoot = Path.GetFullPath(ProjectSettings.GlobalizePath("user://network-host"));
             string hostDirectory = Path.GetDirectoryName(Path.GetFullPath(previousHostPath)) ?? string.Empty;
             if (hostDirectory.StartsWith(generatedRoot + Path.DirectorySeparatorChar, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)
@@ -286,6 +323,145 @@ public sealed partial class LegacyLanSession : Node
     }
 
     public void MarkActorStructureChanged() => _actorStructureDirty = true;
+    public void SubmitDocumentPatch(string json)
+    {
+        if (!IsClient || !IsValidDocumentPatchPayload(json))
+            return;
+        QueueDocumentPatch(1, json);
+    }
+
+    public void BroadcastDocumentPatch(string json)
+    {
+        if (!IsHost || !IsValidDocumentPatchPayload(json))
+            return;
+        foreach (long peerId in _projectReadyPeers)
+            QueueDocumentPatch(peerId, json);
+    }
+
+    public void RejectDocumentPatch(long peerId, string message)
+    {
+        if (IsHost && _playerNames.ContainsKey(peerId))
+            RpcId(peerId, nameof(ReceiveDocumentPatchRejected), message);
+        DocumentPatchRejected?.Invoke(message);
+    }
+
+    private static bool IsValidDocumentPatchPayload(string json)
+        => json.Length >= 2 && Encoding.UTF8.GetByteCount(json) <= MaximumDocumentPatchBytes;
+
+    private void QueueDocumentPatch(long peerId, string json)
+    {
+        if (!_outgoingDocumentPatches.TryGetValue(peerId, out OutgoingDocumentPatch? transfer))
+        {
+            transfer = new OutgoingDocumentPatch();
+            _outgoingDocumentPatches.Add(peerId, transfer);
+        }
+        transfer.Pending.Enqueue(json);
+    }
+    public void UpdateActorSnapshot(IReadOnlyList<GBNG.World.WorldActorNode> actors)
+    {
+        if (IsHost)
+            _lastActors = actors;
+    }
+
+    public bool SendDocumentSnapshot(long peerId, string json)
+    {
+        if (!IsHost || !_projectReadyPeers.Contains(peerId) || !IsValidDocumentPatchPayload(json))
+            return false;
+        QueueDocumentPatch(peerId, json);
+        return true;
+    }
+
+    public void SendAssetBundleToPeer(string sourceProjectPath, long peerId)
+    {
+        if (!IsHost || !_projectReadyPeers.Contains(peerId))
+            return;
+        string sidecarDirectory = Path.Combine(
+            Path.GetDirectoryName(Path.GetFullPath(sourceProjectPath)) ?? string.Empty,
+            $"{Path.GetFileNameWithoutExtension(sourceProjectPath)}.assets");
+        if (!File.Exists(Path.Combine(sidecarDirectory, "manifest.json")))
+            return;
+        try
+        {
+            byte[] package = LegacyProjectPackage.CreateAssetBundle(sourceProjectPath);
+            QueueAssetBundle(peerId, new AssetBundlePayload(package, 1, 0));
+        }
+        catch (Exception exception)
+        {
+            string message = $"Could not sync project assets to the joining player: {exception.Message}";
+            RpcId(peerId, nameof(ReceiveAssetBundleRejected), 0L, message);
+            AssetBundleRejected?.Invoke(message);
+        }
+    }
+
+    public bool SubmitAssetBundle(string sourceProjectPath, out long transferId)
+    {
+        transferId = 0;
+        if (!IsClient)
+            return false;
+        try
+        {
+            long uploadId = NextAssetBundleTransferId();
+            byte[] package = LegacyProjectPackage.CreateAssetBundle(sourceProjectPath);
+            long originPeerId = Multiplayer.GetUniqueId();
+            _pendingAssetBundleTransferIds.Add(uploadId);
+            QueueAssetBundle(1, new AssetBundlePayload(package, originPeerId, uploadId));
+            transferId = uploadId;
+            StateChanged?.Invoke();
+            return true;
+        }
+        catch (Exception exception)
+        {
+            AssetBundleRejected?.Invoke($"Could not share the imported model: {exception.Message}");
+            return false;
+        }
+    }
+
+    public void BroadcastAssetBundle(string sourceProjectPath, long originPeerId, long originTransferId)
+    {
+        if (!IsHost || _projectReadyPeers.Count == 0)
+            return;
+        try
+        {
+            byte[] package = LegacyProjectPackage.CreateAssetBundle(sourceProjectPath);
+            var payload = new AssetBundlePayload(package, originPeerId, originTransferId);
+            foreach (long peerId in _projectReadyPeers)
+                QueueAssetBundle(peerId, payload);
+        }
+        catch (Exception exception)
+        {
+            string message = $"Could not share the project assets: {exception.Message}";
+            if (originPeerId > 1)
+                RejectAssetBundle(originPeerId, originTransferId, message);
+            else
+                AssetBundleRejected?.Invoke(message);
+        }
+    }
+
+    public void RejectAssetBundle(long peerId, long transferId, string message)
+    {
+        if (IsHost && _playerNames.ContainsKey(peerId))
+            RpcId(peerId, nameof(ReceiveAssetBundleRejected), transferId, message);
+        AssetBundleRejected?.Invoke(message);
+    }
+
+    private long NextAssetBundleTransferId()
+    {
+        long transferId = ++_nextAssetBundleTransferId;
+        if (transferId > 0)
+            return transferId;
+        _nextAssetBundleTransferId = 1;
+        return 1;
+    }
+
+    private void QueueAssetBundle(long peerId, AssetBundlePayload payload)
+    {
+        if (!_outgoingAssetBundles.TryGetValue(peerId, out OutgoingAssetBundle? transfer))
+        {
+            transfer = new OutgoingAssetBundle();
+            _outgoingAssetBundles.Add(peerId, transfer);
+        }
+        transfer.Pending.Enqueue(payload);
+    }
 
     private IReadOnlyList<GBNG.World.WorldActorNode> _lastActors = Array.Empty<GBNG.World.WorldActorNode>();
     private bool _actorStructureDirty;
@@ -398,9 +574,14 @@ public sealed partial class LegacyLanSession : Node
         SetStatus($"Player {peerId} left the room.");
         _projectReadyPeers.Remove(peerId);
         _actorStructureTransfers.Remove(peerId);
+        _outgoingDocumentPatches.Remove(peerId);
+        _incomingClientDocumentPatches.Remove(peerId);
+        _outgoingAssetBundles.Remove(peerId);
+        _incomingClientAssetBundles.Remove(peerId);
         if (_activeTransferPeer == peerId)
         {
             _activeTransferPeer = 0;
+            _activeTransferPackage = null;
             _nextPackageChunk = 0;
         }
 
@@ -452,10 +633,18 @@ public sealed partial class LegacyLanSession : Node
         _incomingActorStructure = null;
         _receivedActorStructureChunks = null;
         _receivedActorStructureChunkCount = 0;
+        _outgoingDocumentPatches.Clear();
+        _incomingClientDocumentPatches.Clear();
+        _incomingHostDocumentPatch = null;
+        _outgoingAssetBundles.Clear();
+        _incomingClientAssetBundles.Clear();
+        _pendingAssetBundleTransferIds.Clear();
+        _incomingHostAssetBundle = null;
         _actorStructureTransfers.Clear();
         _projectReadyPeers.Clear();
         _packageTransferQueue.Clear();
         _activeTransferPeer = 0;
+        _activeTransferPackage = null;
         _nextPackageChunk = 0;
         RefreshPlayers();
         if (wasClient)
@@ -484,6 +673,7 @@ public sealed partial class LegacyLanSession : Node
         if (!_playerNames.ContainsKey(senderId))
             return;
         _projectReadyPeers.Add(senderId);
+        ClientProjectReadyReceived?.Invoke(senderId);
         SendActorStructure(senderId, _lastActors);
     }
 
@@ -604,6 +794,47 @@ public sealed partial class LegacyLanSession : Node
         public int ChunkCount { get; } = chunkCount;
         public int NextChunk { get; set; }
     }
+    private sealed class OutgoingDocumentPatch
+    {
+        public Queue<string> Pending { get; } = new();
+        public string? Payload { get; set; }
+        public long TransferId { get; set; }
+        public int ChunkCount { get; set; }
+        public int NextChunk { get; set; }
+    }
+
+    private sealed class IncomingDocumentPatch(long transferId, int characterCount, int chunkCount)
+    {
+        public long TransferId { get; } = transferId;
+        public char[] Payload { get; } = new char[characterCount];
+        public bool[] ReceivedChunks { get; } = new bool[chunkCount];
+        public int ReceivedChunkCount { get; set; }
+    }
+
+    private sealed record AssetBundlePayload(byte[] Bytes, long OriginPeerId, long OriginTransferId);
+
+    private sealed class OutgoingAssetBundle
+    {
+        public Queue<AssetBundlePayload> Pending { get; } = new();
+        public AssetBundlePayload? Current { get; set; }
+        public long TransferId { get; set; }
+        public int NextChunk { get; set; }
+    }
+
+    private sealed class IncomingAssetBundle(
+        long transferId,
+        long originPeerId,
+        long originTransferId,
+        int packageSize,
+        int chunkCount)
+    {
+        public long TransferId { get; } = transferId;
+        public long OriginPeerId { get; } = originPeerId;
+        public long OriginTransferId { get; } = originTransferId;
+        public byte[] Package { get; } = new byte[packageSize];
+        public bool[] ReceivedChunks { get; } = new bool[chunkCount];
+        public int ReceivedChunkCount { get; set; }
+    }
 
     [Rpc(MultiplayerApi.RpcMode.Authority, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void ReceiveTransferError(string message)
@@ -674,6 +905,288 @@ public sealed partial class LegacyLanSession : Node
         ActorStructureReceived?.Invoke(actorStatesJson);
     }
 
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void BeginClientDocumentPatch(long transferId, int characterCount, int chunkCount)
+    {
+        long senderId = Multiplayer.GetRemoteSenderId();
+        if (!IsHost || !Multiplayer.IsServer() || senderId <= 1 || !_projectReadyPeers.Contains(senderId))
+            return;
+        if (!TryCreateIncomingDocumentPatch(transferId, characterCount, chunkCount, out IncomingDocumentPatch incoming))
+        {
+            RejectDocumentPatch(senderId, "The host rejected an invalid collaborative edit transfer.");
+            return;
+        }
+        if (_incomingClientDocumentPatches.ContainsKey(senderId))
+        {
+            RejectDocumentPatch(senderId, "A collaborative edit transfer is already in progress.");
+            return;
+        }
+        _incomingClientDocumentPatches.Add(senderId, incoming);
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void ReceiveClientDocumentPatchChunk(long transferId, int index, string chunk)
+    {
+        long senderId = Multiplayer.GetRemoteSenderId();
+        if (!IsHost || !Multiplayer.IsServer() || senderId <= 1 || !_projectReadyPeers.Contains(senderId)
+            || !_incomingClientDocumentPatches.TryGetValue(senderId, out IncomingDocumentPatch? incoming)
+            || incoming.TransferId != transferId)
+            return;
+        if (!TryReceiveDocumentPatchChunk(incoming, index, chunk, out string? payload))
+        {
+            _incomingClientDocumentPatches.Remove(senderId);
+            RejectDocumentPatch(senderId, "The host rejected an incomplete or malformed collaborative edit.");
+            return;
+        }
+        if (payload is not null)
+        {
+            _incomingClientDocumentPatches.Remove(senderId);
+            ClientDocumentPatchReceived?.Invoke(senderId, payload);
+        }
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.Authority, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void BeginHostDocumentPatch(long transferId, int characterCount, int chunkCount)
+    {
+        if (!IsClient || !TryCreateIncomingDocumentPatch(transferId, characterCount, chunkCount, out IncomingDocumentPatch incoming))
+        {
+            _incomingHostDocumentPatch = null;
+            DocumentPatchRejected?.Invoke("The host sent an invalid collaborative edit transfer.");
+            return;
+        }
+        if (_incomingHostDocumentPatch is not null)
+        {
+            _incomingHostDocumentPatch = null;
+            DocumentPatchRejected?.Invoke("The host sent overlapping collaborative edit transfers.");
+            return;
+        }
+        _incomingHostDocumentPatch = incoming;
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.Authority, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void ReceiveHostDocumentPatchChunk(long transferId, int index, string chunk)
+    {
+        if (!IsClient || _incomingHostDocumentPatch is not IncomingDocumentPatch incoming || incoming.TransferId != transferId)
+            return;
+        if (!TryReceiveDocumentPatchChunk(incoming, index, chunk, out string? payload))
+        {
+            _incomingHostDocumentPatch = null;
+            DocumentPatchRejected?.Invoke("The host sent an incomplete or malformed collaborative edit.");
+            return;
+        }
+        if (payload is not null)
+        {
+            _incomingHostDocumentPatch = null;
+            DocumentPatchReceived?.Invoke(payload);
+        }
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.Authority, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void ReceiveDocumentPatchRejected(string message)
+    {
+        DocumentPatchRejected?.Invoke(message);
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void BeginClientAssetBundle(long transferId, long originTransferId, int packageSize, int chunkCount)
+    {
+        long senderId = Multiplayer.GetRemoteSenderId();
+        if (!IsHost || !Multiplayer.IsServer() || senderId <= 1 || !_projectReadyPeers.Contains(senderId))
+            return;
+        if (!TryCreateIncomingAssetBundle(transferId, senderId, originTransferId, packageSize, chunkCount, out IncomingAssetBundle incoming))
+        {
+            RejectAssetBundle(senderId, originTransferId, "The host rejected an invalid project asset transfer.");
+            return;
+        }
+        if (_incomingClientAssetBundles.ContainsKey(senderId))
+        {
+            RejectAssetBundle(senderId, originTransferId, "A project asset transfer is already in progress.");
+            return;
+        }
+        _incomingClientAssetBundles.Add(senderId, incoming);
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void ReceiveClientAssetBundleChunk(long transferId, int index, byte[] chunk)
+    {
+        long senderId = Multiplayer.GetRemoteSenderId();
+        if (!IsHost || !Multiplayer.IsServer() || senderId <= 1 || !_projectReadyPeers.Contains(senderId)
+            || !_incomingClientAssetBundles.TryGetValue(senderId, out IncomingAssetBundle? incoming)
+            || incoming.TransferId != transferId)
+            return;
+        if (!TryReceiveAssetBundleChunk(incoming, index, chunk, out byte[]? package))
+        {
+            _incomingClientAssetBundles.Remove(senderId);
+            RejectAssetBundle(senderId, incoming.OriginTransferId, "The host rejected an incomplete or malformed project asset transfer.");
+            return;
+        }
+        if (package is null)
+            return;
+        _incomingClientAssetBundles.Remove(senderId);
+        try
+        {
+            string bundleProjectPath = LegacyProjectPackage.ExtractAssetBundle(package);
+            ClientAssetBundleReceived?.Invoke(senderId, incoming.OriginTransferId, bundleProjectPath);
+        }
+        catch (Exception exception)
+        {
+            RejectAssetBundle(senderId, incoming.OriginTransferId, $"The host could not unpack the project assets: {exception.Message}");
+        }
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.Authority, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void BeginHostAssetBundle(
+        long transferId,
+        long originPeerId,
+        long originTransferId,
+        int packageSize,
+        int chunkCount)
+    {
+        if (!IsClient
+            || !TryCreateIncomingAssetBundle(transferId, originPeerId, originTransferId, packageSize, chunkCount, out IncomingAssetBundle incoming))
+        {
+            _incomingHostAssetBundle = null;
+            AssetBundleRejected?.Invoke("The host sent an invalid project asset transfer.");
+            return;
+        }
+        if (_incomingHostAssetBundle is not null)
+        {
+            AssetBundleRejected?.Invoke("The host sent overlapping project asset transfers.");
+            return;
+        }
+        _incomingHostAssetBundle = incoming;
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.Authority, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void ReceiveHostAssetBundleChunk(long transferId, int index, byte[] chunk)
+    {
+        if (!IsClient || _incomingHostAssetBundle is not IncomingAssetBundle incoming || incoming.TransferId != transferId)
+            return;
+        if (!TryReceiveAssetBundleChunk(incoming, index, chunk, out byte[]? package))
+        {
+            _incomingHostAssetBundle = null;
+            AssetBundleRejected?.Invoke("The host sent an incomplete or malformed project asset transfer.");
+            return;
+        }
+        if (package is null)
+            return;
+        _incomingHostAssetBundle = null;
+        try
+        {
+            string bundleProjectPath = LegacyProjectPackage.ExtractAssetBundle(package);
+            AssetBundleReceived?.Invoke(incoming.OriginPeerId, incoming.OriginTransferId, bundleProjectPath);
+        }
+        catch (Exception exception)
+        {
+            AssetBundleRejected?.Invoke($"Could not unpack the host's project assets: {exception.Message}");
+        }
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.Authority, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void ReceiveAssetBundleRejected(long transferId, string message)
+    {
+        if (_pendingAssetBundleTransferIds.Remove(transferId))
+            StateChanged?.Invoke();
+        AssetBundleRejected?.Invoke(message);
+    }
+
+    private static bool TryCreateIncomingAssetBundle(
+        long transferId,
+        long originPeerId,
+        long originTransferId,
+        int packageSize,
+        int chunkCount,
+        out IncomingAssetBundle incoming)
+    {
+        incoming = null!;
+        if (transferId <= 0
+            || originPeerId <= 0
+            || originTransferId < 0
+            || (originPeerId == 1) != (originTransferId == 0)
+            || packageSize is < 1 or > MaximumAssetBundleBytes
+            || chunkCount is < 1 or > MaximumAssetBundleChunkCount
+            || chunkCount != (packageSize + PackageChunkBytes - 1) / PackageChunkBytes)
+            return false;
+        incoming = new IncomingAssetBundle(transferId, originPeerId, originTransferId, packageSize, chunkCount);
+        return true;
+    }
+
+    private static bool TryReceiveAssetBundleChunk(
+        IncomingAssetBundle incoming,
+        int index,
+        byte[] chunk,
+        out byte[]? package)
+    {
+        package = null;
+        if (index < 0 || index >= incoming.ReceivedChunks.Length)
+            return false;
+        int offset = index * PackageChunkBytes;
+        int expectedLength = Math.Min(PackageChunkBytes, incoming.Package.Length - offset);
+        if (chunk.Length != expectedLength)
+            return false;
+        if (incoming.ReceivedChunks[index])
+            return true;
+        Buffer.BlockCopy(chunk, 0, incoming.Package, offset, chunk.Length);
+        incoming.ReceivedChunks[index] = true;
+        incoming.ReceivedChunkCount++;
+        if (incoming.ReceivedChunkCount != incoming.ReceivedChunks.Length)
+            return true;
+        package = incoming.Package;
+        return true;
+    }
+
+    public bool ConfirmAssetBundleApplied(long originPeerId, long originTransferId)
+    {
+        if (!IsClient || originPeerId != Multiplayer.GetUniqueId() || !_pendingAssetBundleTransferIds.Remove(originTransferId))
+            return false;
+        StateChanged?.Invoke();
+        return true;
+    }
+
+    private static bool TryCreateIncomingDocumentPatch(
+        long transferId,
+        int characterCount,
+        int chunkCount,
+        out IncomingDocumentPatch incoming)
+    {
+        incoming = null!;
+        if (transferId <= 0
+            || characterCount is < 2 or > MaximumDocumentPatchBytes
+            || chunkCount is < 1 or > MaximumDocumentPatchChunkCount
+            || chunkCount != (characterCount + DocumentPatchChunkCharacters - 1) / DocumentPatchChunkCharacters)
+            return false;
+        incoming = new IncomingDocumentPatch(transferId, characterCount, chunkCount);
+        return true;
+    }
+
+    private static bool TryReceiveDocumentPatchChunk(
+        IncomingDocumentPatch incoming,
+        int index,
+        string chunk,
+        out string? payload)
+    {
+        payload = null;
+        if (index < 0 || index >= incoming.ReceivedChunks.Length)
+            return false;
+        int offset = index * DocumentPatchChunkCharacters;
+        int expectedLength = Math.Min(DocumentPatchChunkCharacters, incoming.Payload.Length - offset);
+        if (chunk.Length != expectedLength)
+            return false;
+        if (incoming.ReceivedChunks[index])
+            return true;
+
+        chunk.CopyTo(0, incoming.Payload, offset, chunk.Length);
+        incoming.ReceivedChunks[index] = true;
+        incoming.ReceivedChunkCount++;
+        if (incoming.ReceivedChunkCount != incoming.ReceivedChunks.Length)
+            return true;
+
+        string json = new(incoming.Payload);
+        if (Encoding.UTF8.GetByteCount(json) > MaximumDocumentPatchBytes)
+            return false;
+        payload = json;
+        return true;
+    }
     private void SendRoster()
     {
         RefreshPlayers();
@@ -683,15 +1196,11 @@ public sealed partial class LegacyLanSession : Node
 
     private void SendProjectPackage(long peerId)
     {
-        if (_hostPackage is null || _hostProjectPath is null)
+        if (_hostProjectPath is null)
         {
             RpcId(peerId, nameof(ReceiveTransferError), "The host project is no longer available.");
             return;
         }
-
-        string projectName = Path.GetFileName(_hostProjectPath);
-        int chunkCount = (_hostPackage.Length + PackageChunkBytes - 1) / PackageChunkBytes;
-        RpcId(peerId, nameof(BeginProjectTransfer), projectName, _hostPackage.Length, chunkCount);
         _packageTransferQueue.Enqueue(peerId);
     }
 
@@ -700,40 +1209,50 @@ public sealed partial class LegacyLanSession : Node
 
     private void PumpProjectTransfer()
     {
-        if (!IsHost || _hostPackage is null)
+        if (!IsHost)
             return;
         if (_activeTransferPeer == 0)
         {
             while (_packageTransferQueue.Count > 0)
             {
                 long nextPeer = _packageTransferQueue.Dequeue();
-                if (_playerNames.ContainsKey(nextPeer))
+                if (!_playerNames.ContainsKey(nextPeer) || _hostProjectPath is null)
+                    continue;
+                try
                 {
+                    _activeTransferPackage = LegacyProjectPackage.Create(_hostProjectPath);
                     _activeTransferPeer = nextPeer;
                     _nextPackageChunk = 0;
-                    break;
+                    int queuedChunkCount = (_activeTransferPackage.Length + PackageChunkBytes - 1) / PackageChunkBytes;
+                    RpcId(nextPeer, nameof(BeginProjectTransfer), Path.GetFileName(_hostProjectPath), _activeTransferPackage.Length, queuedChunkCount);
                 }
+                catch (Exception exception)
+                {
+                    RpcId(nextPeer, nameof(ReceiveTransferError), $"Could not package the current host project: {exception.Message}");
+                }
+                break;
             }
         }
-        if (_activeTransferPeer == 0)
+        if (_activeTransferPeer == 0 || _activeTransferPackage is null)
             return;
 
         long peerId = _activeTransferPeer;
-        int chunkCount = (_hostPackage.Length + PackageChunkBytes - 1) / PackageChunkBytes;
+        int chunkCount = (_activeTransferPackage.Length + PackageChunkBytes - 1) / PackageChunkBytes;
         for (int sent = 0; sent < 16 && _nextPackageChunk < chunkCount; sent++, _nextPackageChunk++)
         {
             int offset = _nextPackageChunk * PackageChunkBytes;
-            int length = Math.Min(PackageChunkBytes, _hostPackage.Length - offset);
+            int length = Math.Min(PackageChunkBytes, _activeTransferPackage.Length - offset);
             byte[] chunk = new byte[length];
-            Buffer.BlockCopy(_hostPackage, offset, chunk, 0, length);
+            Buffer.BlockCopy(_activeTransferPackage, offset, chunk, 0, length);
             RpcId(peerId, nameof(ReceiveProjectChunk), _nextPackageChunk, chunk);
         }
         if (_nextPackageChunk < chunkCount)
             return;
 
         RpcId(peerId, nameof(ReceivePlayMode), _hostPlayMode);
-        SetStatus($"Shared {_hostPackage.Length / (1024 * 1024)} MiB with {_playerNames.GetValueOrDefault(peerId, $"player {peerId}")}.");
+        SetStatus($"Shared {_activeTransferPackage.Length / (1024 * 1024)} MiB with {_playerNames.GetValueOrDefault(peerId, $"player {peerId}")}.");
         _activeTransferPeer = 0;
+        _activeTransferPackage = null;
         _nextPackageChunk = 0;
     }
     private void SendActorStructure(long peerId, IReadOnlyList<GBNG.World.WorldActorNode> actors)
@@ -770,6 +1289,112 @@ public sealed partial class LegacyLanSession : Node
             }
             if (transfer.NextChunk == transfer.ChunkCount)
                 transfer.Payload = string.Empty;
+        }
+    }
+
+    private void PumpDocumentPatchTransfers()
+    {
+        foreach (KeyValuePair<long, OutgoingDocumentPatch> entry in _outgoingDocumentPatches.ToArray())
+        {
+            long peerId = entry.Key;
+            OutgoingDocumentPatch transfer = entry.Value;
+            if (IsHost ? !_projectReadyPeers.Contains(peerId) : !IsClient || peerId != 1)
+            {
+                _outgoingDocumentPatches.Remove(peerId);
+                continue;
+            }
+
+            if (transfer.Payload is null)
+            {
+                if (transfer.Pending.Count == 0)
+                {
+                    _outgoingDocumentPatches.Remove(peerId);
+                    continue;
+                }
+                transfer.Payload = transfer.Pending.Dequeue();
+                transfer.TransferId = ++_nextDocumentPatchTransferId;
+                if (transfer.TransferId <= 0)
+                    transfer.TransferId = _nextDocumentPatchTransferId = 1;
+                transfer.ChunkCount = (transfer.Payload.Length + DocumentPatchChunkCharacters - 1) / DocumentPatchChunkCharacters;
+                transfer.NextChunk = 0;
+                string beginMethod = IsHost ? nameof(BeginHostDocumentPatch) : nameof(BeginClientDocumentPatch);
+                RpcId(peerId, beginMethod, transfer.TransferId, transfer.Payload.Length, transfer.ChunkCount);
+            }
+
+            for (int sent = 0; sent < DocumentPatchChunksPerFrame && transfer.NextChunk < transfer.ChunkCount; sent++)
+            {
+                int index = transfer.NextChunk++;
+                int offset = index * DocumentPatchChunkCharacters;
+                int length = Math.Min(DocumentPatchChunkCharacters, transfer.Payload.Length - offset);
+                string method = IsHost ? nameof(ReceiveHostDocumentPatchChunk) : nameof(ReceiveClientDocumentPatchChunk);
+                RpcId(peerId, method, transfer.TransferId, index, transfer.Payload.Substring(offset, length));
+            }
+
+            if (transfer.NextChunk == transfer.ChunkCount)
+            {
+                transfer.Payload = null;
+                transfer.TransferId = 0;
+                transfer.ChunkCount = 0;
+                transfer.NextChunk = 0;
+            }
+        }
+    }
+
+    private void PumpAssetBundleTransfers()
+    {
+        foreach (KeyValuePair<long, OutgoingAssetBundle> entry in _outgoingAssetBundles.ToArray())
+        {
+            long peerId = entry.Key;
+            OutgoingAssetBundle transfer = entry.Value;
+            if (IsHost ? !_projectReadyPeers.Contains(peerId) : !IsClient || peerId != 1)
+            {
+                _outgoingAssetBundles.Remove(peerId);
+                continue;
+            }
+
+            if (transfer.Current is null)
+            {
+                if (transfer.Pending.Count == 0)
+                {
+                    _outgoingAssetBundles.Remove(peerId);
+                    continue;
+                }
+                transfer.Current = transfer.Pending.Dequeue();
+                transfer.TransferId = NextAssetBundleTransferId();
+                transfer.NextChunk = 0;
+                int chunkCount = (transfer.Current.Bytes.Length + PackageChunkBytes - 1) / PackageChunkBytes;
+                if (IsHost)
+                {
+                    RpcId(peerId, nameof(BeginHostAssetBundle), transfer.TransferId,
+                        transfer.Current.OriginPeerId, transfer.Current.OriginTransferId,
+                        transfer.Current.Bytes.Length, chunkCount);
+                }
+                else
+                {
+                    RpcId(peerId, nameof(BeginClientAssetBundle), transfer.TransferId,
+                        transfer.Current.OriginTransferId, transfer.Current.Bytes.Length, chunkCount);
+                }
+            }
+
+            AssetBundlePayload payload = transfer.Current!;
+            int totalChunkCount = (payload.Bytes.Length + PackageChunkBytes - 1) / PackageChunkBytes;
+            for (int sent = 0; sent < AssetBundleChunksPerFrame && transfer.NextChunk < totalChunkCount; sent++)
+            {
+                int index = transfer.NextChunk++;
+                int offset = index * PackageChunkBytes;
+                int length = Math.Min(PackageChunkBytes, payload.Bytes.Length - offset);
+                byte[] chunk = new byte[length];
+                Buffer.BlockCopy(payload.Bytes, offset, chunk, 0, length);
+                string method = IsHost ? nameof(ReceiveHostAssetBundleChunk) : nameof(ReceiveClientAssetBundleChunk);
+                RpcId(peerId, method, transfer.TransferId, index, chunk);
+            }
+
+            if (transfer.NextChunk == totalChunkCount)
+            {
+                transfer.Current = null;
+                transfer.TransferId = 0;
+                transfer.NextChunk = 0;
+            }
         }
     }
 

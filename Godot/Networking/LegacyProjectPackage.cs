@@ -10,6 +10,106 @@ internal static class LegacyProjectPackage
     private const int MaximumEntries = 10_000;
     private const string ProjectDirectory = "project/";
 
+    public static byte[] CreateAssetBundle(string sourceProjectPath)
+    {
+        string projectPath = ResolvePath(sourceProjectPath);
+        string sidecarName = $"{Path.GetFileNameWithoutExtension(projectPath)}.assets";
+        string assetDirectory = Path.Combine(Path.GetDirectoryName(projectPath)!, sidecarName);
+        if (!Directory.Exists(assetDirectory))
+            throw new DirectoryNotFoundException("This project has no imported asset sidecar to share.");
+
+        var files = new List<(string FullPath, string ArchivePath)>();
+        AddAssetFiles(assetDirectory, sidecarName, files);
+        if (files.Count == 0 || files.Count > MaximumEntries)
+            throw new InvalidDataException("The project asset bundle is empty or contains too many files.");
+
+        long uncompressedBytes = 0;
+        foreach ((string filePath, _) in files)
+        {
+            uncompressedBytes = checked(uncompressedBytes + new FileInfo(filePath).Length);
+            if (uncompressedBytes > MaximumExpandedBytes)
+                throw new InvalidDataException("Project asset bundle exceeds the 256 MiB expanded-size limit.");
+        }
+
+        using var package = new MemoryStream();
+        using (var archive = new ZipArchive(package, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach ((string filePath, string archivePath) in files)
+            {
+                ZipArchiveEntry entry = archive.CreateEntry(archivePath, CompressionLevel.Fastest);
+                using Stream destination = entry.Open();
+                using FileStream source = new(filePath, FileMode.Open, System.IO.FileAccess.Read, FileShare.Read);
+                source.CopyTo(destination);
+                if (package.Length > MaximumPackageBytes)
+                    throw new InvalidDataException("Project asset bundle exceeds the 256 MiB transfer limit.");
+            }
+        }
+        if (package.Length > MaximumPackageBytes)
+            throw new InvalidDataException("Project asset bundle exceeds the 256 MiB transfer limit.");
+        return package.ToArray();
+    }
+
+    public static string ExtractAssetBundle(byte[] packageBytes)
+    {
+        if (packageBytes.Length == 0 || packageBytes.Length > MaximumPackageBytes)
+            throw new InvalidDataException("The received asset bundle has an invalid size.");
+
+        string destinationRoot = ProjectSettings.GlobalizePath($"user://network-assets/{Guid.NewGuid():N}");
+        Directory.CreateDirectory(destinationRoot);
+        try
+        {
+            using var package = new MemoryStream(packageBytes, writable: false);
+            using var archive = new ZipArchive(package, ZipArchiveMode.Read, leaveOpen: false);
+            if (archive.Entries.Count is 0 or > MaximumEntries)
+                throw new InvalidDataException("The received asset bundle has an invalid file count.");
+
+            long expandedBytes = 0;
+            string? sidecarName = null;
+            foreach (ZipArchiveEntry entry in archive.Entries)
+            {
+                string relativePath = ValidateArchivePath(entry.FullName);
+                if (relativePath.Length == 0 || relativePath == "project")
+                    continue;
+                string[] components = relativePath.Split('/');
+                if (components.Length < 2 || components[0] != "project" || !components[1].EndsWith(".assets", StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("The received asset bundle contains a non-asset file.");
+                if (sidecarName is not null && sidecarName != components[1])
+                    throw new InvalidDataException("The received asset bundle contains multiple project sidecars.");
+                sidecarName = components[1];
+                if (entry.Length < 0 || entry.Length > MaximumExpandedBytes)
+                    throw new InvalidDataException("The received asset bundle contains an invalid file size.");
+                expandedBytes = checked(expandedBytes + entry.Length);
+                if (expandedBytes > MaximumExpandedBytes)
+                    throw new InvalidDataException("The received asset bundle expands beyond the 256 MiB limit.");
+
+                string destinationPath = Path.GetFullPath(Path.Combine(destinationRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+                string rootPrefix = Path.GetFullPath(destinationRoot) + Path.DirectorySeparatorChar;
+                if (!destinationPath.StartsWith(rootPrefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                    throw new InvalidDataException("The received asset bundle contains an unsafe path.");
+                Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+                using Stream source = entry.Open();
+                using FileStream destination = new(destinationPath, FileMode.CreateNew, System.IO.FileAccess.Write, FileShare.None);
+                CopyBounded(source, destination, entry.Length);
+            }
+
+            if (sidecarName is null)
+                throw new InvalidDataException("The received asset bundle contains no project assets.");
+            string extractedSidecar = Path.Combine(destinationRoot, "project", sidecarName);
+            if (!File.Exists(Path.Combine(extractedSidecar, "manifest.json")))
+                throw new InvalidDataException("The received asset bundle has no manifest.");
+            string sidecarPath = Path.Combine(destinationRoot, sidecarName);
+            Directory.Move(extractedSidecar, sidecarPath);
+            string projectName = Path.GetFileNameWithoutExtension(sidecarName) + ".voos";
+            return Path.Combine(destinationRoot, projectName);
+        }
+        catch
+        {
+            if (Directory.Exists(destinationRoot))
+                Directory.Delete(destinationRoot, recursive: true);
+            throw;
+        }
+    }
+
     public static byte[] Create(string sourcePath)
     {
         string fullProjectPath = ResolvePath(sourcePath);

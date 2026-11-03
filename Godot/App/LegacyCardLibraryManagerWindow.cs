@@ -54,6 +54,8 @@ public sealed partial class LegacyCardLibraryManagerWindow : Window
         RefreshCards();
     }
 
+    public void RefreshFromDocument() => RefreshCards();
+
     private void BuildInterface()
     {
         var margin = new MarginContainer { AnchorRight = 1f, AnchorBottom = 1f };

@@ -29,10 +29,9 @@ public sealed partial class LegacyLanSession
 
     public Error HostOnline(string projectPath, string playerName, string matchmakingUrl)
     {
-        byte[] package;
         try
         {
-            package = LegacyProjectPackage.Create(projectPath);
+            _ = LegacyProjectPackage.Create(projectPath);
         }
         catch (Exception exception)
         {
@@ -47,7 +46,6 @@ public sealed partial class LegacyLanSession
         _localPlayerName = NormalizePlayerName(playerName);
         _roomName = "Family game";
         _hostProjectPath = projectPath;
-        _hostPackage = package;
         _isHost = true;
         _hostPort = 0;
         _snapshotElapsed = 0d;

@@ -175,6 +175,17 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
         RefreshAssignedUses();
     }
 
+    public void RefreshFromDocument()
+    {
+        if (!_document.Actors.Contains(_actor))
+        {
+            QueueFree();
+            return;
+        }
+        RefreshAvailableBehaviors();
+        RefreshAssignedUses();
+    }
+
     private void BuildInterface()
     {
         var margin = new MarginContainer { AnchorRight = 1f, AnchorBottom = 1f };
