@@ -38,6 +38,7 @@ public sealed class DirectHostPortMapper : MonoBehaviour
 
   public static void BeginHostMapping()
   {
+    if (NetworkingController.IsDirectIpv6Host) return;
     EnsureInstance().BeginMappingInternal();
   }
 
@@ -83,7 +84,8 @@ public sealed class DirectHostPortMapper : MonoBehaviour
 
   static bool IsHosting(NetworkManager value)
   {
-    return value != null && value.IsListening && value.IsServer;
+    return value != null && value.IsListening && value.IsServer
+      && !NetworkingController.IsDirectIpv6Host;
   }
 
   void BeginMappingInternal()

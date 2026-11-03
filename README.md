@@ -171,21 +171,33 @@ can crash; Unity scales the existing texture if the window layout later changes.
 The Unity path uses Unity Netcode for GameObjects and Unity Transport; neither
 Photon PUN nor a paid Unity service is required.
 
-- From the splash screen, open **Multiplayer** and choose **Host a game**.
-- Other players on the same LAN see hosts in the room list automatically. Use
-  **Join by address** with an IPv4/IPv6 address or DNS hostname (`:7777` optional)
-  if discovery is blocked. Use `[IPv6]:port` to specify a custom port for an
-  IPv6 literal; DNS lookup prefers IPv4 and falls back to IPv6.
-  The multiplayer panel shows the host's LAN address.
-- The host listens on UDP port `7777`; LAN discovery broadcasts on UDP `47778`.
-  Allow UDP `47778` through local firewalls for LAN discovery. Internet hosting
-  tries to create an automatic UPnP IGD mapping to local UDP `7777`; if external
-  port `7777` is occupied, it tries `17777` and `27777`. The public room list
-  advertises the selected external port, while LAN discovery remains on `7777`.
+- From the splash screen, open **Multiplayer** and choose **Host a game** for
+  the unchanged IPv4 host mode. Choose **Host IPv6 game** for an IPv6-only host.
+- Other players on the same IPv4 LAN see IPv4 hosts in the room list
+  automatically. Use **Join by address** with an IPv4/IPv6 address or DNS
+  hostname (`:7777` optional) if discovery is blocked. Use `[IPv6]:port` to
+  specify a custom port for an IPv6 literal; DNS lookup prefers IPv4 and falls
+  back to IPv6. The multiplayer panel shows the host's share address.
+- The IPv4 host listens on UDP port `7777`; LAN discovery broadcasts on UDP
+  `47778`. Allow UDP `47778` through local firewalls for IPv4 LAN discovery.
+  Internet hosting tries to create an automatic UPnP IGD mapping to local UDP
+  `7777`; if external port `7777` is occupied, it tries `17777` and `27777`.
+  The public room list advertises the selected external port; IPv4 LAN discovery
+  remains on `7777`.
 - UPnP mapping is best-effort and requires an enabled, compatible router. Allow
   inbound UDP `7777` through the host's operating-system firewall; UPnP does not
   configure that firewall. If automatic mapping is unavailable, manually forward
   UDP `7777` to the host. CGNAT or restrictive NAT can still block Internet joins.
+
+**Host IPv6 game** binds an IPv6-only socket on UDP `7777`; it does not use
+UPnP, IPv4 LAN broadcast discovery, or the IPv4-only public session directory.
+Share the `[IPv6]:7777` address shown in the in-game multiplayer panel manually.
+Allow inbound UDP `7777` through the host firewall and, where applicable, the
+router's IPv6 firewall. A globally routable IPv6 address is needed for players
+outside the local network; a ULA address only works on a network that routes
+that prefix. If no usable IPv6 interface address is found, the panel falls back
+to `::1`, which is only reachable from the host itself.
+
 - A self-hosted public session directory can provide a global room list. When
   configured, hosts register their name and player count; clients can select a
   listed host to join. The directory learns the host's public IPv4 address from
@@ -253,9 +265,10 @@ router-specific forwarding are untested.
 Direct-host mode implements the core player-hosted flow, not every PUN/cloud
 feature. Host migration is unavailable. The transport accepts at most 16
 players (host plus 15 clients); the host assigns reusable player IDs so
-disconnect/rejoin cycles do not exhaust player slots. Hosting currently requires
-IPv4, although address joins accept IPv6 endpoints when the host is reachable
-over IPv6. Direct connections have no application-level authentication or encryption;
+disconnect/rejoin cycles do not exhaust player slots. IPv4 and IPv6-only hosting
+are available as separate choices; IPv6 hosts require manual address sharing
+and are not listed by IPv4 LAN discovery or the public session directory.
+Direct connections have no application-level authentication or encryption;
 share the host address only with trusted players. Manual address joins work
 without the directory.
 

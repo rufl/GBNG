@@ -382,6 +382,17 @@ public class MultiplayerMenu : ThumbnailMenu
     thumbnail.GetDescription = () => "Host a free direct-connect multiplayer game";
     thumbnail.GetPlayerCount = () => 1;
     AddThumbnail(thumbnail);
+
+    GameThumbnail ipv6Thumbnail = Instantiate(gameThumbnailPrefab).GetComponent<GameThumbnail>();
+    ipv6Thumbnail.SetThumbnail(newGameTexture);
+    ipv6Thumbnail.SetGameSource(GameDetail.GameSource.Local);
+    ipv6Thumbnail.SetName("Host IPv6 game");
+    ipv6Thumbnail.OnClick = OpenNewIpv6;
+    ipv6Thumbnail.GetWriteTime = () => System.DateTime.Today;
+    ipv6Thumbnail.GetDescription = () => "IPv6-only direct host; share the address manually";
+    ipv6Thumbnail.GetPlayerCount = () => 1;
+    AddThumbnail(ipv6Thumbnail);
+
     foreach (DirectHostDiscovery.HostInfo host in DirectHostDiscovery.GetDiscoveredHosts())
     {
       GameThumbnail discovered = Instantiate(gameThumbnailPrefab).GetComponent<GameThumbnail>();
@@ -467,6 +478,17 @@ public class MultiplayerMenu : ThumbnailMenu
     };
     loadingScreen.ShowAndDo(() => scenes.RestartAndLoadMinimalScene(options));
   }
+
+  void OpenNewIpv6()
+  {
+    var options = new GameBuilderApplication.GameOptions
+    {
+      directHostUsesIpv6 = true,
+      playOptions = new GameBuilderApplication.PlayOptions { isMultiplayer = true }
+    };
+    loadingScreen.ShowAndDo(() => scenes.RestartAndLoadMinimalScene(options));
+  }
+
 
   public void JoinMultiplayerPopup()
   {

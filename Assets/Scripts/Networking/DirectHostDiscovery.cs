@@ -83,7 +83,7 @@ public sealed class DirectHostDiscovery : MonoBehaviour
   void Update()
   {
     if (manager == null) manager = NetworkManager.Singleton;
-    if (manager != null && manager.IsListening && manager.IsServer)
+    if (manager != null && manager.IsListening && manager.IsServer && !NetworkingController.IsDirectIpv6Host)
     {
       AdvertiseHost();
     }

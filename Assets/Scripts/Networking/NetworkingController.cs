@@ -167,21 +167,40 @@ public class NetworkingController : Photon.PunBehaviour
 #endif
   }
 
+  public static bool IsDirectIpv6Host
+  {
+    get
+    {
+      GameBuilderApplication.GameOptions options = GameBuilderApplication.CurrentGameOptions;
+      return options.playOptions.isMultiplayer
+        && string.IsNullOrEmpty(options.joinAddress)
+        && options.directHostUsesIpv6;
+    }
+  }
+
+
   public string GetJoinedRoomName()
   {
 #if USE_PUN
     return PhotonNetwork.room.name;
 #else
     GameBuilderApplication.GameOptions options = GameBuilderApplication.CurrentGameOptions;
+    ushort port = options.joinPort == 0 ? DefaultDirectHostPort : options.joinPort;
     if (!IsDirectHost())
     {
-      return $"{options.joinAddress}:{(options.joinPort == 0 ? DefaultDirectHostPort : options.joinPort)}";
+      return FormatDirectHostAddress(options.joinAddress, port);
     }
 
     if (!directHostShareAddress.IsNullOrEmpty())
     {
       return directHostShareAddress;
     }
+
+    if (options.directHostUsesIpv6)
+    {
+      return GetDirectIpv6HostShareAddress(port);
+    }
+
 
     string fallback = "127.0.0.1";
     try
@@ -192,7 +211,7 @@ public class NetworkingController : Photon.PunBehaviour
         IPAddress localAddress = ((IPEndPoint)routeSocket.LocalEndPoint).Address;
         if (localAddress.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(localAddress))
         {
-          directHostShareAddress = $"{localAddress}:{DefaultDirectHostPort}";
+          directHostShareAddress = FormatDirectHostAddress(localAddress.ToString(), port);
           return directHostShareAddress;
         }
       }
@@ -230,17 +249,94 @@ public class NetworkingController : Photon.PunBehaviour
 
         if (hasGateway)
         {
-          directHostShareAddress = $"{address}:{DefaultDirectHostPort}";
+          directHostShareAddress = FormatDirectHostAddress(address.ToString(), port);
           return directHostShareAddress;
         }
         fallback = address.ToString();
       }
     }
 
-    directHostShareAddress = $"{fallback}:{DefaultDirectHostPort}";
+    directHostShareAddress = FormatDirectHostAddress(fallback, port);
     return directHostShareAddress;
 #endif
   }
+
+  static string FormatDirectHostAddress(string address, ushort port)
+  {
+    IPAddress parsedAddress;
+    if (IPAddress.TryParse(address, out parsedAddress)
+      && parsedAddress.AddressFamily == AddressFamily.InterNetworkV6)
+    {
+      return $"[{parsedAddress}]:{port}";
+    }
+    return $"{address}:{port}";
+  }
+
+  string GetDirectIpv6HostShareAddress(ushort port)
+  {
+    const string IPv6RouteProbeAddress = "2606:4700:4700::1111";
+    try
+    {
+      using (Socket routeSocket = new Socket(AddressFamily.InterNetworkV6, SocketType.Dgram, ProtocolType.Udp))
+      {
+        routeSocket.Connect(new IPEndPoint(IPAddress.Parse(IPv6RouteProbeAddress), 53));
+        IPAddress localAddress = ((IPEndPoint)routeSocket.LocalEndPoint).Address;
+        if (IsUsableDirectIpv6Address(localAddress))
+        {
+          directHostShareAddress = FormatDirectHostAddress(localAddress.ToString(), port);
+          return directHostShareAddress;
+        }
+      }
+    }
+    catch (SocketException)
+    {
+      // Fall back to a configured interface when there is no IPv6 route.
+    }
+
+    IPAddress globalAddress = null;
+    IPAddress uniqueLocalAddress = null;
+    try
+    {
+      foreach (NetworkInterface networkInterface in NetworkInterface.GetAllNetworkInterfaces())
+      {
+        if (networkInterface.OperationalStatus != OperationalStatus.Up) continue;
+        foreach (UnicastIPAddressInformation unicast in networkInterface.GetIPProperties().UnicastAddresses)
+        {
+          IPAddress address = unicast.Address;
+          if (!IsUsableDirectIpv6Address(address)) continue;
+          byte[] bytes = address.GetAddressBytes();
+          if ((bytes[0] & 0xE0) == 0x20)
+          {
+            globalAddress = address;
+            break;
+          }
+          if ((bytes[0] & 0xFE) == 0xFC && uniqueLocalAddress == null)
+          {
+            uniqueLocalAddress = address;
+          }
+        }
+        if (globalAddress != null) break;
+      }
+    }
+    catch (NetworkInformationException)
+    {
+      // Use loopback below when interface enumeration is unavailable.
+    }
+
+    IPAddress shareAddress = globalAddress ?? uniqueLocalAddress ?? IPAddress.IPv6Loopback;
+    directHostShareAddress = FormatDirectHostAddress(shareAddress.ToString(), port);
+    return directHostShareAddress;
+  }
+
+  static bool IsUsableDirectIpv6Address(IPAddress address)
+  {
+    return address.AddressFamily == AddressFamily.InterNetworkV6
+      && !IPAddress.IsLoopback(address)
+      && !address.IsIPv6LinkLocal
+      && !address.IsIPv6Multicast
+      && !address.IsIPv4MappedToIPv6;
+  }
+
 
   void Awake()
   {
@@ -520,7 +616,10 @@ public class NetworkingController : Photon.PunBehaviour
     if (options.joinAddress.IsNullOrEmpty())
     {
       ushort hostPort = options.joinPort == 0 ? DefaultDirectHostPort : options.joinPort;
-      directTransport.SetConnectionData("127.0.0.1", hostPort, "0.0.0.0");
+      if (options.directHostUsesIpv6)
+        directTransport.SetConnectionData("::1", hostPort, "::");
+      else
+        directTransport.SetConnectionData("127.0.0.1", hostPort, "0.0.0.0");
       PhotonNetwork.isMasterClient = true;
       PhotonNetwork.offlineMode = false;
       StartCoroutine(NonPunStartRoutine(true));
@@ -552,10 +651,15 @@ public class NetworkingController : Photon.PunBehaviour
     {
       if (!directNetworkManager.IsListening && !directNetworkManager.StartHost())
       {
-        OnFatalError($"Could not start a direct-host server on UDP port {DefaultDirectHostPort}.");
+        ushort hostPort = GameBuilderApplication.CurrentGameOptions.joinPort == 0
+          ? DefaultDirectHostPort
+          : GameBuilderApplication.CurrentGameOptions.joinPort;
+        string addressFamily = GameBuilderApplication.CurrentGameOptions.directHostUsesIpv6 ? "IPv6" : "IPv4";
+        OnFatalError($"Could not start the direct-host server on {addressFamily} UDP port {hostPort}. Check that the address family is enabled and the port is available.");
         yield break;
       }
-      DirectHostPortMapper.BeginHostMapping();
+      if (!IsDirectIpv6Host)
+        DirectHostPortMapper.BeginHostMapping();
       directRpcRouter.Initialize(directNetworkManager);
       RegisterDirectNetworkHandlers();
     }
@@ -1794,6 +1898,7 @@ public class NetworkingController : Photon.PunBehaviour
     {
       joinAddress = currentOptions.joinAddress,
       joinPort = currentOptions.joinPort,
+      directHostUsesIpv6 = currentOptions.directHostUsesIpv6,
       playOptions = new GameBuilderApplication.PlayOptions { isMultiplayer = true }
     };
     state = State.SwitchingScene;

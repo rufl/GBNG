@@ -137,6 +137,8 @@ public class GameBuilderApplication
     // Direct host connection settings. Empty address means this instance hosts.
     public string joinAddress;
     public ushort joinPort;
+    // Host on IPv6 only; IPv4 hosting remains the default.
+    public bool directHostUsesIpv6;
 
 
     public PlayOptions playOptions;

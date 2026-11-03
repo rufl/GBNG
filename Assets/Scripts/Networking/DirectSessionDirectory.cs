@@ -170,7 +170,8 @@ public sealed class DirectSessionDirectory : MonoBehaviour
   void Update()
   {
     if (manager == null) manager = NetworkManager.Singleton;
-    bool hosting = manager != null && manager.IsListening && manager.IsServer;
+    bool hosting = manager != null && manager.IsListening && manager.IsServer
+      && !NetworkingController.IsDirectIpv6Host;
     if (hosting)
     {
       if (!wasHosting)
@@ -258,7 +259,8 @@ public sealed class DirectSessionDirectory : MonoBehaviour
     }
 
     bool hostStillActive = generation == hostGeneration
-      && manager != null && manager.IsListening && manager.IsServer;
+      && manager != null && manager.IsListening && manager.IsServer
+      && !NetworkingController.IsDirectIpv6Host;
     if (!hostStillActive && !string.IsNullOrEmpty(sessionId) && !string.IsNullOrEmpty(sessionToken))
     {
       string endedSessionId = sessionId;
