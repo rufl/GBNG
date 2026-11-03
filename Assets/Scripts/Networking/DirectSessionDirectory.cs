@@ -180,6 +180,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
         nextHostRequestTime = 0f;
       }
       if (!string.IsNullOrEmpty(GetEndpoint())
+        && DirectHostPortMapper.IsMappingResolved
         && !sessionRequestInFlight
         && Time.realtimeSinceStartup >= nextHostRequestTime)
       {
@@ -390,7 +391,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
       Name = name,
       PlayerCount = playerCount,
       MaxPlayers = PhotonNetwork.MaximumDirectPlayers,
-      Port = NetworkingController.DefaultDirectHostPort
+      Port = DirectHostPortMapper.PublicPort
     };
   }
 

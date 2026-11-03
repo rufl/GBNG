@@ -553,6 +553,7 @@ public class NetworkingController : Photon.PunBehaviour
         OnFatalError($"Could not start a direct-host server on UDP port {DefaultDirectHostPort}.");
         yield break;
       }
+      DirectHostPortMapper.BeginHostMapping();
       directRpcRouter.Initialize(directNetworkManager);
       RegisterDirectNetworkHandlers();
     }
@@ -591,6 +592,7 @@ public class NetworkingController : Photon.PunBehaviour
     }
     PhotonView.InitializeSceneViews();
     DirectHostDiscovery.EnsureAvailable();
+    DirectHostPortMapper.EnsureAvailable();
     DirectSessionDirectory.EnsureAvailable();
   }
 

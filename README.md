@@ -176,14 +176,19 @@ Photon PUN nor a paid Unity service is required.
   **Join by address** with an IPv4 address or DNS hostname (`:7777` optional)
   if discovery is blocked; the multiplayer panel shows the host's LAN address.
 - The host listens on UDP port `7777`; LAN discovery broadcasts on UDP `47778`.
-  Allow UDP `47778` through local firewalls for LAN discovery.
+  Allow UDP `47778` through local firewalls for LAN discovery. Internet hosting
+  tries to create an automatic UPnP IGD mapping to local UDP `7777`; if external
+  port `7777` is occupied, it tries `17777` and `27777`. The public room list
+  advertises the selected external port, while LAN discovery remains on `7777`.
+- UPnP mapping is best-effort and requires an enabled, compatible router. Allow
+  inbound UDP `7777` through the host's operating-system firewall; UPnP does not
+  configure that firewall. If automatic mapping is unavailable, manually forward
+  UDP `7777` to the host. CGNAT or restrictive NAT can still block Internet joins.
 - A self-hosted public session directory can provide a global room list. When
   configured, hosts register their name and player count; clients can select a
   listed host to join. The directory learns the host's public IPv4 address from
   its request source. This is discovery only, not a relay or NAT traversal
-  service: Internet hosts must allow UDP `7777` through the operating-system
-  firewall and forward it on their router. CGNAT/restrictive NAT can still block
-  connections.
+  service.
 
 #### Self-hosted public session directory
 
