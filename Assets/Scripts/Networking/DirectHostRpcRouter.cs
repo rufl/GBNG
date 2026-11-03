@@ -48,7 +48,7 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
   void Update()
   {
     if (manager == null) manager = NetworkManager.Singleton;
-    if (manager == null || !manager.IsListening) return;
+    if (manager == null || !manager.IsListening || (!manager.IsServer && !manager.IsConnectedClient)) return;
     if (!registered) RegisterHandlers();
     PhotonNetwork.SetDirectSession(manager, NetworkingController.GetLocalDirectPlayerName());
     UpdateServerPlayerCallbacks();

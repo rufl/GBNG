@@ -1005,13 +1005,17 @@ public class NetworkingController : Photon.PunBehaviour
     }
 
     if (!directNetworkManager.IsServer
-      && !wasDirectlyKicked
       && (clientId == directNetworkManager.LocalClientId || clientId == NetworkManager.ServerClientId)
       && GameBuilderApplication.CurrentGameOptions.playOptions.isMultiplayer)
     {
-      OnFatalError(receivedPlayerInitPayload
-        ? "The host disconnected."
-        : "The host disconnected before sending the game state.");
+      bool wasKicked = wasDirectlyKicked;
+      PhotonNetwork.ClearDirectSession();
+      if (!wasKicked)
+      {
+        OnFatalError(receivedPlayerInitPayload
+          ? "The host disconnected."
+          : "The host disconnected before sending the game state.");
+      }
     }
   }
 
@@ -1655,6 +1659,7 @@ public class NetworkingController : Photon.PunBehaviour
     ulong? clientId = PhotonNetwork.GetDirectClientId(player.ID);
     if (!clientId.HasValue || clientId.Value == directNetworkManager.LocalClientId) return;
     kickedPlayerNickNames.Add(player.NickName);
+    Util.Log($"Sending direct kick RPC to player {player.ID} (client {clientId.Value}, view {photonView.viewID}).");
     photonView.RPC("KickRPC", player);
     StartCoroutine(DisconnectDirectClientAfterKick(player.ID));
 #endif
@@ -1674,6 +1679,7 @@ public class NetworkingController : Photon.PunBehaviour
   [PunRPC]
   void KickRPC(PhotonMessageInfo info)
   {
+    Util.Log($"Kick RPC invoked; sender={(info.sender == null ? "none" : info.sender.ID.ToString())}.");
     if (info.sender == null || PhotonNetwork.masterClient == null || info.sender.ID != PhotonNetwork.masterClient.ID) return;
     wasDirectlyKicked = true;
     PhotonNetwork.Disconnect();
