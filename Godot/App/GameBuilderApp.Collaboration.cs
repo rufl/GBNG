@@ -201,6 +201,7 @@ public partial class GameBuilderApp
         _terrainStrokeBefore.Clear();
         _terrainStrokeActive = false;
         AddStageGround(_document?.Stage);
+        ApplyStageVisuals();
 
         LegacyTerrainData? terrainData = LegacyTerrainData.Decode(_document?.GridState);
         if (terrainData is null)

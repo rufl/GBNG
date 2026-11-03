@@ -11,6 +11,159 @@ namespace GBNG.App;
 
 public partial class GameBuilderApp
 {
+    private async void RunWorldSettingsSmoke()
+    {
+        int exitCode = 0;
+        string? originalProjectPath = _document?.SourcePath;
+        string? temporaryDirectory = null;
+        try
+        {
+            await WaitForUiFrames(2);
+            if (_document is null || originalProjectPath is null)
+                throw new InvalidOperationException("A project must be open for the world-settings smoke run.");
+
+            string sourcePath = ProjectSettings.GlobalizePath(originalProjectPath);
+            if (!File.Exists(sourcePath))
+                throw new FileNotFoundException("The world-settings smoke project was not found.", sourcePath);
+            temporaryDirectory = Path.Combine(Path.GetTempPath(), $"GBNG-WorldSettings-Smoke-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(temporaryDirectory);
+            string projectPath = Path.Combine(temporaryDirectory, Path.GetFileName(sourcePath));
+            File.Copy(sourcePath, projectPath);
+            LoadProject(projectPath);
+            await WaitForUiFrames(2);
+            if (_document?.SourcePath != projectPath)
+                throw new InvalidOperationException("The writable world-settings smoke project did not load.");
+
+            JsonObject originalStage = _document.Stage?.DeepClone().AsObject() ?? new JsonObject();
+            OpenWorldSettings();
+            await WaitForUiFrames(2);
+            LegacyWorldSettingsWindow window = _worldSettingsWindow;
+            if (!window.Visible)
+                throw new InvalidOperationException("The world settings window did not open.");
+
+            OptionButton skyType = (OptionButton)window.FindChild("WorldSettingsSkyType", true, false);
+            ColorPickerButton skyColor = (ColorPickerButton)window.FindChild("WorldSettingsSkyColor", true, false);
+            OptionButton lightingMode = (OptionButton)window.FindChild("WorldSettingsLightingMode", true, false);
+            string originalSkyType = LegacySaveDocument.ReadString(originalStage["skyType"], "Day");
+            SelectWorldSetting(skyType, string.Equals(originalSkyType, "Space", StringComparison.OrdinalIgnoreCase) ? "Day" : "Space");
+            SelectWorldSetting(skyType, "SolidColor");
+
+            var expectedSkyColor = new Color(0.17f, 0.31f, 0.73f, 1f);
+            skyColor.Color = expectedSkyColor;
+            skyColor.EmitSignal("color_changed", expectedSkyColor);
+            string originalLighting = LegacySaveDocument.ReadString(originalStage["sceneLightingMode"], "Day");
+            string expectedLighting = string.Equals(originalLighting, "Night", StringComparison.OrdinalIgnoreCase) ? "Dark" : "Night";
+            SelectWorldSetting(lightingMode, expectedLighting);
+
+            AssertStageVisuals(_document.Stage);
+            if (LegacySaveDocument.ReadString(_document.Stage?["skyType"]) != "SolidColor"
+                || LegacySaveDocument.ReadString(_document.Stage?["sceneLightingMode"]) != expectedLighting
+                || !ColorsMatch(ReadStageVisualColor(_document.Stage?["skyColor"]), expectedSkyColor))
+                throw new InvalidOperationException("World settings were not written to the expected .voos stage values.");
+
+            for (int index = 0; index < 4; index++)
+                UndoEdit();
+            await WaitForUiFrames(2);
+            if (!JsonNode.DeepEquals(_document.Stage?["skyType"], originalStage["skyType"])
+                || !JsonNode.DeepEquals(_document.Stage?["skyColor"], originalStage["skyColor"])
+                || !JsonNode.DeepEquals(_document.Stage?["sceneLightingMode"], originalStage["sceneLightingMode"]))
+                throw new InvalidOperationException("World-settings undo did not restore the original .voos stage values.");
+            AssertStageVisuals(_document.Stage);
+
+            for (int index = 0; index < 4; index++)
+                RedoEdit();
+            await WaitForUiFrames(2);
+            AssertStageVisuals(_document.Stage);
+            if (LegacySaveDocument.ReadString(_document.Stage?["skyType"]) != "SolidColor"
+                || LegacySaveDocument.ReadString(_document.Stage?["sceneLightingMode"]) != expectedLighting
+                || !ColorsMatch(ReadStageVisualColor(_document.Stage?["skyColor"]), expectedSkyColor))
+                throw new InvalidOperationException("World-settings redo did not restore the edited .voos values.");
+
+            _document.SaveTo(projectPath);
+            LoadProject(projectPath);
+            await WaitForUiFrames(2);
+            if (_document?.SourcePath != projectPath
+                || LegacySaveDocument.ReadString(_document.Stage?["skyType"]) != "SolidColor"
+                || LegacySaveDocument.ReadString(_document.Stage?["sceneLightingMode"]) != expectedLighting
+                || !ColorsMatch(ReadStageVisualColor(_document.Stage?["skyColor"]), expectedSkyColor))
+                throw new InvalidOperationException("World settings did not persist after saving and reloading the .voos project.");
+            AssertStageVisuals(_document.Stage);
+
+            OpenWorldSettings();
+            await WaitForUiFrames(2);
+            string screenshot = ProjectSettings.GlobalizePath("res://.godot/world-settings-smoke.png");
+            if (window.GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
+                throw new InvalidOperationException("Could not save the world-settings screenshot.");
+            GD.Print($"WORLD_SETTINGS_SMOKE_OK sky=SolidColor lighting={expectedLighting} undo=redo=persistence=true screenshot={screenshot}");
+        }
+        catch (Exception exception)
+        {
+            exitCode = 1;
+            GD.PushError($"WORLD_SETTINGS_SMOKE_FAILED: {exception}");
+        }
+        finally
+        {
+            _worldSettingsWindow?.Hide();
+            if (originalProjectPath is not null)
+            {
+                LoadProject(originalProjectPath);
+                await WaitForUiFrames(2);
+                if (!string.Equals(_document?.SourcePath, originalProjectPath, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                {
+                    exitCode = 1;
+                    GD.PushError("WORLD_SETTINGS_SMOKE_FAILED: the original project could not be restored.");
+                }
+            }
+            if (temporaryDirectory is not null && Directory.Exists(temporaryDirectory))
+                Directory.Delete(temporaryDirectory, recursive: true);
+            GetTree().Quit(exitCode);
+        }
+    }
+
+    private static void SelectWorldSetting(OptionButton picker, string value)
+    {
+        for (int index = 0; index < picker.ItemCount; index++)
+        {
+            if (picker.GetItemMetadata(index).AsString() != value)
+                continue;
+            picker.Select(index);
+            picker.EmitSignal("item_selected", (long)index);
+            return;
+        }
+        throw new InvalidOperationException($"World settings did not expose the '{value}' option.");
+    }
+
+    private void AssertStageVisuals(JsonObject? stage)
+    {
+        string skyType = LegacySaveDocument.ReadString(stage?["skyType"], "Day");
+        Color skyColor = ReadStageVisualColor(stage?["skyColor"]);
+        Color expectedBackground = skyType.ToLowerInvariant() switch
+        {
+            "day" => new Color("#65B6FB"),
+            "space" => new Color("#3A1A24"),
+            "overcast" => new Color("#D2DCF7"),
+            _ => skyColor
+        };
+        string lightingMode = LegacySaveDocument.ReadString(stage?["sceneLightingMode"], "Day");
+        float expectedAmbient = lightingMode.ToLowerInvariant() switch { "night" => 0.28f, "dark" => 0.08f, _ => 0.65f };
+        float expectedSun = lightingMode.ToLowerInvariant() switch { "night" => 0.45f, "dark" => 0.12f, _ => 1.2f };
+        Godot.Environment environment = GetNodeOrNull<WorldEnvironment>("WorldEnvironment")?.Environment
+            ?? throw new InvalidOperationException("The editor world environment is missing.");
+        DirectionalLight3D sun = GetNodeOrNull<DirectionalLight3D>("Sun")
+            ?? throw new InvalidOperationException("The editor sun light is missing.");
+        if (!ColorsMatch(environment.BackgroundColor, expectedBackground)
+            || Math.Abs(environment.AmbientLightEnergy - expectedAmbient) > 0.001f
+            || Math.Abs(sun.LightEnergy - expectedSun) > 0.001f)
+            throw new InvalidOperationException(
+                $"The scene visuals did not apply stage settings: sky={environment.BackgroundColor}, ambient={environment.AmbientLightEnergy}, sun={sun.LightEnergy}.");
+    }
+
+    private static bool ColorsMatch(Color left, Color right)
+        => Math.Abs(left.R - right.R) <= 0.001f
+            && Math.Abs(left.G - right.G) <= 0.001f
+            && Math.Abs(left.B - right.B) <= 0.001f
+            && Math.Abs(left.A - right.A) <= 0.001f;
+
     private async System.Threading.Tasks.Task RunTerrainEditorSmoke()
     {
         LegacyTerrainNode terrain = _terrain

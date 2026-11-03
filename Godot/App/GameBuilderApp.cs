@@ -26,6 +26,7 @@ public partial class GameBuilderApp : Node3D
     private LineEdit _assetSearch = null!;
     private Label _assetCount = null!;
     private LegacyAssetPreviewControl _assetPreview = null!;
+    private LegacyWorldSettingsWindow _worldSettingsWindow = null!;
     private LegacyAssetStoreWindow _assetStoreWindow = null!;
     private OptionButton _samplePicker = null!;
     private SpinBox[] _positionFields = Array.Empty<SpinBox>();
@@ -150,6 +151,8 @@ public partial class GameBuilderApp : Node3D
             RunAssetImportSmoke();
         if (commandLineArgs.Contains("--smoke-code-editor", StringComparer.Ordinal))
             RunCodeEditorSmoke();
+        if (commandLineArgs.Contains("--smoke-world-settings", StringComparer.Ordinal))
+            RunWorldSettingsSmoke();
     }
 
 
@@ -323,6 +326,7 @@ public partial class GameBuilderApp : Node3D
         var layer = new CanvasLayer { Name = "EditorInterface", Layer = 10 };
         AddChild(layer);
         _networkWindow = new LegacyLanNetworkWindow(_lanSession, PrepareNetworkHostProjectCopy, OpenReceivedNetworkProject);
+        _worldSettingsWindow = new LegacyWorldSettingsWindow(UpdateStageProperty);
         _assetStoreWindow = new LegacyAssetStoreWindow(
             _catalog,
             () => _document is not null && !_playMode && !_lanSession.HasPendingAssetSync,
@@ -331,6 +335,7 @@ public partial class GameBuilderApp : Node3D
             OpenImageImportDialog);
         AddChild(_assetStoreWindow);
         AddChild(_networkWindow);
+        AddChild(_worldSettingsWindow);
 
         var root = new Control
         {
@@ -475,6 +480,7 @@ public partial class GameBuilderApp : Node3D
         _playButton = new Button { Text = "Play", CustomMinimumSize = new Vector2(84f, 36f) };
         _playButton.Pressed += () => SetPlayMode(!_playMode);
         toolbar.AddChild(_playButton);
+        AddToolbarButton(toolbar, "World", OpenWorldSettings);
         AddToolbarButton(toolbar, "Terrain", OpenTerrainEditor);
         AddToolbarButton(toolbar, "Reset", ResetActors);
         _undoButton = new Button { Text = "Undo", CustomMinimumSize = new Vector2(70f, 36f), Disabled = true };
@@ -758,6 +764,14 @@ public partial class GameBuilderApp : Node3D
             ? LegacyBehaviorRuntime.ValidateBehaviorSourceWithoutRuntime(behaviorUri, source)
             : runtime.ValidateBehaviorSource(behaviorUri, source);
     }
+    private void OpenWorldSettings()
+    {
+        if (_document is null || _playMode)
+            return;
+        _worldSettingsWindow.RefreshFromStage(_document.Stage);
+        _worldSettingsWindow.PopupCentered(new Vector2I(500, 360));
+    }
+
     private void OpenTerrainEditor()
     {
         if (_terrainEditorWindow is null)
@@ -1009,6 +1023,7 @@ public partial class GameBuilderApp : Node3D
                 _terrain = null;
                 AddStageGround(document.Stage);
             }
+            ApplyStageVisuals();
 
             BuildActors(document);
             _behaviorRuntime = CreateBehaviorRuntime(document);
@@ -1112,6 +1127,85 @@ public partial class GameBuilderApp : Node3D
         _world.AddChild(body);
         _stageGroundMesh = mesh;
         _stageGroundBody = body;
+    }
+    private void UpdateStageProperty(string property, JsonNode value)
+    {
+        if (_document is null || _playMode)
+            return;
+
+        JsonObject stage = LegacySaveDocument.EnsureObject(_document.Root, "stage");
+        bool hadPreviousValue = stage.TryGetPropertyValue(property, out JsonNode? previousValue);
+        if (hadPreviousValue && JsonNode.DeepEquals(previousValue, value))
+            return;
+
+        JsonNode? before = previousValue?.DeepClone();
+        JsonNode after = value.DeepClone();
+        SetStageProperty(property, after, shouldExist: true, refreshWindow: false);
+        string label = property switch
+        {
+            "skyType" => "Change sky type",
+            "skyColor" => "Change sky color",
+            "sceneLightingMode" => "Change scene lighting",
+            _ => $"Change stage {property}"
+        };
+        RecordHistory(
+            label,
+            () => SetStageProperty(property, before, hadPreviousValue),
+            () => SetStageProperty(property, after, shouldExist: true));
+    }
+
+    private void SetStageProperty(string property, JsonNode? value, bool shouldExist, bool refreshWindow = true)
+    {
+        if (_document is null)
+            return;
+        JsonObject stage = LegacySaveDocument.EnsureObject(_document.Root, "stage");
+        if (shouldExist)
+            stage[property] = value?.DeepClone();
+        else
+            stage.Remove(property);
+        ApplyStageVisuals(refreshWindow);
+    }
+
+    private void ApplyStageVisuals(bool refreshWindow = true)
+    {
+        JsonObject? stage = _document?.Stage;
+        string skyType = LegacySaveDocument.ReadString(stage?["skyType"], "Day");
+        Color skyColor = ReadStageVisualColor(stage?["skyColor"]);
+        Color background;
+        if (string.Equals(skyType, "Day", StringComparison.OrdinalIgnoreCase))
+            background = new Color("#65B6FB");
+        else if (string.Equals(skyType, "Space", StringComparison.OrdinalIgnoreCase))
+            background = new Color("#3A1A24");
+        else if (string.Equals(skyType, "Overcast", StringComparison.OrdinalIgnoreCase))
+            background = new Color("#D2DCF7");
+        else
+            background = skyColor;
+        string lightingMode = LegacySaveDocument.ReadString(stage?["sceneLightingMode"], "Day");
+        bool isNight = string.Equals(lightingMode, "Night", StringComparison.OrdinalIgnoreCase);
+        bool isDark = string.Equals(lightingMode, "Dark", StringComparison.OrdinalIgnoreCase);
+        float ambientEnergy = isNight ? 0.28f : isDark ? 0.08f : 0.65f;
+        float sunEnergy = isNight ? 0.45f : isDark ? 0.12f : 1.2f;
+        if (GetNodeOrNull<WorldEnvironment>("WorldEnvironment")?.Environment is Godot.Environment environment)
+        {
+            environment.BackgroundMode = Godot.Environment.BGMode.Color;
+            environment.BackgroundColor = background;
+            environment.AmbientLightEnergy = ambientEnergy;
+        }
+        if (GetNodeOrNull<DirectionalLight3D>("Sun") is DirectionalLight3D sun)
+            sun.LightEnergy = sunEnergy;
+        if (refreshWindow)
+            _worldSettingsWindow?.RefreshFromStage(stage);
+    }
+
+    private static Color ReadStageVisualColor(JsonNode? node)
+    {
+        if (node is not JsonObject color)
+            return new Color(0.5f, 0.5f, 0.5f, 1f);
+        return new Color(
+            LegacySaveDocument.ReadFloat(color["r"], 0.5f),
+            LegacySaveDocument.ReadFloat(color["g"], 0.5f),
+            LegacySaveDocument.ReadFloat(color["b"], 0.5f),
+            LegacySaveDocument.ReadFloat(color["a"], 1f));
     }
 
     private void BeginTerrainStroke()
@@ -1727,6 +1821,7 @@ public partial class GameBuilderApp : Node3D
         if (enabled)
         {
             _terrainEditorWindow?.SetBrushActive(false);
+            _worldSettingsWindow.Hide();
             EndTerrainStroke();
         }
         _playMode = enabled;

@@ -31,6 +31,8 @@ Bundled examples are read-only project resources; use **Save as…** to create a
 
 The Godot branch loads and saves legacy `.voos` projects, supports actor selection and inspector editing (including behavior-brain assignment), and provides behavior authoring for embedded JavaScript and legacy typed properties using Godot's native code editor. Its first-party offline asset store searches the generated built-in renderable catalog and models or images imported into the project's `<project>.assets/` sidecar; it previews converted 3D models and images, and imports local `.glb`, `.gltf`, or `.fbx` models plus `.png`, `.jpg`, `.jpeg`, and `.webp` images. Imported images are available to legacy `propImage` properties and render through `uiImage` and `uiImageSlice` without remote lookups. The store needs no account or remote asset service, and Save As carries imported references and files to the new project location. GBNG does not verify licenses for user-imported files; users must check source terms before reuse or sharing.
 
+The **World** editor sets sky type (Day, Space, Overcast, or Solid color), sky color, and scene lighting (Day, Night, or Dark). Changes update the live scene, persist in the original `.voos` stage data, and participate in Undo/Redo and host-authoritative collaborative edits.
+
 Behavior UI image and image-slice widgets honor the legacy `noFilter` option: nearest sampling when enabled, bilinear sampling when omitted or false. Behavior UI `BORDER` and `DASHED` circles select 3–300 segments from their projected screen radius, matching the legacy renderer's adaptive detail.
 
 Behavior UI button hitboxes include their top and left edges and exclude their right and bottom edges, matching Unity's half-open rectangle containment.
