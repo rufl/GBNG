@@ -49,7 +49,7 @@ Run `bash tools/codegen/gen-all.sh` from the repository root with Python 3.15.2.
 
 1. Open the repository root with Unity Editor 6000.6.7f1.
 1. Open the splash screen scene: `Assets/splash.unity`.
-1. If Unity prompts for TextMesh Pro essential resources, import them and restart the editor.
+1. TextMesh Pro essential resources are included under `Assets/TextMesh Pro`; no manual import is required.
 1. Click Play.
 
 
