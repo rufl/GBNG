@@ -27,9 +27,9 @@ public class CodeBrowserWrapper : MonoBehaviour
   {
     Debug.Assert(basicCodeBrowser != null, "basicCodeBrowser property not set in CodeBrowserWrapper");
     initialized = true;
-    codeBrowser = basicCodeBrowser;
-    // The editor is initially hidden by its owning UI controller. Activating it here
-    // would make it appear onscreen during initialization.
+    MonacoCodeBrowser monacoBrowser = gameObject.AddComponent<MonacoCodeBrowser>();
+    monacoBrowser.Configure(basicCodeBrowser);
+    codeBrowser = monacoBrowser;
   }
 
   public ICodeBrowser GetCodeBrowser()

@@ -140,10 +140,12 @@ library.
 
 ## Behavior code editor
 
-The built-in multiline editor works without a paid embedded-browser plugin. It
-supports code editing, read-only mode, error display, scroll restoration, and
-zoom. Monaco's syntax highlighting, completions, and system-source navigation
-are not part of this offline editor.
+The Windows 64-bit build uses the free, MIT-licensed WebViewToolkit with the
+free Microsoft Edge WebView2 runtime and the vendored Monaco editor. It
+provides syntax highlighting, completions, behavior-system typings and source
+navigation, code editing, read-only mode, error display, scroll restoration,
+and zoom. Install the WebView2 runtime to use Monaco; if it is unavailable or
+on other platforms, the editor falls back to the built-in multiline editor.
 
 ## Optional integrations available for free
 

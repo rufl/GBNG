@@ -29,6 +29,7 @@ public class CodeEditorController : MonoBehaviour, IPointerEnterHandler, IPointe
   // Per instance state
 
   VoosEngine voosEngine;
+  BehaviorSystem behaviorSystem;
   CursorManager cursorManager;
 
   public bool isEditorReady { get; private set; }
@@ -53,6 +54,7 @@ public class CodeEditorController : MonoBehaviour, IPointerEnterHandler, IPointe
     Util.FindIfNotSet(this, ref codeBrowserWrapper);
     Util.FindIfNotSet(this, ref voosEngine);
     Util.FindIfNotSet(this, ref cursorManager);
+    Util.FindIfNotSet(this, ref behaviorSystem);
 
     browser = codeBrowserWrapper.GetCodeBrowser();
     isEditorReady = false;
@@ -172,12 +174,38 @@ public class CodeEditorController : MonoBehaviour, IPointerEnterHandler, IPointe
 
   void InitializeCodeEditor()
   {
-    if (isEditorReady)
-    {
-      return;
-    }
+    if (isEditorReady) return;
 
-    browser.CheckIsReadyAsync(value => isEditorReady = value);
+    browser.CheckIsReadyAsync(isReady =>
+    {
+      if (!isReady) return;
+      isEditorReady = true;
+
+      ISystemSourceBrowser systemSourceBrowser = browser as ISystemSourceBrowser;
+      if (systemSourceBrowser == null || !systemSourceBrowser.IsAvailable) return;
+
+      foreach (var typing in behaviorSystem.typings)
+      {
+        string path = typing.GetAbsolute();
+        if (!System.IO.File.Exists(path))
+        {
+          Debug.LogError($"Bad typings path: {path}");
+          continue;
+        }
+
+        string contents = System.IO.File.ReadAllText(path);
+        systemSourceBrowser.AddSystemSource(contents, System.IO.Path.GetFileName(path));
+      }
+
+      int count = 0;
+      foreach (TextAsset jsSource in behaviorSystem.ForSystemSources())
+      {
+        if (jsSource.text.Contains("// VISIBLE_TO_MONACO"))
+        {
+          systemSourceBrowser.AddSystemSource(jsSource.text, $"voos_{count++}-{jsSource.name}.js");
+        }
+      }
+    });
   }
 
   public void RequestCodeCompile()

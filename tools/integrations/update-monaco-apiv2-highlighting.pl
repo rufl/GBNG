@@ -14,45 +14,59 @@
 # limitations under the License.
 
 use FindBin;
+use File::Find qw(find);
+use strict;
+use warnings;
+
 chdir "$FindBin::Bin/../.." or die "Failed to locate repository root: $!";
-$DEFS_FILE = "BrowserAssets/monaco-editor-0.14.3/min/vs/basic-languages/javascript/javascript.js";
-$JS_KEYWORDS = '"break","case","catch","class","continue","const","constructor","debugger","default","delete","do","else","export","extends","false","finally","for","from","function","get","if","import","in","instanceof","let","new","null","return","set","super","switch","symbol","this","throw","true","try","typeof","undefined","var","void","while","with","yield","async","await","of"';
+my $defs_file = "third_party/monaco-editor-0.14.3/min/vs/basic-languages/javascript/javascript.js";
+my $js_keywords = '"break","case","catch","class","continue","const","constructor","debugger","default","delete","do","else","export","extends","false","finally","for","from","function","get","if","import","in","instanceof","let","new","null","return","set","super","switch","symbol","this","throw","true","try","typeof","undefined","var","void","while","with","yield","async","await","of"';
 
-$jsdef = qx(cat $DEFS_FILE);
-$? eq 0 or die "Failed to read Monaco js defs file from $DEFS_FILE";
+open my $defs_handle, '<:raw', $defs_file or die "Failed to read Monaco js defs file from $defs_file: $!";
+local $/;
+my $jsdef = <$defs_handle>;
+close $defs_handle or die "Failed to close $defs_file: $!";
 
-@words = $JS_KEYWORDS =~ /"(\w+)"/g;
+my @words = $js_keywords =~ /"(\w+)"/g;
+my @js_files;
+find(
+  {
+    no_chdir => 1,
+    wanted => sub {
+      return unless -f $_ && /\.js\.txt\z/;
+      push @js_files, $File::Find::name;
+    },
+  },
+  "Assets/Scripts/Behaviors/JavaScript/apiv2"
+);
 
-@js_files = split(/\s+/,qx(find Assets/Scripts/Behaviors/JavaScript/apiv2 -name '*.js.txt'));
-
-for $js_file (@js_files) {
-  $contents = qx(cat $js_file);
-  $? eq 0 or die "Failed to read JS file $js_file.";
+for my $js_file (@js_files) {
+  open my $js_handle, '<:raw', $js_file or die "Failed to read JS file $js_file: $!";
+  my $contents = <$js_handle>;
+  close $js_handle or die "Failed to close $js_file: $!";
   next unless $contents =~ /VISIBLE_TO_MONACO/;
   print STDERR "Processing JS file $js_file...\n";
 
   $contents =~ s/^\/\/\s+DOC_ONLY:\s+//mg;
-  
-  @functions = ($contents =~ /^function (\w+)\(/mg);
-  print "FUNCTION: $_\n" for @functions;
-  push @words, $_ for @functions;
 
-  @globs = ($contents =~ /^var (\w+)/mg);
+  my @functions = ($contents =~ /^function (\w+)\(/mg);
+  print "FUNCTION: $_\n" for @functions;
+  push @words, @functions;
+
+  my @globs = ($contents =~ /^var (\w+)/mg);
   print "GLOB: $_\n" for @globs;
-  push @words, $_ for @globs;
+  push @words, @globs;
 }
 
 @words = sort @words;
 
-@words_quoted = ();
-push @words_quoted, "\"$_\"" for @words;
-$list = join(",", @words_quoted);
+my @words_quoted = map { qq{"$_"} } @words;
+my $list = join(",", @words_quoted);
+$jsdef =~ s/tokenPostfix:\s*"\.js"\s*,\s*keywords:\s*\[[^]]+\]/tokenPostfix:".js",keywords:[$list]/
+  or die "Failed to match keywords: portion of Monaco js defs.";
 
-$jsdef =~ s/tokenPostfix:\s*"\.js"\s*,\s*keywords:\s*\[[^]]+\]/tokenPostfix:".js",keywords:[$list]/ or die "Failed to match keywords: portion of Monaco js defs.";
-
-open OUT, ">$DEFS_FILE" or die "Failed to write $DEFS_FILE";
-print OUT $jsdef;
-close OUT;
-
+open my $out, '>:raw', $defs_file or die "Failed to write $defs_file: $!";
+print {$out} $jsdef;
+close $out or die "Failed to close $defs_file: $!";
 print STDERR "Done.\n";
 

@@ -66,6 +66,13 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
     var errorStrings = [];
     var errorMessages = [];
+    var zoom = 0;
+
+    function notifyUnity(type, value) {
+      if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.postMessage(JSON.stringify({ type: type, value: value }));
+      }
+    }
 
     function addError(baseOneLineNumber, errorString) {
       if (!isReady()) {
@@ -176,12 +183,28 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
         // window.editor.model.onDidChangeContent((event) => {
         //   console.log(event);
         // });
-        window.editor.model.onDidChangeContent(updateInlineErrorOnChangeContent);
+        editor.getModel().onDidChangeContent(function (event) {
+          updateInlineErrorOnChangeContent(event);
+          notifyUnity("code", getCode());
+        });
         editor.getModel().updateOptions({ tabSize: 2, insertSpaces: true });
+        editor.onDidScrollChange(function () {
+          notifyUnity("scroll", String(editor.getScrollTop()));
+        });
+        var editorNode = editor.getDomNode();
+        editorNode.addEventListener("focusin", function () {
+          notifyUnity("focus", "true");
+        }, true);
+        editorNode.addEventListener("focusout", function () {
+          window.setTimeout(function () {
+            notifyUnity("focus", String(editorNode.contains(document.activeElement)));
+          }, 0);
+        }, true);
 
         if (initCode != null) {
           setCode(initCode);
         }
+        notifyUnity("ready", "");
 
         // Testing
         if (false) {
@@ -230,6 +253,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
     function setScrollTop(top) {
       if (editor !== null) {
         editor.setScrollTop(top);
+        notifyUnity("scroll", String(editor.getScrollTop()));
       }
     }
 
@@ -239,6 +263,12 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
     function setReadOnly(readOnly) {
       editor.updateOptions({ "readOnly": readOnly });
+    }
+    function setZoom(newZoom) {
+      zoom = Math.max(-8, Math.min(16, newZoom));
+      if (editor !== null) {
+        editor.updateOptions({ fontSize: Math.round(14 * Math.pow(1.1, zoom)) });
+      }
     }
 
   </script>

@@ -45,6 +45,12 @@
         "com.unity.modules.physics": "1.0.0"
       }
     },
+    "com.webviewtoolkit.core": {
+      "version": "file:com.webviewtoolkit.core",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {}
+    },
     "com.unity.modules.animation": {
       "version": "1.0.0",
       "depth": 0,

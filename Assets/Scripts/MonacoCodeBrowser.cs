@@ -1,3 +1,19 @@
+/*
+ * Copyright 2019 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -79,6 +95,7 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
   private Texture originalTexture;
   private WebViewInstance webView;
   private MonacoAssetServer assetServer;
+  private WebViewManager manager;
   private readonly List<Action<bool>> readinessCallbacks = new List<Action<bool>>();
   private readonly List<PendingError> pendingErrors = new List<PendingError>();
   private string code = "";
@@ -136,7 +153,7 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
 
       assetServer = new MonacoAssetServer(thirdPartyRoot);
       string editorUrl = assetServer.Start();
-      WebViewManager manager = WebViewManager.Instance;
+      manager = WebViewManager.Instance;
       if (manager == null || !manager.IsInitialized)
       {
         SwitchToFallback("The free WebView2 runtime could not initialize.");
@@ -174,7 +191,6 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
 
     if (usingFallback || webView == null) return;
 
-    WebViewManager manager = WebViewManager.Instance;
     manager?.Tick();
 
     if (!pageReady && Time.unscaledTime - startTime > InitializationTimeoutSeconds)
@@ -185,7 +201,7 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
 
     UpdateWebViewSize();
     UpdateKeyboardFocus();
-    if (keyboardFocus) ForwardKeyboardInput();
+    if (pageReady && keyboardFocus) ForwardKeyboardInput();
   }
 
   private void UpdateWebViewSize()
@@ -306,7 +322,7 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
       output.enabled = visible;
     }
 
-    ExecuteScript("setCode(" + JsonUtility.ToJson(new CodePayload { code = code }) + ".code);");
+    ExecuteScript("setCode((" + JsonUtility.ToJson(new CodePayload { code = code }) + ").code);");
     ExecuteScript("setReadOnly(" + readOnly.ToString().ToLowerInvariant() + ");");
     ExecuteScript("setScrollTop(" + scrollTop.ToString(CultureInfo.InvariantCulture) + ");");
     ExecuteScript("setZoom(" + zoom.ToString(CultureInfo.InvariantCulture) + ");");
@@ -398,12 +414,8 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
   public void Show(bool show)
   {
     visible = show;
-    if (show) fallback?.Show(true);
-    else
-    {
-      keyboardFocus = false;
-      fallback?.Show(false);
-    }
+    if (!show) keyboardFocus = false;
+    if (usingFallback || !pageReady) fallback?.Show(show);
 
     if (!usingFallback && output != null) output.enabled = show;
   }
@@ -497,7 +509,7 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
 
   public void ZoomIn() { SetZoom(zoom + 1f); }
   public void ZoomOut() { SetZoom(zoom - 1f); }
-  public float GetZoom() { return usingFallback ? fallback.GetZoom() : zoom; }
+  public float GetZoom() { return usingFallback && fallback != null ? fallback.GetZoom() : zoom; }
 
   public void SetZoom(float newZoom)
   {
