@@ -288,9 +288,11 @@ adapter forwards actor-state and transform RPCs, terrain edits, player identity
 and poses, ownership changes, and observable player state (tint, visibility,
 avatar animation, and tool-effect data). LAN/DNS/loopback smokes exercise host
 discovery, direct joins, identity, RPC targeting, map switching, and kicking.
-A standalone 400 KiB test transfers all nine chunks through two live NGO/UTP
-managers over loopback. Internet reachability and router-specific forwarding
-remain untested; offline smoke verifies save/load round-tripping.
+Standalone loopback tests transfer a 400 KiB initial snapshot and a 256 KiB
+Photon RPC through live NGO/UTP managers. Reliable RPC, event, and observable
+packets are split into 48 KiB chunks, with a 1 MiB packet cap. Internet
+reachability and router-specific forwarding remain untested; offline smoke
+verifies save/load round-tripping.
 
 If the host disconnects after a client loads the initial snapshot, the client
 autosaves its local copy and can recover it from the Game Library. This

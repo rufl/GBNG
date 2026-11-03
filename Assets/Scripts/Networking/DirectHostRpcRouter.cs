@@ -15,6 +15,9 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
   const string OwnershipName = "GB_DIRECT_OWNERSHIP_V1";
   const string PoseName = "GB_DIRECT_PLAYER_POSE_V1";
   const int MaxPacketBytes = 1024 * 1024;
+  const int DirectPacketChunkBytes = 48 * 1024;
+  const int ChunkedPacketMarker = -1;
+  const int PacketChunkHeaderBytes = 5 * sizeof(int);
   const int MaxUnreliableEventBytes = 900;
   const float ObservableInterval = 0.2f;
   const float ObservableRefresh = 2f;
@@ -32,11 +35,19 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
   float nextObservableTime;
   readonly HashSet<int> knownPlayerIds = new HashSet<int>();
   readonly HashSet<int> currentPlayerIds = new HashSet<int>();
+  readonly Dictionary<ulong, DirectPacketChunkAssembler> rpcPacketAssemblers = new Dictionary<ulong, DirectPacketChunkAssembler>();
+  readonly Dictionary<ulong, DirectPacketChunkAssembler> eventPacketAssemblers = new Dictionary<ulong, DirectPacketChunkAssembler>();
+  readonly Dictionary<ulong, DirectPacketChunkAssembler> posePacketAssemblers = new Dictionary<ulong, DirectPacketChunkAssembler>();
+  readonly Dictionary<ulong, DirectPacketChunkAssembler> observablePacketAssemblers = new Dictionary<ulong, DirectPacketChunkAssembler>();
+  readonly Dictionary<ulong, DirectPacketChunkAssembler> ownershipPacketAssemblers = new Dictionary<ulong, DirectPacketChunkAssembler>();
 
   public void Initialize(NetworkManager networkManager)
   {
+    if (manager != null) manager.OnClientDisconnectCallback -= OnDirectClientDisconnected;
     manager = networkManager;
     instance = this;
+    manager.OnClientDisconnectCallback -= OnDirectClientDisconnected;
+    manager.OnClientDisconnectCallback += OnDirectClientDisconnected;
     RegisterHandlers();
   }
   public void ResetScenePlayerCallbacks()
@@ -109,8 +120,23 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
       if (!(behaviour is NetworkingController)) behaviour.OnPhotonPlayerDisconnected(directPlayer);
   }
 
+  void OnDirectClientDisconnected(ulong clientId)
+  {
+    rpcPacketAssemblers.Remove(clientId);
+    eventPacketAssemblers.Remove(clientId);
+    posePacketAssemblers.Remove(clientId);
+    observablePacketAssemblers.Remove(clientId);
+    ownershipPacketAssemblers.Remove(clientId);
+  }
+
   void OnDestroy()
   {
+    if (manager != null) manager.OnClientDisconnectCallback -= OnDirectClientDisconnected;
+    rpcPacketAssemblers.Clear();
+    eventPacketAssemblers.Clear();
+    posePacketAssemblers.Clear();
+    observablePacketAssemblers.Clear();
+    ownershipPacketAssemblers.Clear();
     if (instance != this) return;
     instance = null;
     sentStates.Clear();
@@ -132,21 +158,120 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
   {
     DirectHostRpcRouter router = instance;
     if (router == null || router.manager == null || !router.manager.IsListening) return;
-    using (FastBufferWriter writer = new FastBufferWriter(packet.Length + sizeof(int), Allocator.Temp))
+    if (packet == null || packet.Length <= 0 || packet.Length > MaxPacketBytes)
+      throw new InvalidDataException($"Invalid direct-network packet size: {(packet == null ? 0 : packet.Length)} bytes.");
+
+    if (packet.Length <= DirectPacketChunkBytes)
     {
-      writer.WriteValueSafe(packet.Length);
-      writer.WriteBytesSafe(packet);
-      router.manager.CustomMessagingManager.SendNamedMessage(name, clientId, writer, delivery);
+      using (FastBufferWriter writer = new FastBufferWriter(packet.Length + sizeof(int), Allocator.Temp))
+      {
+        writer.WriteValueSafe(packet.Length);
+        writer.WriteBytesSafe(packet);
+        router.manager.CustomMessagingManager.SendNamedMessage(name, clientId, writer, delivery);
+      }
+      return;
+    }
+
+    int chunkCount = (packet.Length + DirectPacketChunkBytes - 1) / DirectPacketChunkBytes;
+    for (int chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++)
+    {
+      int offset = chunkIndex * DirectPacketChunkBytes;
+      int chunkLength = Math.Min(DirectPacketChunkBytes, packet.Length - offset);
+      using (FastBufferWriter writer = new FastBufferWriter(chunkLength + PacketChunkHeaderBytes, Allocator.Temp))
+      {
+        writer.WriteValueSafe(ChunkedPacketMarker);
+        writer.WriteValueSafe(packet.Length);
+        writer.WriteValueSafe(chunkIndex);
+        writer.WriteValueSafe(chunkCount);
+        writer.WriteValueSafe(chunkLength);
+        writer.WriteBytesSafe(packet, chunkLength, offset);
+        router.manager.CustomMessagingManager.SendNamedMessage(
+          name, clientId, writer, NetworkDelivery.ReliableFragmentedSequenced);
+      }
     }
   }
 
-  static byte[] ReadPacket(FastBufferReader reader)
+  byte[] ReadPacket(
+    ulong senderClientId,
+    FastBufferReader reader,
+    Dictionary<ulong, DirectPacketChunkAssembler> assemblers)
   {
     reader.ReadValueSafe(out int length);
-    if (length <= 0 || length > MaxPacketBytes) throw new InvalidDataException($"Invalid direct-network packet size: {length} bytes.");
-    byte[] packet = new byte[length];
-    reader.ReadBytesSafe(ref packet, length);
-    return packet;
+    if (length != ChunkedPacketMarker)
+    {
+      if (length <= 0 || length > MaxPacketBytes || reader.Length - reader.Position != length)
+        throw new InvalidDataException($"Invalid direct-network packet size: {length} bytes.");
+      byte[] packet = new byte[length];
+      reader.ReadBytesSafe(ref packet, length);
+      return packet;
+    }
+
+    reader.ReadValueSafe(out int packetLength);
+    reader.ReadValueSafe(out int chunkIndex);
+    reader.ReadValueSafe(out int chunkCount);
+    reader.ReadValueSafe(out int chunkLength);
+    if (!assemblers.TryGetValue(senderClientId, out DirectPacketChunkAssembler assembler))
+    {
+      assembler = new DirectPacketChunkAssembler();
+      assemblers.Add(senderClientId, assembler);
+    }
+    return assembler.Append(packetLength, chunkIndex, chunkCount, chunkLength, reader);
+  }
+
+  sealed class DirectPacketChunkAssembler
+  {
+    byte[] packet;
+    int expectedChunkCount;
+    int nextChunkIndex;
+
+    public byte[] Append(int packetLength, int chunkIndex, int chunkCount, int chunkLength, FastBufferReader reader)
+    {
+      try
+      {
+        if (packetLength <= DirectPacketChunkBytes || packetLength > MaxPacketBytes)
+          throw new InvalidDataException($"Invalid direct-network chunked packet size: {packetLength} bytes.");
+        int expectedCount = (packetLength + DirectPacketChunkBytes - 1) / DirectPacketChunkBytes;
+        if (chunkCount != expectedCount || chunkIndex < 0 || chunkIndex >= chunkCount)
+          throw new InvalidDataException("Invalid direct-network chunk index or count.");
+
+        if (packet == null)
+        {
+          if (chunkIndex != 0)
+            throw new InvalidDataException("Direct-network packet chunks arrived out of order.");
+          packet = new byte[packetLength];
+          expectedChunkCount = chunkCount;
+          nextChunkIndex = 0;
+        }
+
+        if (packet.Length != packetLength || expectedChunkCount != chunkCount || chunkIndex != nextChunkIndex)
+          throw new InvalidDataException("Direct-network packet chunk sequence changed mid-transfer.");
+
+        int offset = chunkIndex * DirectPacketChunkBytes;
+        int expectedLength = Math.Min(DirectPacketChunkBytes, packetLength - offset);
+        if (chunkLength != expectedLength || reader.Length - reader.Position != chunkLength)
+          throw new InvalidDataException("Invalid direct-network packet chunk length.");
+
+        reader.ReadBytesSafe(ref packet, chunkLength, offset);
+        nextChunkIndex++;
+        if (nextChunkIndex != expectedChunkCount) return null;
+
+        byte[] completedPacket = packet;
+        Reset();
+        return completedPacket;
+      }
+      catch
+      {
+        Reset();
+        throw;
+      }
+    }
+
+    void Reset()
+    {
+      packet = null;
+      expectedChunkCount = 0;
+      nextChunkIndex = 0;
+    }
   }
 
   static void WriteValue(BinaryWriter writer, object value)
@@ -309,7 +434,8 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
   {
     try
     {
-      byte[] packet = ReadPacket(reader);
+      byte[] packet = ReadPacket(senderClientId, reader, rpcPacketAssemblers);
+      if (packet == null) return;
       using (BinaryReader input = new BinaryReader(new MemoryStream(packet, false)))
       {
         PhotonTargets target = (PhotonTargets)input.ReadByte();
@@ -421,7 +547,8 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
   {
     try
     {
-      byte[] packet = ReadPacket(reader);
+      byte[] packet = ReadPacket(senderClientId, reader, eventPacketAssemblers);
+      if (packet == null) return;
       using (BinaryReader input = new BinaryReader(new MemoryStream(packet, false)))
       {
         byte code = input.ReadByte();
@@ -476,7 +603,8 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
   {
     try
     {
-      byte[] packet = ReadPacket(reader);
+      byte[] packet = ReadPacket(senderClientId, reader, posePacketAssemblers);
+      if (packet == null) return;
       using (BinaryReader input = new BinaryReader(new MemoryStream(packet, false)))
       {
         int viewId = input.ReadInt32();
@@ -575,7 +703,8 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
   {
     try
     {
-      byte[] packet = ReadPacket(reader);
+      byte[] packet = ReadPacket(senderClientId, reader, observablePacketAssemblers);
+      if (packet == null) return;
       using (BinaryReader input = new BinaryReader(new MemoryStream(packet, false)))
       {
         int viewId = input.ReadInt32();
@@ -638,7 +767,8 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
   {
     try
     {
-      byte[] packet = ReadPacket(reader);
+      byte[] packet = ReadPacket(senderClientId, reader, ownershipPacketAssemblers);
+      if (packet == null) return;
       using (BinaryReader input = new BinaryReader(new MemoryStream(packet, false)))
       {
         int viewId = input.ReadInt32();
