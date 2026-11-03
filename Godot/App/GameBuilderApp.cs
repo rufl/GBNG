@@ -147,6 +147,8 @@ public partial class GameBuilderApp : Node3D
             RunAssetStoreSmoke();
         if (commandLineArgs.Contains("--smoke-asset-import", StringComparer.Ordinal))
             RunAssetImportSmoke();
+        if (commandLineArgs.Contains("--smoke-code-editor", StringComparer.Ordinal))
+            RunCodeEditorSmoke();
     }
 
 

@@ -372,6 +372,89 @@ public partial class GameBuilderApp
             GetTree().Quit(exitCode);
         }
     }
+    private async void RunCodeEditorSmoke()
+    {
+        int exitCode = 0;
+        LegacyCardLibraryManagerWindow? manager = null;
+        try
+        {
+            manager = new LegacyCardLibraryManagerWindow(
+                _document ?? throw new InvalidOperationException("The code-editor smoke project did not load."),
+                () => { });
+            AddChild(manager);
+            manager.PopupCentered(new Vector2I(1100, 680));
+            await WaitForUiFrames(2);
+            ((Button)manager.FindChild("CreateEmbeddedCard", true, false)).EmitSignal("pressed");
+            await WaitForUiFrames(1);
+
+            ItemList cards = (ItemList)manager.FindChild("ManagedCards", true, false);
+            int[] selected = cards.GetSelectedItems();
+            if (selected.Length != 1)
+                throw new InvalidOperationException("The code-editor smoke card was not selected.");
+            string uri = cards.GetItemMetadata(selected[0]).AsString();
+            if (!uri.StartsWith("embedded:", StringComparison.Ordinal))
+                throw new InvalidOperationException("The code-editor smoke card was not embedded in the project.");
+            string behaviorId = uri["embedded:".Length..];
+            var editor = (LegacyJavaScriptCodeEdit)manager.FindChild("ManagedCardJavaScript", true, false);
+            editor.Text = "mys";
+            editor.SetCaretLine(0);
+            editor.SetCaretColumn(editor.Text.Length);
+            editor.GrabFocus();
+            Input.ParseInputEvent(new InputEventKey
+            {
+                Keycode = Key.Space,
+                Pressed = true,
+                CtrlPressed = true
+            });
+            await WaitForUiFrames(1);
+            Input.ParseInputEvent(new InputEventKey
+            {
+                Keycode = Key.Space,
+                Pressed = false,
+                CtrlPressed = true
+            });
+            Godot.Collections.Array<Godot.Collections.Dictionary> options = editor.GetCodeCompletionOptions();
+            int myselfIndex = -1;
+            for (int index = 0; index < options.Count; index++)
+            {
+                if (options[index]["display_text"].AsString() == "myself")
+                {
+                    myselfIndex = index;
+                    break;
+                }
+            }
+            if (myselfIndex < 0)
+                throw new InvalidOperationException("The native editor did not suggest the documented Game Builder API function 'myself'.");
+            editor.SetCodeCompletionSelectedIndex(myselfIndex);
+            editor.ConfirmCodeCompletion();
+            await WaitForUiFrames(1);
+            if (!editor.Text.Contains("myself()", StringComparison.Ordinal))
+                throw new InvalidOperationException("Accepting a Game Builder API completion did not insert its function call.");
+
+            const string appliedSource = "export function onCollision(msg) { broadcast('NativeEditorSmoke'); }";
+            editor.Text = appliedSource;
+            InvokeSmoke(manager, "ApplyCode");
+            if (LegacySaveDocument.ReadString(FindEmbeddedBehaviorSmoke(behaviorId)?["javascript"]) != appliedSource)
+                throw new InvalidOperationException("CodeEdit source was not applied to the embedded behavior.");
+
+            string screenshot = ProjectSettings.GlobalizePath("res://.godot/code-editor-smoke.png");
+            if (GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
+                throw new InvalidOperationException("Could not save the native code-editor screenshot.");
+            GD.Print($"CODE_EDITOR_SMOKE_OK completion=myself applied=true screenshot={screenshot}");
+        }
+        catch (Exception exception)
+        {
+            exitCode = 1;
+            GD.PushError($"CODE_EDITOR_SMOKE_FAILED: {exception}");
+        }
+        finally
+        {
+            manager?.QueueFree();
+            await WaitForUiFrames(1);
+            GetTree().Quit(exitCode);
+        }
+    }
+
 
     private async System.Threading.Tasks.Task RunCustomAssetImportSmoke()
     {

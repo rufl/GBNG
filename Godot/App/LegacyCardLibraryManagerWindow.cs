@@ -25,7 +25,7 @@ public sealed partial class LegacyCardLibraryManagerWindow : Window
     private readonly LineEdit _categories = new();
     private readonly LineEdit _imagePath = new();
     private readonly TextEdit _description = new();
-    private readonly TextEdit _javascript = new();
+    private readonly LegacyJavaScriptCodeEdit _javascript = new();
     private readonly Button _copyButton = new();
     private readonly Button _deleteButton = new();
     private readonly Button _exportButton = new();
@@ -165,7 +165,7 @@ public sealed partial class LegacyCardLibraryManagerWindow : Window
         _applyMetadataButton.Pressed += ApplyMetadata;
         right.AddChild(_applyMetadataButton);
         var codeHeading = new HBoxContainer();
-        codeHeading.AddChild(new Label { Text = "JavaScript", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
+        codeHeading.AddChild(new Label { Text = "JavaScript · Ctrl+Space for API suggestions", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
         _applyCodeButton.Name = "ApplyManagedCardCode";
         _applyCodeButton.Text = "Apply code";
         _applyCodeButton.Disabled = true;
@@ -242,8 +242,6 @@ public sealed partial class LegacyCardLibraryManagerWindow : Window
         _refreshing = true;
         try
         {
-            if (_cards.GetSelectedItems().Length > 0)
-                _selectedUri = _cards.GetItemMetadata(_cards.GetSelectedItems()[0]).AsString();
             string filter = _search.Text.Trim();
             _cards.Clear();
             var entries = new List<(string Uri, string Title, JsonObject? Metadata)>();

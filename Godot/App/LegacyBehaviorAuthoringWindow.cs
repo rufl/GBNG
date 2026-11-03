@@ -24,7 +24,7 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
     private readonly Action _onChanged;
     private readonly ItemList _assignedUses = new();
     private readonly OptionButton _availableBehaviors = new();
-    private readonly TextEdit _scriptEditor = new();
+    private readonly LegacyJavaScriptCodeEdit _scriptEditor = new();
     private readonly TextEdit _assignmentsEditor = new();
     private readonly Button _removeUseButton = new();
     private readonly Button _copyBehaviorButton = new();
@@ -275,7 +275,7 @@ public sealed partial class LegacyBehaviorAuthoringWindow : Window
         _applyCardMetadataButton.Pressed += ApplyCardMetadata;
         _metadataEditor.AddChild(_applyCardMetadataButton);
         right.AddChild(_metadataEditor);
-        scriptToolbar.AddChild(new Label { Text = "JavaScript", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
+        scriptToolbar.AddChild(new Label { Text = "JavaScript · Ctrl+Space for API suggestions", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
         _copyBehaviorButton.Text = "Create editable copy";
         _copyBehaviorButton.Disabled = true;
         _copyBehaviorButton.Pressed += CopySelectedBehavior;
