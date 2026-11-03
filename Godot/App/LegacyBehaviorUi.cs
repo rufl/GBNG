@@ -15,6 +15,7 @@ public partial class LegacyBehaviorUi : Control
     private readonly Color[] _textColorStack = new Color[128];
     private Action<string, string, string>? _sendMessage;
     private int _textColorStackCount;
+    private float _drawScale = 1f;
     private static readonly char[] TextColorTerminators = { '"', '\'', '>' };
     private static readonly string[] TextTags = { "color", "b", "/color", "/b" };
 
@@ -39,7 +40,8 @@ public partial class LegacyBehaviorUi : Control
         if (scale <= 0f)
             return;
 
-        DrawSetTransform(Vector2.Zero, 0f, Vector2.One * scale);
+        _drawScale = scale;
+        DrawSetTransform(Vector2.Zero, 0f, Vector2.One * _drawScale);
         foreach (JsonNode? node in _commands)
         {
             if (node is JsonObject command)
@@ -133,12 +135,14 @@ public partial class LegacyBehaviorUi : Control
             return;
         float x = LegacySaveDocument.ReadFloat(rect["x"], 0f);
         float y = LegacySaveDocument.ReadFloat(rect["y"], 0f);
-        int size = GetTextSize(command);
+        float size = GetTextSize(command);
         Font font = ThemeDB.FallbackFont;
         string text = LegacySaveDocument.ReadString(command["text"]);
         Color color = DecodeColor(LegacySaveDocument.ReadInt(command["textColor"], 0xffffff), opacity);
+        int fontSize = GetFontRasterSize(size);
+        float fontScale = size / fontSize;
         float lineHeight = 20f * size / 29.5f;
-        float baseline = y + font.GetAscent(size);
+        float baseline = y + font.GetAscent(fontSize) * fontScale;
         float lineStartX = x;
         int lineStart = 0;
         _textColorStackCount = 0;
@@ -154,7 +158,7 @@ public partial class LegacyBehaviorUi : Control
             if (i != text.Length && !isNewline && !isTag)
                 continue;
 
-            DrawTextRun(text, lineStart, i - lineStart, ref x, baseline, size, font, color, bold);
+            DrawTextRun(text, lineStart, i - lineStart, ref x, baseline, fontSize, fontScale, font, color, bold);
             if (isNewline)
             {
                 x = lineStartX;
@@ -190,15 +194,19 @@ public partial class LegacyBehaviorUi : Control
         }
     }
 
-    private void DrawTextRun(string text, int start, int length, ref float x, float baseline, int size, Font font, Color color, bool bold)
+    private void DrawTextRun(string text, int start, int length, ref float x, float baseline, int fontSize, float fontScale, Font font, Color color, bool bold)
     {
         if (length <= 0)
             return;
         string run = text.Substring(start, length);
-        DrawString(font, new Vector2(x, baseline), run, HorizontalAlignment.Left, -1f, size, color);
+        float scaledDrawSize = _drawScale * fontScale;
+        DrawSetTransform(Vector2.Zero, 0f, Vector2.One * scaledDrawSize);
+        Vector2 position = new Vector2(x, baseline) / fontScale;
+        DrawString(font, position, run, HorizontalAlignment.Left, -1f, fontSize, color);
         if (bold)
-            DrawString(font, new Vector2(x + 1f, baseline), run, HorizontalAlignment.Left, -1f, size, color);
-        x += font.GetStringSize(run, HorizontalAlignment.Left, -1f, size).X;
+            DrawString(font, new Vector2(position.X + 1f / scaledDrawSize, position.Y), run, HorizontalAlignment.Left, -1f, fontSize, color);
+        x += font.GetStringSize(run, HorizontalAlignment.Left, -1f, fontSize).X * fontScale;
+        DrawSetTransform(Vector2.Zero, 0f, Vector2.One * _drawScale);
     }
 
     private static bool TryReadTextTag(string text, int start, out int tagEnd, out int tagNameStart, out int valueStart)
@@ -273,12 +281,16 @@ public partial class LegacyBehaviorUi : Control
             return;
         DrawRect(rect, background);
         DrawRect(rect, DecodeColor(0xffffff, opacity), false, 1f);
-        int size = GetTextSize(command);
+        float size = GetTextSize(command);
         Font font = ThemeDB.FallbackFont;
+        int fontSize = GetFontRasterSize(size);
+        float fontScale = size / fontSize;
         Color textColor = DecodeColor(LegacySaveDocument.ReadInt(command["textColor"], 0xffffff), 1f);
         string text = LegacySaveDocument.ReadString(command["text"]);
-        float baseline = rect.Position.Y + (rect.Size.Y + font.GetAscent(size) - font.GetDescent(size)) * 0.5f;
-        DrawString(font, new Vector2(rect.Position.X, baseline), text, HorizontalAlignment.Center, rect.Size.X, size, textColor);
+        float baseline = rect.Position.Y + (rect.Size.Y + (font.GetAscent(fontSize) - font.GetDescent(fontSize)) * fontScale) * 0.5f;
+        DrawSetTransform(Vector2.Zero, 0f, Vector2.One * (_drawScale * fontScale));
+        DrawString(font, new Vector2(rect.Position.X / fontScale, baseline / fontScale), text, HorizontalAlignment.Center, rect.Size.X / fontScale, fontSize, textColor);
+        DrawSetTransform(Vector2.Zero, 0f, Vector2.One * _drawScale);
     }
 
     private void DrawCircle(JsonObject command, Color color, string style)
@@ -449,11 +461,13 @@ public partial class LegacyBehaviorUi : Control
         return true;
     }
 
-    private static int GetTextSize(JsonObject command)
+    private static float GetTextSize(JsonObject command)
     {
         float size = LegacySaveDocument.ReadFloat(command["textSize"], 0f);
-        return Mathf.Max(1, Mathf.RoundToInt(size > 0f ? size : 29.5f));
+        return size > 0f ? size : 29.5f;
     }
+
+    private static int GetFontRasterSize(float textSize) => Mathf.Max(1, Mathf.CeilToInt(textSize));
 
     private static Color DecodeColor(int value, float opacity) => new(
         ((value >> 16) & 0xff) / 255f,

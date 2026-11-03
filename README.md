@@ -34,6 +34,7 @@ The Godot branch loads and saves legacy `.voos` projects, supports actor selecti
 Behavior UI image and image-slice widgets honor the legacy `noFilter` option: nearest sampling when enabled, bilinear sampling when omitted or false. Behavior UI `BORDER` and `DASHED` circles select 3–300 segments from their projected screen radius, matching the legacy renderer's adaptive detail.
 
 Behavior UI button hitboxes include their top and left edges and exclude their right and bottom edges, matching Unity's half-open rectangle containment.
+Behavior UI text and button labels preserve fractional legacy `textSize` values instead of rounding them to integer font sizes.
 
 The visual card library supports text/category filtering, card-icon previews, hidden-card filtering, and drag-and-drop deck assignment. The canvas edits panels, card uses, notes, and panel layout while preserving legacy `.voos` references. A card manager creates, copies, edits, and deletes embedded cards and imports/exports legacy card-pack folders; conflicting IDs can be overwritten, duplicated, or canceled.
 

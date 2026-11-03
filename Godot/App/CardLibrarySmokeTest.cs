@@ -672,11 +672,12 @@ public partial class GameBuilderApp
 
             string uiButtonBoundsScreenshot = await RunBehaviorUiButtonBoundsSmoke();
             string uiCircleQualityScreenshot = await RunBehaviorUiCircleQualitySmoke();
+            string uiFractionalTextSizeScreenshot = await RunBehaviorUiFractionalTextSizeSmoke();
             string uiImageFilterScreenshot = await RunBehaviorUiImageFilterSmoke();
             string screenshot = ProjectSettings.GlobalizePath("res://.godot/code-editor-smoke.png");
             if (GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
                 throw new InvalidOperationException("Could not save the native code-editor screenshot.");
-            GD.Print($"CODE_EDITOR_SMOKE_OK completion=myself zoom=true zoomBounds=8-36 inlineDiagnostics=true scrollRestoration=true syntaxDiagnostics=true runtimeDiagnostics=true managedCardValidation=true managedCardDiagnostics=true applied=true uiButtonHalfOpenBounds=true uiButtonBoundsScreenshot={uiButtonBoundsScreenshot} uiImageFilter=true uiImageSliceFilter=true uiCircleAdaptiveDetail=true uiCircleQualityScreenshot={uiCircleQualityScreenshot} uiImageFilterScreenshot={uiImageFilterScreenshot} zoomScreenshot={zoomScreenshot} scrollScreenshot={scrollScreenshot} diagnosticsScreenshot={diagnosticScreenshot} managedCardDiagnosticsScreenshot={managedCardDiagnosticsScreenshot} screenshot={screenshot}");
+            GD.Print($"CODE_EDITOR_SMOKE_OK completion=myself zoom=true zoomBounds=8-36 inlineDiagnostics=true scrollRestoration=true syntaxDiagnostics=true runtimeDiagnostics=true managedCardValidation=true managedCardDiagnostics=true applied=true uiButtonHalfOpenBounds=true uiButtonBoundsScreenshot={uiButtonBoundsScreenshot} uiImageFilter=true uiImageSliceFilter=true uiCircleAdaptiveDetail=true uiCircleQualityScreenshot={uiCircleQualityScreenshot} uiFractionalTextSize=true uiFractionalTextSizeScreenshot={uiFractionalTextSizeScreenshot} uiImageFilterScreenshot={uiImageFilterScreenshot} zoomScreenshot={zoomScreenshot} scrollScreenshot={scrollScreenshot} diagnosticsScreenshot={diagnosticScreenshot} managedCardDiagnosticsScreenshot={managedCardDiagnosticsScreenshot} screenshot={screenshot}");
         }
         catch (Exception exception)
         {
@@ -770,6 +771,73 @@ public partial class GameBuilderApp
             if (File.Exists(texturePath))
                 File.Delete(texturePath);
         }
+    }
+
+    private async System.Threading.Tasks.Task<string> RunBehaviorUiFractionalTextSizeSmoke()
+    {
+        const int viewportWidth = 6400;
+        var viewport = new SubViewport
+        {
+            Name = "BehaviorUiFractionalTextSizeSmokeViewport",
+            Size = new Vector2I(viewportWidth, 900),
+            TransparentBg = true,
+            RenderTargetUpdateMode = SubViewport.UpdateMode.Always
+        };
+
+        try
+        {
+            AddChild(viewport);
+            var behaviorUi = new LegacyBehaviorUi();
+            viewport.AddChild(behaviorUi);
+            behaviorUi.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+            JsonObject CreateTextCommand(float y, float size) => new()
+            {
+                ["cmd"] = 1,
+                ["text"] = "MMMMMMMMMMMM",
+                ["rect"] = new JsonObject { ["x"] = 20f, ["y"] = y, ["w"] = 1f, ["h"] = 1f },
+                ["textSize"] = size,
+                ["textColor"] = 0xffffff,
+                ["opacity"] = 1f
+            };
+            behaviorUi.SetCommands(new JsonArray
+            {
+                CreateTextCommand(10f, 40.01f),
+                CreateTextCommand(80f, 40.49f)
+            });
+            await WaitForUiFrames(2);
+
+            Image rendered = viewport.GetTexture().GetImage();
+            string screenshot = ProjectSettings.GlobalizePath("res://.godot/behavior-ui-text-size-smoke.png");
+            if (rendered.SavePng(screenshot) != Error.Ok)
+                throw new InvalidOperationException("Could not save the behavior UI text-size screenshot.");
+            int smallerTextWidth = GetOpaqueTextWidth(rendered, 0, 250);
+            int largerTextWidth = GetOpaqueTextWidth(rendered, 250, 600);
+            if (largerTextWidth <= smallerTextWidth)
+                throw new InvalidOperationException($"Fractional behavior UI text sizes collapsed to the same rendered size: 40.01 width={smallerTextWidth}, 40.49 width={largerTextWidth}. Screenshot: {screenshot}");
+            return screenshot;
+        }
+        finally
+        {
+            viewport.QueueFree();
+            await WaitForUiFrames(1);
+        }
+    }
+
+    private static int GetOpaqueTextWidth(Image image, int startY, int endY)
+    {
+        int minX = image.GetWidth();
+        int maxX = -1;
+        for (int y = startY; y < Math.Min(endY, image.GetHeight()); y++)
+        {
+            for (int x = 0; x < image.GetWidth(); x++)
+            {
+                if (image.GetPixel(x, y).A <= 0.5f)
+                    continue;
+                minX = Math.Min(minX, x);
+                maxX = Math.Max(maxX, x);
+            }
+        }
+        return maxX >= minX ? maxX - minX + 1 : 0;
     }
 
     private async System.Threading.Tasks.Task<string> RunBehaviorUiCircleQualitySmoke()
