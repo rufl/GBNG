@@ -12,6 +12,7 @@ import ipaddress
 import json
 import os
 import secrets
+import socket
 import threading
 import time
 from collections import deque
@@ -46,7 +47,8 @@ class DirectoryState:
             del self._registers[key]
 
     def register(self, body, address):
-        name, count, capacity, port = validate_session(body)
+        name, count, capacity, port, address_family = validate_session(body)
+        require_address_family(address, address_family)
         now = time.monotonic()
         with self._lock:
             self._purge_locked(now)
@@ -69,13 +71,15 @@ class DirectoryState:
                 "Port": port,
                 "PlayerCount": count,
                 "MaxPlayers": capacity,
+                "AddressFamily": address_family,
                 "TokenHash": hashlib.sha256(token.encode("ascii")).digest(),
                 "Updated": now,
             }
             return {"SessionId": session_id, "Token": token}, None
 
     def heartbeat(self, session_id, token, body, address):
-        name, count, capacity, port = validate_session(body)
+        name, count, capacity, port, address_family = validate_session(body)
+        require_address_family(address, address_family)
         token_hash = hashlib.sha256(token.encode("utf-8")).digest()
         now = time.monotonic()
         with self._lock:
@@ -83,6 +87,8 @@ class DirectoryState:
             session = self._sessions.get(session_id)
             if session is None or not hmac.compare_digest(session["TokenHash"], token_hash):
                 return False
+            if session["AddressFamily"] != address_family:
+                raise ValueError("Session transport family must match its registration.")
             session.update({
                 "Name": name,
                 "Address": address,
@@ -108,7 +114,7 @@ class DirectoryState:
             self._purge_locked(now)
             values = [
                 {key: value for key, value in session.items()
-                 if key not in ("TokenHash", "Updated")}
+                 if key not in ("TokenHash", "Updated", "AddressFamily")}
                 for session in self._sessions.values()
             ]
         values.sort(key=lambda value: (value["Name"].casefold(), value["SessionId"]))
@@ -125,8 +131,6 @@ class DirectoryState:
         if not peer:
             raise ValueError("Could not determine the request IP address.")
         address = ipaddress.ip_address(peer)
-        if address.version != 4:
-            raise ValueError("Direct sessions currently require an IPv4 host.")
         return str(address)
 
 
@@ -138,6 +142,11 @@ def normalize_ip(value):
         return str(parsed)
     except (ValueError, TypeError):
         return None
+
+def require_address_family(address, expected_family):
+    if ipaddress.ip_address(address).version != expected_family:
+        raise ValueError("Host transport family must match the directory request IP family.")
+
 
 
 def validate_session(body):
@@ -167,7 +176,10 @@ def validate_session(body):
         raise ValueError("Player count/capacity is outside the supported range.")
     if not 1 <= port <= 65535:
         raise ValueError("Port must be between 1 and 65535.")
-    return name, count, capacity, port
+    address_family = body.get("AddressFamily", 4)
+    if isinstance(address_family, bool) or not isinstance(address_family, int) or address_family not in (4, 6):
+        raise ValueError("AddressFamily must be 4 or 6.")
+    return name, count, capacity, port, address_family
 
 
 class DirectoryHandler(BaseHTTPRequestHandler):
@@ -284,6 +296,10 @@ class DirectoryServer(ThreadingHTTPServer):
     allow_reuse_address = True
 
 
+class IPv6DirectoryServer(DirectoryServer):
+    address_family = socket.AF_INET6
+
+
 def main():
     parser = argparse.ArgumentParser(description="Game Builder direct-host session directory")
     parser.add_argument("--bind", default=os.environ.get("GB_DIRECTORY_BIND", "127.0.0.1"))
@@ -300,8 +316,15 @@ def main():
     handler = type("ConfiguredDirectoryHandler", (DirectoryHandler,), {
         "state": DirectoryState(trusted_proxy),
     })
-    server = DirectoryServer((args.bind, args.port), handler)
-    print("Game Builder session directory listening on {}:{}".format(*server.server_address), flush=True)
+    try:
+        bind_address = ipaddress.ip_address(args.bind)
+    except ValueError:
+        bind_address = None
+    server_class = IPv6DirectoryServer if bind_address is not None and bind_address.version == 6 else DirectoryServer
+    server = server_class((args.bind, args.port), handler)
+    bound_address = server.server_address
+    display_address = "[{}]".format(bound_address[0]) if server.address_family == socket.AF_INET6 else bound_address[0]
+    print("Game Builder session directory listening on {}:{}".format(display_address, bound_address[1]), flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

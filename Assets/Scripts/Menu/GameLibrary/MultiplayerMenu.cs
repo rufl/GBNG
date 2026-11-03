@@ -436,7 +436,7 @@ public class MultiplayerMenu : ThumbnailMenu
         publicThumbnail.SetName(session.Name);
         publicThumbnail.OnClick = () => JoinDiscoveredHost(host);
         publicThumbnail.GetWriteTime = () => System.DateTime.Today;
-        publicThumbnail.GetDescription = () => $"{session.PlayerCount}/{session.MaxPlayers} players - {session.Address}:{session.Port} (public)";
+        publicThumbnail.GetDescription = () => $"{session.PlayerCount}/{session.MaxPlayers} players - {FormatAddressAndPort(session.Address, session.Port)} (public)";
         publicThumbnail.GetPlayerCount = () => session.PlayerCount;
         AddThumbnail(publicThumbnail);
       }
@@ -456,15 +456,28 @@ public class MultiplayerMenu : ThumbnailMenu
     AddThumbnail(status);
   }
 
+  static string FormatAddressAndPort(string address, int port)
+  {
+    System.Net.IPAddress parsedAddress;
+    if (System.Net.IPAddress.TryParse(address, out parsedAddress)
+      && parsedAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
+    {
+      return $"[{parsedAddress}]:{port}";
+    }
+    return $"{address}:{port}";
+  }
+
   void JoinDiscoveredHost(DirectHostDiscovery.HostInfo host)
   {
-    string addressAndPort = $"{host.Address}:{host.Port}";
+    string addressAndPort = FormatAddressAndPort(host.Address, host.Port);
     PlayerPrefs.SetString(LastJoinedRoomPrefsKey, addressAndPort);
     PlayerPrefs.Save();
     var options = new GameBuilderApplication.GameOptions
     {
       joinAddress = host.Address,
       joinPort = host.Port,
+      directHostUsesIpv6 = System.Net.IPAddress.TryParse(host.Address, out System.Net.IPAddress parsedPublicAddress)
+        && parsedPublicAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6,
       playOptions = new GameBuilderApplication.PlayOptions { isMultiplayer = true }
     };
     loadingScreen.ShowAndDo(() => scenes.LoadMainSceneAsync(options));
@@ -626,6 +639,8 @@ public class MultiplayerMenu : ThumbnailMenu
     {
       joinAddress = address,
       joinPort = port,
+      directHostUsesIpv6 = System.Net.IPAddress.TryParse(address, out System.Net.IPAddress parsedDirectAddress)
+        && parsedDirectAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6,
       playOptions = new GameBuilderApplication.PlayOptions { isMultiplayer = true }
     };
     loadingScreen.ShowAndDo(() => scenes.LoadMainSceneAsync(options));

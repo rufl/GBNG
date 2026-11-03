@@ -39,6 +39,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
     public int PlayerCount;
     public int MaxPlayers;
     public int Port;
+    public int AddressFamily;
   }
 
   [Serializable]
@@ -170,8 +171,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
   void Update()
   {
     if (manager == null) manager = NetworkManager.Singleton;
-    bool hosting = manager != null && manager.IsListening && manager.IsServer
-      && !NetworkingController.IsDirectIpv6Host;
+    bool hosting = manager != null && manager.IsListening && manager.IsServer;
     if (hosting)
     {
       if (!wasHosting)
@@ -255,12 +255,16 @@ public sealed class DirectSessionDirectory : MonoBehaviour
         sessionToken = null;
       }
       if (requestError != "" || responseCode != 0)
-        Debug.LogWarning("Could not update public session directory entry: " + (requestError ?? "HTTP " + responseCode));
+      {
+        string failureMessage = !string.IsNullOrEmpty(responseBody)
+          ? responseBody
+          : requestError ?? "HTTP " + responseCode;
+        Debug.LogWarning("Could not update public session directory entry: " + failureMessage);
+      }
     }
 
     bool hostStillActive = generation == hostGeneration
-      && manager != null && manager.IsListening && manager.IsServer
-      && !NetworkingController.IsDirectIpv6Host;
+      && manager != null && manager.IsListening && manager.IsServer;
     if (!hostStillActive && !string.IsNullOrEmpty(sessionId) && !string.IsNullOrEmpty(sessionToken))
     {
       string endedSessionId = sessionId;
@@ -321,7 +325,8 @@ public sealed class DirectSessionDirectory : MonoBehaviour
           IPAddress address;
           if (item == null || string.IsNullOrEmpty(item.SessionId) || string.IsNullOrEmpty(item.Name)
             || !IPAddress.TryParse(item.Address, out address)
-            || address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork
+            || (address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork
+              && address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetworkV6)
             || item.Port < 1 || item.Port > 65535
             || item.PlayerCount < 1 || item.PlayerCount >= item.MaxPlayers
             || item.MaxPlayers < item.PlayerCount || item.MaxPlayers > PhotonNetwork.MaximumDirectPlayers)
@@ -393,6 +398,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
       Name = name,
       PlayerCount = playerCount,
       MaxPlayers = PhotonNetwork.MaximumDirectPlayers,
+      AddressFamily = GameBuilderApplication.CurrentGameOptions.directHostUsesIpv6 ? 6 : 4,
       Port = DirectHostPortMapper.PublicPort
     };
   }

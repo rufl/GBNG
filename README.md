@@ -190,19 +190,22 @@ Photon PUN nor a paid Unity service is required.
   UDP `7777` to the host. CGNAT or restrictive NAT can still block Internet joins.
 
 **Host IPv6 game** binds an IPv6-only socket on UDP `7777`; it does not use
-UPnP, IPv4 LAN broadcast discovery, or the IPv4-only public session directory.
-Share the `[IPv6]:7777` address shown in the in-game multiplayer panel manually.
-Allow inbound UDP `7777` through the host firewall and, where applicable, the
-router's IPv6 firewall. A globally routable IPv6 address is needed for players
-outside the local network; a ULA address only works on a network that routes
-that prefix. If no usable IPv6 interface address is found, the panel falls back
-to `::1`, which is only reachable from the host itself.
+UPnP or IPv4 LAN broadcast discovery. It can appear in the public room list
+when the directory is configured and the host reaches that endpoint over IPv6.
+The directory checks that the request source family matches the host transport,
+so a directory URL resolving to both address families may need an A-only or
+AAAA-only hostname for predictable registration. Share the `[IPv6]:7777`
+address manually if no public directory is available. Allow inbound UDP `7777`
+through the host firewall and, where applicable, the router's IPv6 firewall. A
+globally routable IPv6 address is needed outside the local network; a ULA works
+only where its prefix is routed. If no usable IPv6 address is found, the panel
+falls back to `::1`, which is only reachable from the host itself.
 
-- A self-hosted public session directory can provide a global room list. When
-  configured, hosts register their name and player count; clients can select a
-  listed host to join. The directory learns the host's public IPv4 address from
-  its request source. This is discovery only, not a relay or NAT traversal
-  service.
+- A self-hosted public session directory can provide a global room list. Hosts
+  register their name and player count; clients can select a listed host to
+  join. The directory learns the host's public IPv4 or IPv6 address from its
+  request source and rejects a source family that does not match the advertised
+  game transport. This is discovery only, not a relay or NAT traversal service.
 
 #### Self-hosted public session directory
 
@@ -215,9 +218,26 @@ set GAMEBUILDER_SESSION_DIRECTORY=http://127.0.0.1:47800
 GameBuilder.exe
 ```
 
+Run the IPv4/IPv6 service regression tests with:
+
+```text
+python -m unittest discover -s tools/public-session-directory -p "test_*.py"
+```
+
+For a local IPv6 loopback smoke, start the service with:
+
+```text
+python tools/public-session-directory/server.py --bind ::1 --port 47800
+```
+
+Then set `GAMEBUILDER_SESSION_DIRECTORY=http://[::1]:47800`. Loopback HTTP is
+accepted for tests only.
+Unity blocks plain HTTP to IPv6 loopback by default. For this smoke only,
+temporarily set the Player Settings Insecure HTTP Option to Always Allowed, then
+restore its prior value. Public directory endpoints must use HTTPS.
+
 Set the same `GAMEBUILDER_SESSION_DIRECTORY` value for hosts and browsers, or
 pass `--session-directory=https://sessions.example.org` to the game executable.
-HTTP is accepted only for loopback tests; public endpoints must use HTTPS.
 Deploy the service behind an HTTPS reverse proxy. Set `--trusted-proxy` to the
 proxy's source IP and ensure it overwrites `X-Forwarded-For`; never expose the
 application port publicly when trusting proxy headers. The Compose stack below
@@ -226,7 +246,11 @@ overlaps an existing Docker network.
 
 #### Containerized deployment with HTTPS
 
-Point a DNS A record for the public hostname at the server's public IPv4 address.
+Point a DNS A record at the server's public IPv4 address, or an AAAA record at
+its public IPv6 address. The Docker host and network must accept inbound TCP
+ports `80` and `443` over the advertised family. Hosts must reach the directory
+over the same address family as their game transport; use a family-specific
+hostname if clients would otherwise select the other route.
 Then, from a terminal:
 
 ```text
