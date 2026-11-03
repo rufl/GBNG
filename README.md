@@ -290,6 +290,11 @@ discovery, direct joins, identity, RPC targeting, map switching, and kicking;
 offline smoke verifies save/load round-tripping. Internet reachability and
 router-specific forwarding are untested.
 
+If the host disconnects after a client loads the initial snapshot, the client
+autosaves its local copy and can recover it from the Game Library. This
+preserves that client's work only; it does not migrate the host or restore the
+multiplayer session.
+
 Direct-host mode implements the core player-hosted flow, not every PUN/cloud
 feature. Host migration is unavailable. The transport accepts at most 16
 players (host plus 15 clients); the host assigns reusable player IDs so

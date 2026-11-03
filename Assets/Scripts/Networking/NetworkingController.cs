@@ -1197,14 +1197,66 @@ public class NetworkingController : Photon.PunBehaviour
     {
       bool wasKicked = wasDirectlyKicked;
       PhotonNetwork.MarkDirectSessionDisconnected();
-      if (!wasKicked)
-      {
-        OnFatalError(receivedPlayerInitPayload
-          ? "The host disconnected."
-          : "The host disconnected before sending the game state.");
-      }
+      string disconnectError = receivedPlayerInitPayload
+        ? "The host disconnected."
+        : "The host disconnected before sending the game state.";
+      if (ShouldRecoverDirectDisconnect(receivedPlayerInitPayload, wasKicked))
+        HandleDirectHostDisconnected(disconnectError);
+      else if (!wasKicked)
+        OnFatalError(disconnectError);
     }
   }
+
+  static bool ShouldRecoverDirectDisconnect(bool hasLoadedWorld, bool wasKicked)
+  {
+    return hasLoadedWorld && !wasKicked;
+  }
+
+  void HandleDirectHostDisconnected(string error)
+  {
+    if (!receivedPlayerInitPayload || autosaves == null)
+    {
+      OnFatalError(error);
+      return;
+    }
+
+    if (voosEngine != null) voosEngine.HackyForceSetIsRunning(false);
+    autosaves.SetPaused(true);
+    try
+    {
+      autosaves.TriggerAutosave(autosaveBundleId =>
+      {
+        GameBundleLibrary.Entry autosave = default(GameBundleLibrary.Entry);
+        if (!string.IsNullOrEmpty(autosaveBundleId)
+          && gameBundleLibrary != null
+          && gameBundleLibrary.BundleExists(autosaveBundleId))
+        {
+          autosave = gameBundleLibrary.GetBundleEntry(autosaveBundleId);
+        }
+        if (autosave.bundle == null)
+        {
+          OnFatalError(error + "\nThe local autosave could not be recovered.");
+          return;
+        }
+
+        string userMessage = error
+          + "\nYour local copy was autosaved. Recover it to continue offline.";
+        Util.LogError(userMessage);
+        popups.ShowTwoButtons(
+          userMessage,
+          "Recover Autosave",
+          () => scenes.RestartAndLoadLibraryBundle(autosave, new GameBuilderApplication.PlayOptions()),
+          "Go to Main Menu",
+          () => scenes.LoadSplashScreen(),
+          800f);
+      });
+    }
+    catch (Exception e)
+    {
+      OnFatalError(error + "\nCould not save the local world: " + e.Message);
+    }
+  }
+
 
   byte[] CreateDirectHostInitPacket()
   {
