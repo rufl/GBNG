@@ -13,6 +13,9 @@ public sealed class DirectHostDiscovery : MonoBehaviour
 {
   const uint ProtocolMagic = 0x47424431;
   const ushort DiscoveryPort = 47778;
+  const string Ipv6DiscoveryGroupAddress = "ff02::4742";
+  static readonly IPAddress Ipv6DiscoveryGroup = IPAddress.Parse(Ipv6DiscoveryGroupAddress);
+  static readonly byte[] Ipv6DiscoveryGroupBytes = Ipv6DiscoveryGroup.GetAddressBytes();
   const int MaxNameBytes = 96;
   const int MaxPacketBytes = 128;
   const float AdvertisementInterval = 1f;
@@ -35,11 +38,15 @@ public sealed class DirectHostDiscovery : MonoBehaviour
   readonly byte[] receiveBuffer = new byte[MaxPacketBytes];
   Socket discoverySocket;
   Socket broadcastSocket;
+  Socket ipv6DiscoverySocket;
+  Socket ipv6AdvertisementSocket;
   NetworkManager manager;
   bool browsing;
   float nextAdvertisementTime;
   float nextDiscoverySocketAttempt;
   float nextBroadcastSocketAttempt;
+  float nextIpv6DiscoverySocketAttempt;
+  float nextIpv6AdvertisementSocketAttempt;
 
   public static int Revision { get { return revision; } }
 
@@ -83,14 +90,18 @@ public sealed class DirectHostDiscovery : MonoBehaviour
   void Update()
   {
     if (manager == null) manager = NetworkManager.Singleton;
-    if (manager != null && manager.IsListening && manager.IsServer && !NetworkingController.IsDirectIpv6Host)
+    if (manager != null && manager.IsListening && manager.IsServer)
     {
-      AdvertiseHost();
+      if (NetworkingController.IsDirectIpv6Host)
+        AdvertiseIpv6Host();
+      else
+        AdvertiseHost();
     }
 
     if (browsing)
     {
       PollDiscoverySocket();
+      PollIpv6DiscoverySocket();
       ExpireHosts();
     }
   }
@@ -117,29 +128,7 @@ public sealed class DirectHostDiscovery : MonoBehaviour
       }
     }
 
-    string name = GameBuilderApplication.CurrentGameOptions.displayName;
-    if (string.IsNullOrWhiteSpace(name))
-      name = string.IsNullOrWhiteSpace(PhotonNetwork.player.NickName) ? "Game Builder game" : PhotonNetwork.player.NickName + "'s game";
-    byte[] nameBytes = Encoding.UTF8.GetBytes(name);
-    while (nameBytes.Length > MaxNameBytes && name.Length > 0)
-    {
-      name = name.Substring(0, name.Length - 1);
-      nameBytes = Encoding.UTF8.GetBytes(name);
-    }
-
-    int playerCount = Mathf.Clamp(PhotonNetwork.playerList == null ? 1 : PhotonNetwork.playerList.Length, 1, PhotonNetwork.MaximumDirectPlayers);
-    byte[] packet;
-    using (MemoryStream stream = new MemoryStream())
-    using (BinaryWriter writer = new BinaryWriter(stream))
-    {
-      writer.Write(ProtocolMagic);
-      writer.Write(NetworkingController.DefaultDirectHostPort);
-      writer.Write((byte)playerCount);
-      writer.Write((byte)PhotonNetwork.MaximumDirectPlayers);
-      writer.Write((byte)nameBytes.Length);
-      writer.Write(nameBytes);
-      packet = stream.ToArray();
-    }
+    byte[] packet = CreateAdvertisementPacket();
 
     HashSet<string> destinations = new HashSet<string>();
     destinations.Add(IPAddress.Broadcast.ToString());
@@ -186,6 +175,162 @@ public sealed class DirectHostDiscovery : MonoBehaviour
       catch (SocketException)
       {
         // A disabled or disconnected network interface must not stop advertisements on others.
+      }
+    }
+  }
+
+  byte[] CreateAdvertisementPacket()
+  {
+    string name = GameBuilderApplication.CurrentGameOptions.displayName;
+    if (string.IsNullOrWhiteSpace(name))
+      name = string.IsNullOrWhiteSpace(PhotonNetwork.player.NickName) ? "Game Builder game" : PhotonNetwork.player.NickName + "'s game";
+    byte[] nameBytes = Encoding.UTF8.GetBytes(name);
+    while (nameBytes.Length > MaxNameBytes && name.Length > 0)
+    {
+      name = name.Substring(0, name.Length - 1);
+      nameBytes = Encoding.UTF8.GetBytes(name);
+    }
+
+    int playerCount = Mathf.Clamp(PhotonNetwork.playerList == null ? 1 : PhotonNetwork.playerList.Length, 1, PhotonNetwork.MaximumDirectPlayers);
+    using (MemoryStream stream = new MemoryStream())
+    using (BinaryWriter writer = new BinaryWriter(stream))
+    {
+      writer.Write(ProtocolMagic);
+      writer.Write(NetworkingController.DefaultDirectHostPort);
+      writer.Write((byte)playerCount);
+      writer.Write((byte)PhotonNetwork.MaximumDirectPlayers);
+      writer.Write((byte)nameBytes.Length);
+      writer.Write(nameBytes);
+      return stream.ToArray();
+    }
+  }
+
+  void AdvertiseIpv6Host()
+  {
+    float now = Time.realtimeSinceStartup;
+    if (now < nextAdvertisementTime) return;
+    nextAdvertisementTime = now + AdvertisementInterval;
+    if (ipv6AdvertisementSocket == null)
+    {
+      if (now < nextIpv6AdvertisementSocketAttempt) return;
+      nextIpv6AdvertisementSocketAttempt = now + SocketRetryInterval;
+      try
+      {
+        ipv6AdvertisementSocket = new Socket(AddressFamily.InterNetworkV6, SocketType.Dgram, ProtocolType.Udp);
+        ipv6AdvertisementSocket.DualMode = false;
+        ipv6AdvertisementSocket.SetSocketOption(SocketOptionLevel.IPv6, SocketOptionName.HopLimit, 1);
+      }
+      catch (SocketException e)
+      {
+        Debug.LogWarning($"Direct-host IPv6 LAN discovery could not open its UDP socket: {e.Message}");
+        CloseSocket(ref ipv6AdvertisementSocket);
+        return;
+      }
+    }
+
+    byte[] packet = CreateAdvertisementPacket();
+    try
+    {
+      foreach (NetworkInterface networkInterface in NetworkInterface.GetAllNetworkInterfaces())
+      {
+        if (networkInterface.OperationalStatus != OperationalStatus.Up || !networkInterface.SupportsMulticast) continue;
+        IPv6InterfaceProperties ipv6Properties;
+        try { ipv6Properties = networkInterface.GetIPProperties().GetIPv6Properties(); }
+        catch (NetworkInformationException) { continue; }
+        if (ipv6Properties == null || ipv6Properties.Index <= 0) continue;
+        try
+        {
+          IPAddress groupAddress = new IPAddress(Ipv6DiscoveryGroupBytes, ipv6Properties.Index);
+          ipv6AdvertisementSocket.SendTo(packet, new IPEndPoint(groupAddress, DiscoveryPort));
+        }
+        catch (SocketException)
+        {
+          // A disabled or disconnected network interface must not stop advertisements on others.
+        }
+      }
+    }
+    catch (NetworkInformationException)
+    {
+      // A later advertisement retries after the network interface list recovers.
+    }
+  }
+
+  void PollIpv6DiscoverySocket()
+  {
+    if (ipv6DiscoverySocket == null)
+    {
+      float now = Time.realtimeSinceStartup;
+      if (now < nextIpv6DiscoverySocketAttempt) return;
+      nextIpv6DiscoverySocketAttempt = now + SocketRetryInterval;
+      try
+      {
+        ipv6DiscoverySocket = new Socket(AddressFamily.InterNetworkV6, SocketType.Dgram, ProtocolType.Udp);
+        ipv6DiscoverySocket.DualMode = false;
+        ipv6DiscoverySocket.ExclusiveAddressUse = false;
+        ipv6DiscoverySocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+        ipv6DiscoverySocket.Bind(new IPEndPoint(IPAddress.IPv6Any, DiscoveryPort));
+        int joinedInterfaces = 0;
+        try
+        {
+          foreach (NetworkInterface networkInterface in NetworkInterface.GetAllNetworkInterfaces())
+          {
+            if (networkInterface.OperationalStatus != OperationalStatus.Up || !networkInterface.SupportsMulticast) continue;
+            IPv6InterfaceProperties ipv6Properties;
+            try { ipv6Properties = networkInterface.GetIPProperties().GetIPv6Properties(); }
+            catch (NetworkInformationException) { continue; }
+            if (ipv6Properties == null || ipv6Properties.Index <= 0) continue;
+            try
+            {
+              ipv6DiscoverySocket.SetSocketOption(
+                SocketOptionLevel.IPv6,
+                SocketOptionName.AddMembership,
+                new IPv6MulticastOption(Ipv6DiscoveryGroup, ipv6Properties.Index));
+              joinedInterfaces++;
+            }
+            catch (SocketException)
+            {
+              // One unusable adapter must not prevent listening on the remaining interfaces.
+            }
+          }
+        }
+        catch (NetworkInformationException)
+        {
+          // Keep any memberships already joined; future socket retries re-enumerate adapters.
+        }
+
+        if (joinedInterfaces == 0)
+        {
+          CloseSocket(ref ipv6DiscoverySocket);
+          return;
+        }
+        ipv6DiscoverySocket.Blocking = false;
+      }
+      catch (SocketException e)
+      {
+        Debug.LogWarning($"Direct-host IPv6 LAN discovery could not listen on UDP {DiscoveryPort}: {e.Message}");
+        CloseSocket(ref ipv6DiscoverySocket);
+        return;
+      }
+    }
+
+    for (int i = 0; i < 32 && ipv6DiscoverySocket.Available > 0; i++)
+    {
+      EndPoint endpoint = new IPEndPoint(IPAddress.IPv6Any, 0);
+      try
+      {
+        int length = ipv6DiscoverySocket.ReceiveFrom(receiveBuffer, ref endpoint);
+        if (endpoint is IPEndPoint remote && TryParseHost(receiveBuffer, length, remote.Address, out HostInfo host))
+          RecordHost(host);
+      }
+      catch (SocketException e) when (e.SocketErrorCode == SocketError.WouldBlock)
+      {
+        break;
+      }
+      catch (SocketException e)
+      {
+        Debug.LogWarning($"Direct-host IPv6 LAN discovery receive failed: {e.Message}");
+        CloseSocket(ref ipv6DiscoverySocket);
+        break;
       }
     }
   }
@@ -322,6 +467,8 @@ public sealed class DirectHostDiscovery : MonoBehaviour
     if (instance == this) instance = null;
     CloseSocket(ref discoverySocket);
     CloseSocket(ref broadcastSocket);
+    CloseSocket(ref ipv6DiscoverySocket);
+    CloseSocket(ref ipv6AdvertisementSocket);
   }
 
   static void CloseSocket(ref Socket socket)

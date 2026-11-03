@@ -179,7 +179,8 @@ Photon PUN nor a paid Unity service is required.
   specify a custom port for an IPv6 literal; DNS lookup prefers IPv4 and falls
   back to IPv6. The multiplayer panel shows the host's share address.
 - The IPv4 host listens on UDP port `7777`; LAN discovery broadcasts on UDP
-  `47778`. Allow UDP `47778` through local firewalls for IPv4 LAN discovery.
+  `47778`. Allow UDP `47778` through the local firewall for IPv4 broadcasts and
+  IPv6 multicast discovery.
   Internet hosting tries to create an automatic UPnP IGD mapping to local UDP
   `7777`; if external port `7777` is occupied, it tries `17777` and `27777`.
   The public room list advertises the selected external port; IPv4 LAN discovery
@@ -190,7 +191,8 @@ Photon PUN nor a paid Unity service is required.
   UDP `7777` to the host. CGNAT or restrictive NAT can still block Internet joins.
 
 **Host IPv6 game** binds an IPv6-only socket on UDP `7777`; it does not use
-UPnP or IPv4 LAN broadcast discovery. It can appear in the public room list
+UPnP or IPv4 LAN broadcast discovery. Peers on the same IPv6 link discover it
+through IPv6 multicast on UDP `47778`. It can also appear in the public room list
 when the directory is configured and the host reaches that endpoint over IPv6.
 The directory checks that the request source family matches the host transport,
 so a directory URL resolving to both address families may need an A-only or
@@ -290,8 +292,9 @@ Direct-host mode implements the core player-hosted flow, not every PUN/cloud
 feature. Host migration is unavailable. The transport accepts at most 16
 players (host plus 15 clients); the host assigns reusable player IDs so
 disconnect/rejoin cycles do not exhaust player slots. IPv4 and IPv6-only hosting
-are available as separate choices; IPv6 hosts require manual address sharing
-and are not listed by IPv4 LAN discovery or the public session directory.
+are available as separate choices. IPv6 hosts are discovered by IPv6 multicast
+on the same LAN and may appear in the public session directory when configured
+and reachable over IPv6; manual address sharing remains available.
 Direct connections have no application-level authentication or encryption;
 share the host address only with trusted players. Manual address joins work
 without the directory.
