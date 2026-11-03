@@ -19,11 +19,13 @@ This fork keeps the two implementations separate:
 * `unity` preserves the original Unity project and stabilizes it on the pinned Unity 6 stack. Keep changes there limited to compatibility, quality-of-life, and stability work.
 * `godot` is the GBNG — New Gen rewrite. It targets Godot 4.7.2 .NET, .NET 10, and ClearScript/V8 7.5.1.1; it reuses the original `.voos` projects and assets while replacing Unity runtime services with Godot implementations.
 
-For the Godot branch, install the Godot 4.7.2 .NET build and .NET 10 SDK, then run `dotnet build GBNG.Godot.sln` and open the repository's `project.godot` in Godot. To launch a bundled example from the command line:
+Install the Godot 4.7.2 .NET build and .NET 10 SDK, then run `dotnet build GBNG.Godot.sln`. On Windows, use the PowerShell launcher below: it follows package-manager links to the real executable, avoiding a WinGet Mono startup stall. On Linux and macOS, launch with the installed `godot` executable.
 
-```sh
-godot --path . -- res://Assets/StreamingAssets/ExampleGames/Public/sample-platformer.voos --play
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\godot\run.ps1 --path . -- res://Assets/StreamingAssets/ExampleGames/Public/sample-platformer.voos --play
 ```
+
+To open the editor without a bundled example, run `pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\godot\run.ps1 --path .` on Windows, or `godot --path .` on other platforms.
 
 Bundled examples are read-only project resources; use **Save as…** to create a writable `.voos` copy.
 
@@ -33,7 +35,7 @@ The visual card library supports text/category filtering, card-icon previews, hi
 
 Terrain authoring supports the legacy create, dig, and paint brushes on the original `.voos` grid, with stroke undo/redo and terrain-payload persistence. The editor also provides bounded 50-step Undo/Redo for actor property changes, creation/deletion, and reset. The runtime includes single-player host services, Godot solid/trigger physics, audio, particles, behavior UI, and legacy keyboard/mouse/message events. Direct LAN rooms use ENet host/join, UDP room discovery, an eight-player roster, and bounded transfer of the host `.voos` project plus its `.assets` sidecar; host simulation is authoritative, with remote player input and actor-state replication.
 
-This is not yet full parity. Multiplayer is limited to direct LAN sessions: no global matchmaking, relay/NAT traversal, authentication/encryption, or collaborative editing. Steam Workshop, remote Poly and Google Image Search, optional 2D Shaper and embedded-browser/Monaco workflows, animated FBX import through TriLib, and several Unity-specific editor workflows remain unmigrated. The `unity` branch remains the complete reference for those contracts. The asset-license inventory covers repository files and their located license evidence; it does not verify licenses for models imported into a user's `.assets` sidecar.
+This is not yet full parity. Internet invite-code hosting uses operator-hosted matchmaking/signaling with WebRTC peer connections and optional coturn relay; LAN hosting uses ENet and UDP discovery. No public matchmaking service, user accounts, parental controls, player-identity checks, or collaborative editing are bundled. Invite codes are bearer credentials; WebRTC data channels use DTLS encryption, while the signaling service sees SDP/ICE and source-IP metadata. See `tools/networking/README.md` for the self-hosted, no-Docker service and relay tooling. Steam Workshop, remote Poly and Google Image Search, optional 2D Shaper and embedded-browser/Monaco workflows, animated FBX import through TriLib, and several Unity-specific editor workflows remain unmigrated. The `unity` branch remains the complete reference for those contracts. The asset-license inventory covers repository files and their located license evidence; it does not verify licenses for models imported into a user's `.assets` sidecar.
 
 ## Prerequisites
 

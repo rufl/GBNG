@@ -99,7 +99,11 @@ public partial class GameBuilderApp : Node3D
         _catalog = LegacyRenderableCatalog.Load();
         _lanSession = new LegacyLanSession { Name = "LanSession" };
         _lanSession.SnapshotReceived += ApplyNetworkSnapshot;
-        _lanSession.HostPlayModeChanged += enabled => SetPlayMode(enabled, fromHost: true);
+        _lanSession.HostPlayModeChanged += enabled =>
+        {
+            if (_camera is not null && IsInstanceValid(_camera) && _camera.IsInsideTree())
+                SetPlayMode(enabled, fromHost: true);
+        };
         _lanSession.ActorStructureReceived += ApplyNetworkActorStructure;
         AddChild(_lanSession);
         BuildWorldServices();
@@ -119,6 +123,8 @@ public partial class GameBuilderApp : Node3D
         if (commandLineArgs.Contains("--smoke-card-library", StringComparer.Ordinal))
             RunCardLibrarySmoke();
     }
+
+
 
     public override void _Process(double delta)
     {
@@ -406,16 +412,17 @@ public partial class GameBuilderApp : Node3D
         header.AddChild(toolbar);
 
         var title = CreateLabel("GBNG", 18);
-        title.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        title.CustomMinimumSize = new Vector2(70f, 0f);
+        title.SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin;
         toolbar.AddChild(title);
         AddToolbarButton(toolbar, "Open", () => _openDialog.PopupCentered(new Vector2I(1000, 700)));
+        AddToolbarButton(toolbar, "Host", () => _networkWindow.PopupCenteredClamped(new Vector2I(760, 470)));
         AddToolbarButton(toolbar, "Save", SaveProject);
         AddToolbarButton(toolbar, "Save as…", () =>
         {
             _saveDialog.CurrentFile = _document is null ? "project.voos" : Path.GetFileName(_document.SourcePath);
             _saveDialog.PopupCentered(new Vector2I(1000, 700));
         });
-        AddToolbarButton(toolbar, "Host", () => _networkWindow.PopupCentered(new Vector2I(760, 650)));
         _playButton = new Button { Text = "Play", CustomMinimumSize = new Vector2(84f, 36f) };
         _playButton.Pressed += () => SetPlayMode(!_playMode);
         toolbar.AddChild(_playButton);

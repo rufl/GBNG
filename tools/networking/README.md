@@ -28,7 +28,7 @@ powershell -ExecutionPolicy Bypass -File .\tools\networking\setup-webrtc.ps1
 
 The installer downloads upstream `1.2.2-stable`, verifies SHA256 `98e9446921740d995bd9ca1be48798dc3c2ceed51e044a25ce18b3cff11f56e5`, and installs it under the ignored `addons/webrtc-native/` directory. Restart Godot after installation. The extension is MIT-licensed; it bundles other permissively licensed dependencies, whose upstream notices must be preserved when redistributing the native binaries. Review the upstream release and `thirdparty/README.md` before packaging a build.
 
-In the app, **Host game** uses LAN when no matchmaking WSS URL is configured. Invite-code hosting and joining require a reachable `/v1/session` service address, entered in **Advanced network options**. The project does not ship a public service endpoint.
+In the app, **Host game** uses LAN when no matchmaking WSS URL is configured. Internet invite-code hosting and joining require the official WebRTC extension plus a reachable `/v1/session` service address, entered under **Advanced options**. The project does not ship a public service endpoint.
 
 ## DNS, TLS, and reverse proxy
 

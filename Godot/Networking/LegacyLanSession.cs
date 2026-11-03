@@ -15,6 +15,10 @@ public sealed partial class LegacyLanSession : Node
     private const int MaximumPlayers = 8;
     private const int PackageChunkBytes = 32 * 1024;
     private const int MaximumChunkCount = LegacyProjectPackage.MaximumPackageBytes / PackageChunkBytes + 1;
+    private const int ActorStructureChunkCharacters = 4 * 1024;
+    private const int ActorStructureChunksPerFrame = 16;
+    private const int MaximumActorStructureBytes = 16 * 1024 * 1024;
+    private const int MaximumActorStructureChunkCount = (MaximumActorStructureBytes + ActorStructureChunkCharacters - 1) / ActorStructureChunkCharacters;
     private const string DiscoveryRequest = "GBNG-LAN-DISCOVER/1";
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
@@ -24,6 +28,7 @@ public sealed partial class LegacyLanSession : Node
     private readonly Dictionary<long, ReceivedPlayerInput> _inputsByPeer = new();
     private readonly Dictionary<long, long> _lastInputSequences = new();
     private readonly Queue<long> _packageTransferQueue = new();
+    private readonly Dictionary<long, ActorStructureTransfer> _actorStructureTransfers = new();
     private ENetMultiplayerPeer? _enetPeer;
     private PacketPeerUdp? _discoveryListener;
     private PacketPeerUdp? _discoveryClient;
@@ -34,6 +39,9 @@ public sealed partial class LegacyLanSession : Node
     private byte[]? _hostPackage;
     private byte[]? _incomingPackage;
     private bool[]? _receivedChunks;
+    private char[]? _incomingActorStructure;
+    private bool[]? _receivedActorStructureChunks;
+    private int _receivedActorStructureChunkCount;
     private int _incomingChunkCount;
     private int _receivedChunkCount;
     private string _incomingProjectName = string.Empty;
@@ -86,6 +94,7 @@ public sealed partial class LegacyLanSession : Node
         PollDiscovery(_discoveryListener, isHostListener: true);
         PollDiscovery(_discoveryClient, isHostListener: false);
         PumpProjectTransfer();
+        PumpActorStructureTransfers();
         if (_discoveryRemaining > 0d)
         {
             _discoveryRemaining -= delta;
@@ -207,6 +216,10 @@ public sealed partial class LegacyLanSession : Node
         _receivedChunks = null;
         _incomingChunkCount = 0;
         _receivedChunkCount = 0;
+        _incomingActorStructure = null;
+        _receivedActorStructureChunks = null;
+        _receivedActorStructureChunkCount = 0;
+        _actorStructureTransfers.Clear();
         _hostPackage = null;
         _packageTransferQueue.Clear();
         _activeTransferPeer = 0;
@@ -384,6 +397,7 @@ public sealed partial class LegacyLanSession : Node
         RefreshPlayers();
         SetStatus($"Player {peerId} left the room.");
         _projectReadyPeers.Remove(peerId);
+        _actorStructureTransfers.Remove(peerId);
         if (_activeTransferPeer == peerId)
         {
             _activeTransferPeer = 0;
@@ -435,6 +449,10 @@ public sealed partial class LegacyLanSession : Node
         _receivedChunks = null;
         _incomingChunkCount = 0;
         _receivedChunkCount = 0;
+        _incomingActorStructure = null;
+        _receivedActorStructureChunks = null;
+        _receivedActorStructureChunkCount = 0;
+        _actorStructureTransfers.Clear();
         _projectReadyPeers.Clear();
         _packageTransferQueue.Clear();
         _activeTransferPeer = 0;
@@ -580,11 +598,17 @@ public sealed partial class LegacyLanSession : Node
             && float.IsFinite(frame.CameraRotationZ) && float.IsFinite(frame.CameraRotationW);
 
     private readonly record struct ReceivedPlayerInput(LegacyLanInputFrame Frame, long Timestamp);
+    private sealed class ActorStructureTransfer(string payload, int chunkCount)
+    {
+        public string Payload { get; set; } = payload;
+        public int ChunkCount { get; } = chunkCount;
+        public int NextChunk { get; set; }
+    }
 
     [Rpc(MultiplayerApi.RpcMode.Authority, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void ReceiveTransferError(string message)
     {
-        SetStatus($"Host could not share the project: {message}");
+        SetStatus($"The host could not finish synchronization: {message}");
     }
     [Rpc(MultiplayerApi.RpcMode.Authority, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void ReceivePlayMode(bool enabled)
@@ -600,10 +624,54 @@ public sealed partial class LegacyLanSession : Node
             SnapshotReceived?.Invoke(snapshotJson);
     }
     [Rpc(MultiplayerApi.RpcMode.Authority, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void ReceiveActorStructure(string actorStatesJson)
+    private void BeginActorStructure(int characterCount, int chunkCount)
     {
-        if (IsClient)
-            ActorStructureReceived?.Invoke(actorStatesJson);
+        if (!IsClient
+            || characterCount is < 2 or > MaximumActorStructureBytes
+            || chunkCount is < 1 or > MaximumActorStructureChunkCount
+            || chunkCount != (characterCount + ActorStructureChunkCharacters - 1) / ActorStructureChunkCharacters)
+        {
+            _incomingActorStructure = null;
+            _receivedActorStructureChunks = null;
+            _receivedActorStructureChunkCount = 0;
+            return;
+        }
+
+        _incomingActorStructure = new char[characterCount];
+        _receivedActorStructureChunks = new bool[chunkCount];
+        _receivedActorStructureChunkCount = 0;
+    }
+    [Rpc(MultiplayerApi.RpcMode.Authority, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void ReceiveActorStructureChunk(int index, string chunk)
+    {
+        if (!IsClient
+            || _incomingActorStructure is null
+            || _receivedActorStructureChunks is null
+            || index < 0
+            || index >= _receivedActorStructureChunks.Length)
+            return;
+
+        int offset = index * ActorStructureChunkCharacters;
+        int expectedLength = Math.Min(ActorStructureChunkCharacters, _incomingActorStructure.Length - offset);
+        if (chunk.Length != expectedLength || _receivedActorStructureChunks[index])
+            return;
+
+        chunk.CopyTo(0, _incomingActorStructure, offset, chunk.Length);
+        _receivedActorStructureChunks[index] = true;
+        _receivedActorStructureChunkCount++;
+        if (_receivedActorStructureChunkCount != _receivedActorStructureChunks.Length)
+            return;
+
+        string actorStatesJson = new(_incomingActorStructure);
+        _incomingActorStructure = null;
+        _receivedActorStructureChunks = null;
+        _receivedActorStructureChunkCount = 0;
+        if (Encoding.UTF8.GetByteCount(actorStatesJson) > MaximumActorStructureBytes)
+        {
+            GD.PushWarning("Ignored network actor structure exceeding the 16 MiB synchronization limit.");
+            return;
+        }
+        ActorStructureReceived?.Invoke(actorStatesJson);
     }
 
     private void SendRoster()
@@ -668,18 +736,41 @@ public sealed partial class LegacyLanSession : Node
         _activeTransferPeer = 0;
         _nextPackageChunk = 0;
     }
-    private const int MaximumActorStructureBytes = 16 * 1024 * 1024;
-
     private void SendActorStructure(long peerId, IReadOnlyList<GBNG.World.WorldActorNode> actors)
     {
         string[] actorData = actors.Select(actor => actor.State.Data.ToJsonString()).ToArray();
         string json = JsonSerializer.Serialize(actorData);
         if (Encoding.UTF8.GetByteCount(json) > MaximumActorStructureBytes)
         {
+            _actorStructureTransfers.Remove(peerId);
             RpcId(peerId, nameof(ReceiveTransferError), "Live actor state exceeds the 16 MiB synchronization limit.");
             return;
         }
-        RpcId(peerId, nameof(ReceiveActorStructure), json);
+
+        int chunkCount = (json.Length + ActorStructureChunkCharacters - 1) / ActorStructureChunkCharacters;
+        var transfer = new ActorStructureTransfer(json, chunkCount);
+        _actorStructureTransfers[peerId] = transfer;
+        RpcId(peerId, nameof(BeginActorStructure), json.Length, chunkCount);
+    }
+
+    private void PumpActorStructureTransfers()
+    {
+        if (!IsHost)
+            return;
+
+        foreach (KeyValuePair<long, ActorStructureTransfer> entry in _actorStructureTransfers)
+        {
+            ActorStructureTransfer transfer = entry.Value;
+            for (int sent = 0; sent < ActorStructureChunksPerFrame && transfer.NextChunk < transfer.ChunkCount; sent++)
+            {
+                int index = transfer.NextChunk++;
+                int offset = index * ActorStructureChunkCharacters;
+                int length = Math.Min(ActorStructureChunkCharacters, transfer.Payload.Length - offset);
+                RpcId(entry.Key, nameof(ReceiveActorStructureChunk), index, transfer.Payload.Substring(offset, length));
+            }
+            if (transfer.NextChunk == transfer.ChunkCount)
+                transfer.Payload = string.Empty;
+        }
     }
 
     private void PollDiscovery(PacketPeerUdp? socket, bool isHostListener)

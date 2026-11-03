@@ -110,7 +110,10 @@ internal static class LegacyProjectPackage
             string sidecarPath = Path.Combine(destinationRoot, ProjectDirectory, $"{projectBaseName}.assets");
             if (Directory.Exists(sidecarPath))
                 Directory.Move(sidecarPath, Path.Combine(destinationRoot, $"{projectBaseName}.assets"));
-            return Path.Combine(destinationRoot, Path.GetFileName(projectRelativePath));
+            string extractedProjectPath = Path.Combine(destinationRoot, projectRelativePath.Replace('/', Path.DirectorySeparatorChar));
+            string projectPath = Path.Combine(destinationRoot, Path.GetFileName(projectRelativePath));
+            File.Move(extractedProjectPath, projectPath);
+            return projectPath;
         }
         catch
         {

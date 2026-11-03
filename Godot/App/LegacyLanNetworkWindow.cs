@@ -32,8 +32,10 @@ public partial class LegacyLanNetworkWindow : Window
         _settings = LegacyNetworkSettings.Load();
         _projectPath = projectPath;
         _openReceivedProject = openReceivedProject;
-        Title = "Host & join";
-        Size = new Vector2I(760, 650);
+        Title = "Play together";
+        Size = new Vector2I(760, 470);
+        MinSize = new Vector2I(640, 400);
+        Hide();
         CloseRequested += () => Hide();
         _session.StateChanged += RefreshState;
         _session.RoomDiscovered += OnRoomDiscovered;
@@ -50,82 +52,188 @@ public partial class LegacyLanNetworkWindow : Window
             AnchorRight = 1f,
             AnchorBottom = 1f
         };
-        margin.AddThemeConstantOverride("margin_left", 20);
-        margin.AddThemeConstantOverride("margin_top", 18);
-        margin.AddThemeConstantOverride("margin_right", 20);
-        margin.AddThemeConstantOverride("margin_bottom", 18);
+        margin.AddThemeConstantOverride("margin_left", 22);
+        margin.AddThemeConstantOverride("margin_top", 20);
+        margin.AddThemeConstantOverride("margin_right", 22);
+        margin.AddThemeConstantOverride("margin_bottom", 20);
         AddChild(margin);
 
         var scroll = new ScrollContainer();
         margin.AddChild(scroll);
 
         var layout = new VBoxContainer();
-        layout.AddThemeConstantOverride("separation", 10);
+        layout.AddThemeConstantOverride("separation", 12);
         scroll.AddChild(layout);
-        layout.AddChild(CreateLabel("Start a private game for your family. The host shares a project copy and runs the simulation; other players join without editing the host's files."));
+        layout.AddChild(CreateLabel("Play together", 26));
+        layout.AddChild(CreateLabel(
+            "Host a private family game or join one with an invite code. Your original project files stay on the host.",
+            14,
+            "#aebdcb"));
 
-        var identity = new GridContainer { Columns = 2 };
-        identity.AddChild(CreateLabel("Your name"));
+        var identity = new HBoxContainer { CustomMinimumSize = new Vector2(0f, 40f) };
+        var nameLabel = CreateLabel("Your name", 14);
+        nameLabel.CustomMinimumSize = new Vector2(100f, 0f);
+        nameLabel.AutowrapMode = TextServer.AutowrapMode.Off;
+        identity.AddChild(nameLabel);
         _playerName = new LineEdit
         {
             Name = "PlayerName",
             Text = _settings.PlayerName,
             MaxLength = 32,
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+            CustomMinimumSize = new Vector2(180f, 40f),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter
         };
         identity.AddChild(_playerName);
         layout.AddChild(identity);
 
+        var actions = new HBoxContainer();
+        actions.AddThemeConstantOverride("separation", 12);
+        layout.AddChild(actions);
+
+        var hostCard = CreateCard();
+        hostCard.CustomMinimumSize = new Vector2(0f, 172f);
+        hostCard.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        actions.AddChild(hostCard);
+        var hostContent = new VBoxContainer();
+        hostContent.AddThemeConstantOverride("separation", 8);
+        hostCard.AddChild(hostContent);
+        hostContent.AddChild(CreateLabel("HOST A GAME", 12, "#83d5f5"));
+        hostContent.AddChild(CreateLabel("Start a family room", 19));
+        hostContent.AddChild(CreateLabel(
+            "Works on your home network by default. Add your own matchmaking service in Advanced options for Internet invites.",
+            13,
+            "#aebdcb"));
         _hostButton = new Button
         {
             Name = "HostGame",
             Text = "Host game",
-            CustomMinimumSize = new Vector2(0f, 46f),
+            CustomMinimumSize = new Vector2(0f, 44f),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
+        StylePrimaryButton(_hostButton);
         _hostButton.Pressed += HostGame;
-        layout.AddChild(_hostButton);
+        hostContent.AddChild(_hostButton);
 
+        var joinCard = CreateCard();
+        joinCard.CustomMinimumSize = new Vector2(0f, 172f);
+        joinCard.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        actions.AddChild(joinCard);
+        var joinContent = new VBoxContainer();
+        joinContent.AddThemeConstantOverride("separation", 8);
+        joinCard.AddChild(joinContent);
+        joinContent.AddChild(CreateLabel("JOIN A GAME", 12, "#83d5f5"));
+        joinContent.AddChild(CreateLabel("Use an invite code", 19));
+        joinContent.AddChild(CreateLabel(
+            "Enter the eight-character code shared by the host. Internet joining requires their matchmaking service address.",
+            13,
+            "#aebdcb"));
         var inviteRow = new HBoxContainer();
+        inviteRow.AddThemeConstantOverride("separation", 8);
         _joinCode = new LineEdit
         {
             Name = "InviteCode",
             PlaceholderText = "Invite code",
             MaxLength = 12,
+            CustomMinimumSize = new Vector2(0f, 40f),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
         inviteRow.AddChild(_joinCode);
-        _joinCodeButton = new Button { Name = "JoinByCode", Text = "Join with code" };
+        _joinCodeButton = new Button
+        {
+            Name = "JoinByCode",
+            Text = "Join game",
+            CustomMinimumSize = new Vector2(112f, 40f)
+        };
         _joinCodeButton.Pressed += JoinByCode;
         inviteRow.AddChild(_joinCodeButton);
-        layout.AddChild(inviteRow);
+        joinContent.AddChild(inviteRow);
 
-        var inviteStatus = new HBoxContainer();
-        _inviteCodeLabel = CreateLabel("Internet invite code appears here when the room is ready.");
+        var sessionCard = CreateCard("#182733", "#375367");
+        layout.AddChild(sessionCard);
+        var sessionContent = new VBoxContainer();
+        sessionContent.AddThemeConstantOverride("separation", 6);
+        sessionCard.AddChild(sessionContent);
+        sessionContent.AddChild(CreateLabel("Game status", 15));
+        var statusRow = new HBoxContainer();
+        sessionContent.AddChild(statusRow);
+        _status = CreateLabel("Not connected.", 14, "#d3dfeb");
+        _status.Name = "NetworkStatus";
+        _status.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        _status.CustomMinimumSize = new Vector2(0f, 34f);
+        _status.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        statusRow.AddChild(_status);
+        _inviteCodeLabel = CreateLabel(string.Empty, 14, "#9ce7bd");
         _inviteCodeLabel.Name = "InviteCodeStatus";
         _inviteCodeLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        inviteStatus.AddChild(_inviteCodeLabel);
-        _copyInviteButton = new Button { Name = "CopyInviteCode", Text = "Copy code", Disabled = true };
+        _inviteCodeLabel.Visible = false;
+        statusRow.AddChild(_inviteCodeLabel);
+        _copyInviteButton = new Button
+        {
+            Name = "CopyInviteCode",
+            Text = "Copy code",
+            CustomMinimumSize = new Vector2(104f, 36f),
+            Disabled = true,
+            Visible = false
+        };
         _copyInviteButton.Pressed += CopyInviteCode;
-        inviteStatus.AddChild(_copyInviteButton);
-        layout.AddChild(inviteStatus);
+        statusRow.AddChild(_copyInviteButton);
 
-        var advancedToggle = new Button { Name = "AdvancedNetworkOptions", Text = "Advanced network options ▸", Flat = true };
+        var playersCard = CreateCard();
+        layout.AddChild(playersCard);
+        var playersContent = new VBoxContainer();
+        playersContent.AddThemeConstantOverride("separation", 8);
+        playersCard.AddChild(playersContent);
+        var playerHeading = new HBoxContainer();
+        playersContent.AddChild(playerHeading);
+        var playerTitle = CreateLabel("Players in this game", 15);
+        playerTitle.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        playerHeading.AddChild(playerTitle);
+        _leaveButton = new Button
+        {
+            Name = "LeaveRoom",
+            Text = "Leave game",
+            CustomMinimumSize = new Vector2(112f, 36f)
+        };
+        _leaveButton.Pressed += _session.Leave;
+        playerHeading.AddChild(_leaveButton);
+        _playerList = new ItemList
+        {
+            Name = "Players",
+            CustomMinimumSize = new Vector2(0f, 82f),
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill
+        };
+        playersContent.AddChild(_playerList);
+
+        var advancedToggle = new Button
+        {
+            Name = "AdvancedNetworkOptions",
+            Text = "Advanced options · Internet service, LAN discovery and direct IP",
+            Flat = true,
+            CustomMinimumSize = new Vector2(0f, 36f),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+        };
         advancedToggle.Pressed += ToggleAdvanced;
         layout.AddChild(advancedToggle);
 
-        _advancedPanel = new PanelContainer { Name = "AdvancedNetworkPanel", Visible = false };
+        _advancedPanel = CreateCard();
+        _advancedPanel.Name = "AdvancedNetworkPanel";
+        _advancedPanel.Visible = false;
         layout.AddChild(_advancedPanel);
         var advanced = new VBoxContainer();
         advanced.AddThemeConstantOverride("separation", 8);
         _advancedPanel.AddChild(advanced);
-        advanced.AddChild(CreateLabel("Internet service (optional)"));
-        advanced.AddChild(CreateLabel("A WSS matchmaking address enables invite codes. No public service is bundled; use a service you trust or self-host the included tooling."));
+        advanced.AddChild(CreateLabel("Internet matchmaking", 16));
+        advanced.AddChild(CreateLabel(
+            "Optional. This project does not bundle a public service. Use a trusted WSS endpoint or self-host the included matchmaking and relay tools.",
+            13,
+            "#aebdcb"));
         _matchmakingUrl = new LineEdit
         {
             Name = "MatchmakingUrl",
             Text = _settings.MatchmakingUrl,
             PlaceholderText = "wss://your-host/v1/session",
+            CustomMinimumSize = new Vector2(0f, 40f),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
         advanced.AddChild(_matchmakingUrl);
@@ -133,57 +241,65 @@ public partial class LegacyLanNetworkWindow : Window
         var saveSettings = new Button { Name = "SaveNetworkSettings", Text = "Save settings" };
         saveSettings.Pressed += SaveSettings;
         settingsButtons.AddChild(saveSettings);
-        var hostLan = new Button { Name = "HostOnLan", Text = "Host on this LAN" };
+        var hostLan = new Button { Name = "HostOnLan", Text = "Host on LAN" };
         hostLan.Pressed += HostLan;
         settingsButtons.AddChild(hostLan);
         advanced.AddChild(settingsButtons);
 
-        var lanHeading = CreateLabel("Local network");
-        advanced.AddChild(lanHeading);
+        advanced.AddChild(CreateLabel("Local network (LAN)", 16));
+        advanced.AddChild(CreateLabel(
+            "Discover rooms on this network or connect directly to the host's IP address. The host may need to allow the game through its firewall.",
+            13,
+            "#aebdcb"));
         var lanSettings = new GridContainer { Columns = 2 };
         lanSettings.AddChild(CreateLabel("ENet port"));
-        _port = new LineEdit { Name = "LanPort", Text = "7777", MaxLength = 5 };
+        _port = new LineEdit
+        {
+            Name = "LanPort",
+            Text = "7777",
+            MaxLength = 5,
+            CustomMinimumSize = new Vector2(0f, 38f),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+        };
         lanSettings.AddChild(_port);
         lanSettings.AddChild(CreateLabel("Host IP"));
-        _address = new LineEdit { Name = "DirectAddress", PlaceholderText = "IPv4 or IPv6 address" };
+        _address = new LineEdit
+        {
+            Name = "DirectAddress",
+            PlaceholderText = "IPv4 or IPv6 address",
+            CustomMinimumSize = new Vector2(0f, 38f),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+        };
         lanSettings.AddChild(_address);
         advanced.AddChild(lanSettings);
 
         var lanControls = new HBoxContainer();
-        var discover = new Button { Name = "DiscoverLanRooms", Text = "Discover LAN rooms" };
+        var discover = new Button
+        {
+            Name = "DiscoverLanRooms",
+            Text = "Discover LAN rooms",
+            CustomMinimumSize = new Vector2(0f, 38f)
+        };
         discover.Pressed += _session.StartDiscovery;
         lanControls.AddChild(discover);
-        var joinAddress = new Button { Name = "JoinLanRoom", Text = "Join by IP" };
+        var joinAddress = new Button
+        {
+            Name = "JoinLanRoom",
+            Text = "Join by IP",
+            CustomMinimumSize = new Vector2(0f, 38f)
+        };
         joinAddress.Pressed += JoinAddress;
         lanControls.AddChild(joinAddress);
-        _leaveButton = new Button { Name = "LeaveRoom", Text = "Leave game" };
-        _leaveButton.Pressed += _session.Leave;
-        lanControls.AddChild(_leaveButton);
         advanced.AddChild(lanControls);
-
-        advanced.AddChild(CreateLabel("LAN rooms"));
+        advanced.AddChild(CreateLabel("Discovered rooms", 14));
         _roomList = new ItemList
         {
             Name = "LanRooms",
-            CustomMinimumSize = new Vector2(0f, 110f),
+            CustomMinimumSize = new Vector2(0f, 100f),
             SizeFlagsVertical = Control.SizeFlags.ExpandFill
         };
         _roomList.ItemSelected += _ => CopySelectedRoomAddress();
         advanced.AddChild(_roomList);
-
-        layout.AddChild(CreateLabel("Players in this game"));
-        _playerList = new ItemList
-        {
-            Name = "Players",
-            CustomMinimumSize = new Vector2(0f, 86f),
-            SizeFlagsVertical = Control.SizeFlags.ExpandFill
-        };
-        layout.AddChild(_playerList);
-        _status = CreateLabel(string.Empty);
-        _status.Name = "NetworkStatus";
-        _status.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-        _status.CustomMinimumSize = new Vector2(0f, 42f);
-        layout.AddChild(_status);
     }
 
     private void HostGame()
@@ -363,18 +479,86 @@ public partial class LegacyLanNetworkWindow : Window
         bool inviteReady = inviteCode.Length == 8;
         _inviteCodeLabel.Text = inviteReady
             ? $"Share this private invite code: {inviteCode}"
-            : "Internet invite code appears here when the room is ready.";
+            : string.Empty;
+        _inviteCodeLabel.Visible = inviteReady;
+        _copyInviteButton.Visible = inviteReady;
         _copyInviteButton.Disabled = !inviteReady;
+        _status.AddThemeColorOverride("font_color", _session.HasPeer ? new Color("#9ce7bd") : new Color("#d3dfeb"));
         _hostButton.Disabled = _session.IsBusy;
+        _joinCode.Editable = !_session.IsBusy;
         _joinCodeButton.Disabled = _session.IsBusy;
         _leaveButton.Disabled = !_session.HasPeer;
+    }
+
+    private static Label CreateLabel(string text, int fontSize = 14, string? color = null)
+    {
+        var label = new Label { Text = text, AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        label.AddThemeFontSizeOverride("font_size", fontSize);
+        if (color is not null)
+            label.AddThemeColorOverride("font_color", new Color(color));
+        return label;
+    }
+
+    private static PanelContainer CreateCard(string background = "#1b2734", string border = "#3a5065")
+    {
+        var card = new PanelContainer();
+        card.AddThemeStyleboxOverride("panel", new StyleBoxFlat
+        {
+            BgColor = new Color(background),
+            BorderColor = new Color(border),
+            BorderWidthBottom = 1,
+            BorderWidthLeft = 1,
+            BorderWidthRight = 1,
+            BorderWidthTop = 1,
+            CornerRadiusBottomLeft = 10,
+            CornerRadiusBottomRight = 10,
+            CornerRadiusTopLeft = 10,
+            CornerRadiusTopRight = 10,
+            ContentMarginLeft = 16,
+            ContentMarginRight = 16,
+            ContentMarginTop = 14,
+            ContentMarginBottom = 14
+        });
+        return card;
+    }
+
+    private static void StylePrimaryButton(Button button)
+    {
+        button.AddThemeStyleboxOverride("normal", CreateButtonStyle("#83d5f5"));
+        button.AddThemeStyleboxOverride("hover", CreateButtonStyle("#a4e2fa"));
+        button.AddThemeStyleboxOverride("pressed", CreateButtonStyle("#65bfdf"));
+        button.AddThemeStyleboxOverride("disabled", CreateButtonStyle("#35485a"));
+        button.AddThemeColorOverride("font_color", new Color("#10212b"));
+        button.AddThemeColorOverride("font_hover_color", new Color("#10212b"));
+        button.AddThemeColorOverride("font_pressed_color", new Color("#10212b"));
+        button.AddThemeColorOverride("font_disabled_color", new Color("#aebdcb"));
+    }
+
+    private static StyleBoxFlat CreateButtonStyle(string color)
+    {
+        var style = new StyleBoxFlat
+        {
+            BgColor = new Color(color),
+            BorderColor = new Color(color),
+            BorderWidthBottom = 1,
+            BorderWidthLeft = 1,
+            BorderWidthRight = 1,
+            BorderWidthTop = 1,
+            CornerRadiusBottomLeft = 8,
+            CornerRadiusBottomRight = 8,
+            CornerRadiusTopLeft = 8,
+            CornerRadiusTopRight = 8,
+            ContentMarginLeft = 14,
+            ContentMarginRight = 14,
+            ContentMarginTop = 9,
+            ContentMarginBottom = 9
+        };
+        return style;
     }
 
     private static string FormatRoom(LegacyLanRoom room)
         => $"{room.Name} — {room.Address}:{room.Port} — {room.PlayerCount}/{room.Capacity} players";
 
-    private static Label CreateLabel(string text)
-        => new() { Text = text, AutowrapMode = TextServer.AutowrapMode.WordSmart };
 
     public override void _ExitTree()
     {

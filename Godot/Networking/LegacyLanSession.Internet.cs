@@ -146,12 +146,12 @@ public sealed partial class LegacyLanSession
             }
             while (_matchmakingSocket.GetAvailablePacketCount() > 0)
             {
+                byte[] packet = _matchmakingSocket.GetPacket();
                 if (!_matchmakingSocket.WasStringPacket())
                 {
                     FailOnlineSession("The matchmaking service sent an unsupported message.");
                     return;
                 }
-                byte[] packet = _matchmakingSocket.GetPacket();
                 try
                 {
                     using JsonDocument message = JsonDocument.Parse(packet);
