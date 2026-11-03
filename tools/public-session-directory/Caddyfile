@@ -1,0 +1,4 @@
+{$DIRECTORY_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy directory:47800
+}

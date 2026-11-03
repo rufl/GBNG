@@ -199,18 +199,41 @@ GameBuilder.exe
 Set the same `GAMEBUILDER_SESSION_DIRECTORY` value for hosts and browsers, or
 pass `--session-directory=https://sessions.example.org` to the game executable.
 HTTP is accepted only for loopback tests; public endpoints must use HTTPS.
-Deploy the service on a publicly reachable machine behind an HTTPS reverse
-proxy. Configure it with `--trusted-proxy 127.0.0.1` when that proxy connects
-from loopback and overwrites `X-Forwarded-For`; do not expose the app port
-directly when trusting proxy headers.
+Deploy the service behind an HTTPS reverse proxy. Set `--trusted-proxy` to the
+proxy's source IP and ensure it overwrites `X-Forwarded-For`; never expose the
+application port publicly when trusting proxy headers. The Compose stack below
+uses fixed private addresses for Caddy and the service; adjust its subnet if it
+overlaps an existing Docker network.
+
+#### Containerized deployment with HTTPS
+
+Point a DNS A record for the public hostname at the server's public IPv4 address.
+Then, from a terminal:
+
+```text
+cd tools/public-session-directory
+copy .env.example .env
+notepad .env
+docker compose up -d --build
+```
+
+Set `DIRECTORY_DOMAIN` in `.env` to that hostname. The Caddy container obtains
+and renews HTTPS certificates automatically when the domain resolves to this
+server and inbound TCP ports `80` and `443` reach it. Only Caddy publishes
+ports; the directory API stays on the private Docker network. Set
+`GAMEBUILDER_SESSION_DIRECTORY=https://<DIRECTORY_DOMAIN>` for every host and
+browser, or pass the matching `--session-directory=` argument. Change
+`DIRECTORY_SUBNET`, `DIRECTORY_PROXY_IP`, and `DIRECTORY_SERVICE_IP` in `.env`
+if the default Docker subnet conflicts with another network.
 
 The service stores active sessions in memory, refreshes host data every 15
-seconds, and expires entries after 60 seconds without a heartbeat. Its free
-software does not include hosting, a public hostname, HTTPS, or a reliable
-always-on Internet endpoint; those are deployment requirements. The directory
-limits each source IP to eight new registrations per five minutes and supports
-up to 1,000 simultaneous sessions. It does not authenticate players or encrypt
-the game transport.
+seconds, and expires entries after 60 seconds without a heartbeat. The free
+software does not include hosting, a public hostname, or a reliable always-on
+Internet endpoint. The Compose setup automates TLS certificate provisioning,
+but requires a reachable domain and open ports. The directory limits each
+source IP to eight new registrations per five minutes and supports up to 1,000
+simultaneous sessions. It does not authenticate players or encrypt the game
+transport.
 
 The host sends an initial project snapshot (maximum 400 KiB). The direct
 adapter forwards actor-state and transform RPCs, terrain edits, player identity
