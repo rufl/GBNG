@@ -217,19 +217,20 @@ public class GameBuilderConsoleCommands : MonoBehaviour
     }
   }
 
-  [RegisterCommand(Help = "For all selected objects, set renderable to the given URI")]
+  [RegisterCommand(Help = "For selected objects, set the renderable URI; local OBJ files use localfbx:<absolute-path>")]
   static void CommandRenderUri(CommandArg[] args)
   {
-    if (args.Length != 1)
+    string uri = JoinTailToPath(args);
+    if (uri == null)
     {
-      Log($"Usage: renderuri steamworkshop:1234");
+      Log("Usage: renderuri localfbx:C:\\path\\to\\model.obj");
       return;
     }
 
     var edit = FindObjectOfType<EditMain>();
     if (edit == null)
     {
-      Log($"Could not find EditMain..?");
+      Log("Could not find EditMain..?");
       return;
     }
 
@@ -240,7 +241,7 @@ public class GameBuilderConsoleCommands : MonoBehaviour
         actor.RequestOwnershipThen(() =>
         {
           Log($"Setting renderable for {actor.GetDebugName()}");
-          actor.SetRenderableUri(args[0].String);
+          actor.SetRenderableUri(uri);
         });
       }
     }
@@ -516,12 +517,6 @@ public class GameBuilderConsoleCommands : MonoBehaviour
     }
   }
 
-  [RegisterCommand(Help = "Clears the cache of models from the web (Poly)")]
-  static void CommandClearPolyCache(CommandArg[] args)
-  {
-    PolyToolkit.PolyApi.ClearCache();
-    Log($"OK cleared Poly cache");
-  }
 
   [RegisterCommand(Help = "Enable speculative collision detection on selected actors")]
   static void CommandSpecCol(CommandArg[] args)

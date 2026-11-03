@@ -12,7 +12,6 @@ GameObject:
   - component: {fileID: 114095031118611130}
   - component: {fileID: 114694766915048616}
   - component: {fileID: 114104488390345754}
-  - component: {fileID: 114899251025459568}
   - component: {fileID: 114351645920674192}
   - component: {fileID: 114437615528043388}
   - component: {fileID: 114683038477404430}
@@ -182,21 +181,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1bba968745c79f145baf1e1b7e38ec84, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  polySearchManager: {fileID: 114899251025459568}
   gisSearchManager: {fileID: 114351645920674192}
   prefabSearchManager: {fileID: 114437615528043388}
---- !u!114 &114899251025459568
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1322121549511396}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a04f3db0f16342f4c8dc306fe4a4dd92, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
 --- !u!114 &114351645920674192
 MonoBehaviour:
   m_ObjectHideFlags: 0

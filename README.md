@@ -47,7 +47,7 @@ Run `bash tools/codegen/gen-all.sh` from the repository root with Python 3.15.2.
 
 ## Running in Unity Editor
 
-1. Open the repository root with Unity Editor 6000.6.6f1.
+1. Open the repository root with Unity Editor 6000.6.7f1.
 1. Open the splash screen scene: `Assets/splash.unity`.
 1. If Unity prompts for TextMesh Pro essential resources, import them and restart the editor.
 1. Click Play.
@@ -74,13 +74,15 @@ Regenerate the catalog with `python3 tools/asset-inventory/generate.py`. Serve t
 
 The catalog lists license evidence and marks files without a located notice as unidentified; third-party terms remain separate from the project license.
 
-# Optional features
+# Optional integrations
 
-Game Builder was originally built using several Unity Asset Store plugins. We
-cannot include them in the repo, so by default the features that require them
-are disabled. However, we've set things up so it's easy to re-enable some
-features once you've purchased and imported some plugins (many are free!).
-Instructions for individual features are below.
+The `unity` branch runs without Unity Asset Store plugins. Built-in 2D drawing,
+local OBJ model loading, the built-in and saved actor libraries, and in-app
+project saving are part of the baseline. Optional integrations below may
+require separate plugins, accounts, or API keys.
+
+The built-in 2D renderer uses Unity's GUI font rather than Shaper's bitmap
+atlas, so existing text may look different.
 
 ## Common instructions
 
@@ -95,7 +97,27 @@ Instructions for individual features are below.
   * Add the directive to the end of the `Scripting Define Symbols` text field (with a semi-colon before it)
   * Restart Unity
 
-## Features that can be enabled for *free*
+
+## Importing a local OBJ model
+
+1. Select an actor in Build mode.
+1. Open the in-game command console and run:
+
+   ```text
+   renderuri localfbx:C:/path/to/model.obj
+   ```
+
+   Use an absolute path. Paths containing spaces may be quoted.
+1. Wavefront OBJ geometry and adjacent MTL files are supported. MTL diffuse
+   color/alpha and `map_Kd` textures load from files in the OBJ directory or
+   its subdirectories. The OBJ, MTL, and texture files remain external; they
+   are not embedded in a saved project.
+
+The legacy URI scheme is named `localfbx:` for save compatibility. This
+plugin-free importer supports OBJ only; FBX and animated formats still need
+TriLib.
+
+## Optional integrations available for free
 
 * [Photon Unity Networking](https://assetstore.unity.com/packages/tools/network/photon-unity-networking-classic-free-1786) - Enables multiplayer and collaborative-editing
     - NOTE: Because PUN integration is complex, we recommend you start with a
@@ -137,25 +159,6 @@ Instructions for individual features are below.
     - Import the plugin from the Asset Store link above.
     - Define the directive `USE_FILEBROWSER`.
 
-* Poly Toolkit for Unity
-
-    To enable importing 3D models from [Poly](https://poly.google.com),
-    you must enter an API Key for the Poly API.
-
-    You do *NOT* need to import the Poly SDK (Poly Toolkit). It's already
-    included. All you need to do is enter your API key.
-
-    To do so, click the PtSettings.asset file in Unity (you will find it in
-    Assets/third_party/PolyToolkit/Resources). The Inspector window will
-    show several options for it. Click the RUNTIME tab, open the Auth Config
-    section and enter your API Key, replacing the placeholder text
-    "INSERT YOUR API KEY HERE".
-
-    For instructions on how to get an API key, see the
-    [Google Cloud Console](https://console.cloud.google.com/).
-    When you create your Google Cloud
-    Console project, don't forget to enable the Poly API on it *before*
-    (not after) generating your API Key.
 
 * Google Image Search
 
@@ -175,39 +178,36 @@ Instructions for individual features are below.
     - You are all set!
 
 
-## Features that require premium plugins
+## Existing Poly URIs
 
-* [2D Shaper Library](https://assetstore.unity.com/packages/tools/gui/2d-shaper-library-105973)
+Google Poly is retired. Existing projects can still deserialize `poly:`
+renderable URIs, but those remote models cannot be fetched and show a
+conspicuous missing-asset placeholder. Replace them with a local OBJ using
+the `renderuri` command above. No Poly API key or SDK setup is available.
 
-    If you want game-generated 2D graphics (that is, you want to allow games
-    to show HUD text, draw shapes on the screen, etc).
-    - Import the plugin from the Asset Store link above.
-    - Define the directive USE_SHAPER_2D_LIBRARY. 
-    
-* [Steam Workshop](https://assetstore.unity.com/packages/tools/integration/steam-workshop-easy-steamworks-integration-86189) - If you are releasing on Steam and want to enable functionality like project sharing.
-    - Import the plugin from the Asset Store link above.
-    - Run `bash tools/integrations/setup-steamworks.sh` from the repository root.
-    - Define the directive USE_STEAMWORKS.
-    - Find the file "steam_appid.txt" in the repo root (NOT the one in "redist"). Put your AppID in there (instead of 480).
-    
-* [TriLib](https://assetstore.unity.com/packages/tools/modeling/trilib-model-loader-package-91777) - To import FBX files with animation from Poly.
-    - Import the plugin from the Asset Store link above.
-    - Define the directive USE_TRILIB.
+## Optional integrations that still need plugins
+
+* Steam Workshop requires the Steam Workshop integration and `USE_STEAMWORKS`.
+  Import/export of FBX assets also requires TriLib.
+
+* [TriLib](https://assetstore.unity.com/packages/tools/modeling/trilib-model-loader-package-91777)
+  - Enables local FBX loading and animated FBX assets. OBJ import does not
+    require TriLib.
+  - Define the directive `USE_TRILIB`.
 
 * [Embedded Browser](https://assetstore.unity.com/packages/tools/gui/embedded-browser-55459)
 
-    This plugin allows rendering of an HTML page inside of Game Builder,
-    which enables you to use the Monaco-based code editor IDE.
-    - Import the plugin from the Asset Store link above.
-    - Define the directive `USE_ZFBROWSER`
-    - Run `bash tools/integrations/setup-browser-assets.sh` from the repository root.
+  This plugin renders HTML inside Game Builder, enabling the Monaco-based code
+  editor. Without it, the built-in plain-text code editor remains available.
+  - Define the directive `USE_ZFBROWSER`
+  - Run `bash tools/integrations/setup-browser-assets.sh`.
 
 ## Archival Build
 
-In the `builds` directory, you will also find the last build that we published
-to Steam (the `gamebuilder-ARCHIVE.7z.*` files). This differs from the open-source build
-because it has several optional plugins enabled such as 2D UI, rich JS editor,
-etc.
+The `builds` directory contains the last build published to Steam
+(`gamebuilder-ARCHIVE.7z.*`). It predates the plugin-free 2D renderer and
+includes optional integrations such as Shaper-based 2D UI and the rich JS
+editor.
 
 ## License
 

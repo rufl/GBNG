@@ -35,12 +35,10 @@ public class RenderableLibrary : MonoBehaviour
   [SerializeField] string challengeCategoryUrl;
   [SerializeField] Texture2D allCategoryIcon;
   [SerializeField] Texture2D decorationCategoryIcon;
-  [SerializeField] Texture2D polyCategoryIcon;
   [SerializeField] Texture2D gisCategoryIcon;
   // private static string CATEGORY_CHALLENGE = "Challenge";
   private static string CATEGORY_ALL = "All";
   private static string CATEGORY_DECORATIONS = "Decor";
-  private static string CATEGORY_POLY = "Objects from web";
   private static string CATEGORY_GIS = "Images from web";
   [SerializeField] List<CategoryButton> dynamicCategories;
   private EditMain editMain;
@@ -79,7 +77,6 @@ public class RenderableLibrary : MonoBehaviour
       allCategories.Add(new Util.Tuple<string, Texture2D>(category.displayName, category.icon));
     }
     allCategories.Add(new Util.Tuple<string, Texture2D>(CATEGORY_DECORATIONS, decorationCategoryIcon));
-    allCategories.Add(new Util.Tuple<string, Texture2D>(CATEGORY_POLY, polyCategoryIcon));
     allCategories.Add(new Util.Tuple<string, Texture2D>(CATEGORY_GIS, gisCategoryIcon));
     // allCategories.Add(new Util.Tuple<string, Texture2D>(CATEGORY_CHALLENGE, challengeCategoryIcon));
 
@@ -133,8 +130,7 @@ public class RenderableLibrary : MonoBehaviour
     renderableLibraryUI.inCategoryLabel.text = selectedCategory;
     // renderableLibraryUI.inCategoryLink.gameObject.SetActive(selectedCategory == CATEGORY_CHALLENGE);
     renderableLibraryUI.inCategoryLink.gameObject.SetActive(false);
-    renderableLibraryUI.webSearchHint.gameObject.SetActive(
-      selectedCategory == CATEGORY_POLY || selectedCategory == CATEGORY_GIS);
+    renderableLibraryUI.webSearchHint.gameObject.SetActive(selectedCategory == CATEGORY_GIS);
 
     renderableLibraryUI.resultsRectContainer.SetActive(false);
     if (selectedCategory != null || searchString != "")
@@ -143,10 +139,6 @@ public class RenderableLibrary : MonoBehaviour
       if (selectedCategory == null || selectedCategory == CATEGORY_ALL)
       {
         ShowAllModels();
-      }
-      else if (selectedCategory == CATEGORY_POLY)
-      {
-        ShowPoly();
       }
       else if (selectedCategory == CATEGORY_GIS)
       {
@@ -179,17 +171,6 @@ public class RenderableLibrary : MonoBehaviour
     }
   }
 
-  void ShowPoly()
-  {
-    foreach (SquareImageButtonUI result in internalResults)
-    {
-      SetResultShowing(result, false);
-    }
-    foreach (SquareImageButtonUI result in webResults)
-    {
-      SetResultShowing(result, result.GetSearchResult().renderableReference.assetType == AssetType.Poly);
-    }
-  }
 
   void ShowGIS()
   {
@@ -325,7 +306,7 @@ public class RenderableLibrary : MonoBehaviour
       if (percent > 1) timers.Remove(key);
     }
 
-    if (selectedCategory == CATEGORY_POLY || selectedCategory == CATEGORY_GIS)
+    if (selectedCategory == CATEGORY_GIS)
     {
       renderableLibraryUI.webSearchHint.gameObject.SetActive(webResults.Count == 0);
     }
@@ -356,15 +337,9 @@ public class RenderableLibrary : MonoBehaviour
     else
     {
       webResults.Add(newResult);
-      if (incomingResult.renderableReference.assetType == AssetType.Poly)
+      if (incomingResult.renderableReference.assetType == AssetType.Image)
       {
-        SetResultShowing(newResult,
-          selectedCategory == CATEGORY_POLY);
-      }
-      else if (incomingResult.renderableReference.assetType == AssetType.Image)
-      {
-        SetResultShowing(newResult,
-          selectedCategory == CATEGORY_GIS);
+        SetResultShowing(newResult, selectedCategory == CATEGORY_GIS);
       }
     }
   }

@@ -137,6 +137,11 @@ public static class VoosAssetUtil
 {
   public static VoosAsset AssetFromUri(string uri)
   {
+    const string LOCAL_ASSET_PREFIX = "localfbx:";
+    if (uri != null && uri.StartsWith(LOCAL_ASSET_PREFIX, System.StringComparison.OrdinalIgnoreCase))
+    {
+      return new LocalFbxAsset(uri.Substring(LOCAL_ASSET_PREFIX.Length));
+    }
     return AssetFromUri(new System.Uri(uri));
   }
 
@@ -171,10 +176,7 @@ public static class VoosAssetUtil
 
   public static bool IsLocalAsset(string uri)
   {
-    if (uri.IsNullOrEmpty())
-    {
-      return false;
-    }
-    return (new System.Uri(uri)).Scheme == "localfbx";
+    return !uri.IsNullOrEmpty() &&
+      uri.StartsWith("localfbx:", System.StringComparison.OrdinalIgnoreCase);
   }
 }

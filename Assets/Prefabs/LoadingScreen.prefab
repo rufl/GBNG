@@ -1,18 +1,5 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!114 &1036557643599009577
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 303144192557919693}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8714c362c0c8a6449a9559a31cdab9a5, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  radius: 12
 --- !u!1 &2150134740236644578
 GameObject:
   m_ObjectHideFlags: 0
@@ -179,7 +166,6 @@ GameObject:
   m_Component:
   - component: {fileID: 2741305545784269795}
   - component: {fileID: 6288387802647714901}
-  - component: {fileID: 6395644073465956074}
   - component: {fileID: 8971243142270455861}
   m_Layer: 0
   m_Name: BarForeground
@@ -215,18 +201,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 3564986170594582473}
   m_CullTransparentMesh: 0
---- !u!114 &6395644073465956074
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3564986170594582473}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 2ffade7edb5b1df45a6c3642149606c6, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
 --- !u!114 &8971243142270455861
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -638,7 +612,6 @@ GameObject:
   m_Component:
   - component: {fileID: 5934260394496655394}
   - component: {fileID: 6165314297154310832}
-  - component: {fileID: 3980088523397842169}
   - component: {fileID: 7736944083402292820}
   m_Layer: 0
   m_Name: BarBackground
@@ -674,18 +647,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 7521007436733582812}
   m_CullTransparentMesh: 0
---- !u!114 &3980088523397842169
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 7521007436733582812}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 2ffade7edb5b1df45a6c3642149606c6, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
 --- !u!114 &7736944083402292820
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -231,8 +231,7 @@ public class GameUiMain : MonoBehaviour
 #if USE_SHAPER_2D_LIBRARY
     draw2D = new Draw2DShaperImpl();
 #else
-    draw2D = new Draw2DDummyImpl();
-    Debug.LogWarning("The USE_SHAPER_2D_LIBRARY preprocessor flag is not set. You will have NO game-generated 2D graphics! If you want game-generated 2D graphics, see README. If this is intentional, you can also just remove this error message :)");
+    draw2D = new Draw2DUnityImpl();
 #endif
     bitmapFont = draw2D.CreateBitmapFont(bitmapFontXml, bitmapFontImage);
     Util.FindIfNotSet(this, ref engine);

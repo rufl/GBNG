@@ -63,7 +63,6 @@ MonoBehaviour:
   allCategoryIcon: {fileID: 2800000, guid: c7f8b5769b226d54795b51191d330987, type: 3}
   decorationCategoryIcon: {fileID: 2800000, guid: 5486b9c8da7048842b15869d4633a2c8,
     type: 3}
-  polyCategoryIcon: {fileID: 2800000, guid: c7f8b5769b226d54795b51191d330987, type: 3}
   gisCategoryIcon: {fileID: 2800000, guid: ac98dfe150190c64d9d7500457b9cd26, type: 3}
   dynamicCategories:
   - icon: {fileID: 2800000, guid: e838072213d47534d82b2c0339e29b1b, type: 3}

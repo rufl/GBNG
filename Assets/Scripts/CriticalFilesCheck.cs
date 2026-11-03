@@ -38,10 +38,14 @@ public class CriticalFilesCheck : MonoBehaviour
     }
 
     List<string> missingFiles = new List<string>();
+    string appDirectory = Directory.GetParent(Application.dataPath).FullName;
+    string manifestPath = Path.Combine(appDirectory, ManifestFile);
 
-    foreach (var line in File.ReadAllLines(ManifestFile))
+    foreach (var line in File.ReadAllLines(manifestPath))
     {
-      string path = line.Trim();
+      string relativePath = line.Trim();
+      if (string.IsNullOrWhiteSpace(relativePath)) continue;
+      string path = Path.Combine(appDirectory, relativePath);
       if (!File.Exists(path))
       {
         missingFiles.Add(path);

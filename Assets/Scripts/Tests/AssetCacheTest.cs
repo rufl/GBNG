@@ -23,46 +23,46 @@ public class AssetCacheTest
 {
 
   [Test]
-  public void TestFitPolyImport()
+  public void TestFitImportedModel()
   {
     GameObject importedObject = new GameObject("importedObject");
 
     GameObject meshChild = CreateBoxMeshObject(Vector3.one, Vector3.zero);
     meshChild.transform.SetParent(importedObject.transform);
 
-    AssetCache.DownloadVisitor.FitImportedModel(importedObject, "");
+    AssetCache.DownloadVisitor.FitImportedModel(importedObject);
     Assert.AreEqual(Vector3.one, meshChild.transform.localScale);
     Assert.AreEqual(new Vector3(0, 0.5f, 0), meshChild.transform.localPosition);
   }
 
   [Test]
-  public void TestFitPolyImportUncenteredMesh()
+  public void TestFitImportedModelUncenteredMesh()
   {
     GameObject importedObject = new GameObject("importedObject");
 
     GameObject meshChild = CreateBoxMeshObject(Vector3.one, new Vector3(9, 3, 5));
     meshChild.transform.SetParent(importedObject.transform);
 
-    AssetCache.DownloadVisitor.FitImportedModel(importedObject, "");
+    AssetCache.DownloadVisitor.FitImportedModel(importedObject);
     Assert.AreEqual(Vector3.one, meshChild.transform.localScale);
     Assert.AreEqual(new Vector3(-9, -2.5f, -5), meshChild.transform.localPosition);
   }
 
   [Test]
-  public void TestFitPolyImportScaledMesh()
+  public void TestFitImportedModelScaledMesh()
   {
     GameObject importedObject = new GameObject("importedObject");
 
     GameObject meshChild = CreateBoxMeshObject(new Vector3(4, 2, 8), Vector3.zero);
     meshChild.transform.SetParent(importedObject.transform);
 
-    AssetCache.DownloadVisitor.FitImportedModel(importedObject, "");
+    AssetCache.DownloadVisitor.FitImportedModel(importedObject);
     Assert.AreEqual(new Vector3(0.125f, 0.125f, 0.125f), meshChild.transform.localScale);
     Assert.AreEqual(new Vector3(0, 0.125f, 0), meshChild.transform.localPosition);
   }
 
   [Test]
-  public void TestFitPolyImporMultipleMeshes()
+  public void TestFitImportedModelMultipleMeshes()
   {
     GameObject importedObject = new GameObject("importedObject");
 
@@ -71,7 +71,7 @@ public class AssetCacheTest
     GameObject meshChild2 = CreateBoxMeshObject(new Vector3(2, 2, 2), new Vector3(0, 2, 0));
     meshChild2.transform.SetParent(importedObject.transform);
 
-    AssetCache.DownloadVisitor.FitImportedModel(importedObject, "");
+    AssetCache.DownloadVisitor.FitImportedModel(importedObject);
     Assert.AreEqual(new Vector3(0.25f, 0.25f, 0.25f), meshChild1.transform.localScale);
     Assert.AreEqual(new Vector3(-0.25f, 0.25f, 0), meshChild1.transform.localPosition);
     Assert.AreEqual(new Vector3(0.25f, 0.25f, 0.25f), meshChild2.transform.localScale);

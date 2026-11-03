@@ -102,7 +102,6 @@ MonoBehaviour:
   decorationCategoryIcon: {fileID: 2800000, guid: 5486b9c8da7048842b15869d4633a2c8,
     type: 3}
   savedCategoryIcon: {fileID: 2800000, guid: d1d35af5c701ed54d85f96fb547736d2, type: 3}
-  polyCategoryIcon: {fileID: 2800000, guid: c7f8b5769b226d54795b51191d330987, type: 3}
   gisCategoryIcon: {fileID: 2800000, guid: ac98dfe150190c64d9d7500457b9cd26, type: 3}
   soundsCategoryIcon: {fileID: 2800000, guid: b2c0c12e0c706b544bf60acbb633da5f, type: 3}
   particlesCategoryIcon: {fileID: 2800000, guid: c754e74adc17ed446beeb4691941242f,
