@@ -85,6 +85,9 @@ public sealed class DirectHostParitySmokeTemp : MonoBehaviour
         && PhotonNetwork.playerList.Length >= 2,
         "Client did not receive the host identity and roster.", 60f);
       if (failed) yield break;
+      yield return WaitFor(() => HasPlayerAvatar(PhotonNetwork.player.ID),
+        "Client avatar initialization did not finish.", 90f);
+      if (failed) yield break;
 
       VirtualPlayerManager manager = FindObjectOfType<VirtualPlayerManager>();
       if (manager == null)
@@ -96,11 +99,15 @@ public sealed class DirectHostParitySmokeTemp : MonoBehaviour
       yield return WaitFor(() => manager.GetVirtualPlayerById(GuestVirtualPlayerId).HasValue,
         "MasterClient-targeted virtual-player registration did not replicate.", 30f);
       if (failed) yield break;
+      manager.SetPlayerCanEdit(GuestVirtualPlayerId, true);
     }
     else
     {
       yield return WaitFor(() => PhotonNetwork.playerList.Length >= 2 && HasPlayer(2, expectedNickname),
         "Host did not receive the joining client's identity and roster.", 90f);
+      if (failed) yield break;
+      yield return WaitFor(() => HasPlayerAvatar(2),
+        "Host did not receive the ready client's avatar.", 90f);
       if (failed) yield break;
 
       VirtualPlayerManager manager = FindObjectOfType<VirtualPlayerManager>();
@@ -109,8 +116,11 @@ public sealed class DirectHostParitySmokeTemp : MonoBehaviour
         Fail("VirtualPlayerManager was missing on the host.");
         yield break;
       }
-      yield return WaitFor(() => manager.GetVirtualPlayerById(GuestVirtualPlayerId).HasValue,
-        "Host did not process the client's MasterClient-targeted registration.", 30f);
+      yield return WaitFor(() =>
+      {
+        VirtualPlayerManager.VirtualPlayerInfo? info = manager.GetVirtualPlayerById(GuestVirtualPlayerId);
+        return info.HasValue && info.Value.canEdit;
+      }, "Host did not process the client's targeted and broadcast RPCs.", 30f);
       if (failed) yield break;
       Debug.Log("DIRECT_PARITY_MASTER_RPC_PASS");
 
@@ -127,7 +137,8 @@ public sealed class DirectHostParitySmokeTemp : MonoBehaviour
         && FindObjectOfType<NetworkingController>() != null
         && FindObjectOfType<NetworkingController>().GetIsInMultiplayer()
         && PhotonNetwork.playerList.Length >= 2
-        && HasPlayer(2, expectedNickname),
+        && HasPlayer(2, expectedNickname)
+        && HasPlayerAvatar(2),
         "Direct host map switch did not reload the client state and preserve the session.", 90f);
       if (failed) yield break;
       Debug.Log("DIRECT_PARITY_MAP_SWITCH_PASS");
@@ -146,7 +157,8 @@ public sealed class DirectHostParitySmokeTemp : MonoBehaviour
       yield return WaitFor(() => mainSceneLoads >= 2
         && FindObjectOfType<NetworkingController>() != null
         && FindObjectOfType<NetworkingController>().GetIsInMultiplayer()
-        && HasPlayer(1, expectedNickname),
+        && HasPlayer(1, expectedNickname)
+        && HasPlayerAvatar(PhotonNetwork.player.ID),
         "Direct map switch did not reload the client and restore the host roster.", 90f);
       if (failed) yield break;
       Debug.Log("DIRECT_PARITY_MAP_SWITCH_PASS");
@@ -170,6 +182,15 @@ public sealed class DirectHostParitySmokeTemp : MonoBehaviour
   {
     PhotonPlayer player = PhotonPlayer.Find(playerId);
     return player != null && player.NickName == nickname;
+  }
+  static bool HasPlayerAvatar(int playerId)
+  {
+    foreach (UserBody body in FindObjectsOfType<UserBody>(true))
+    {
+      PhotonView view = body.GetComponent<PhotonView>();
+      if (view != null && view.viewID > 0 && view.ownerId == playerId) return true;
+    }
+    return false;
   }
 
   IEnumerator WaitFor(Func<bool> condition, string errorMessage, float timeoutSeconds)
