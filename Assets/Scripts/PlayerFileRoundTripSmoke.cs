@@ -4,9 +4,11 @@ using System.Linq;
 using System.Collections;
 using CommandTerminal;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public sealed class PlayerFileRoundTripSmoke : MonoBehaviour
 {
+  const string SmokeArgument = "--player-file-roundtrip-smoke";
   static bool launched;
 
   HeadlessTerminal terminal;
@@ -14,17 +16,18 @@ public sealed class PlayerFileRoundTripSmoke : MonoBehaviour
   bool saved;
   bool requestedSaveRead;
   bool loadedSavedGame;
+  bool failed;
 
   [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
   static void Bootstrap()
   {
-    if (launched || Application.isEditor)
+    if (launched || Application.isEditor || !Environment.GetCommandLineArgs().Contains(SmokeArgument))
     {
       return;
     }
 
-    Application.runInBackground = true;
     launched = true;
+    Application.runInBackground = true;
     Debug.Log("PLAYER_FILE_ROUNDTRIP_START|scene=" + SceneManager.GetActiveScene().name);
     GameObject runner = new GameObject("PlayerFileRoundTripSmoke");
     DontDestroyOnLoad(runner);
@@ -175,7 +178,6 @@ public sealed class PlayerFileRoundTripSmoke : MonoBehaviour
 
     File.Delete(expectedSavePath);
     Debug.Log("PLAYER_FILE_ROUNDTRIP_PASS|templateActors=" + templateActorNames.Length + "|savedActors=" + reloadedActorNames.Length);
-    Application.Quit(0);
   }
 
   void Issue(string command)
@@ -191,7 +193,7 @@ public sealed class PlayerFileRoundTripSmoke : MonoBehaviour
     }
   }
 
-  IEnumerator WaitFor(Func<bool> condition, string failure, float timeoutSeconds)
+  IEnumerator WaitFor(Func<bool> condition, string failureMessage, float timeoutSeconds)
   {
     float deadline = Time.realtimeSinceStartup + timeoutSeconds;
     while (!condition() && Time.realtimeSinceStartup < deadline)
@@ -201,7 +203,7 @@ public sealed class PlayerFileRoundTripSmoke : MonoBehaviour
 
     if (!condition())
     {
-      Fail(failure);
+      Fail(failureMessage);
     }
   }
 
@@ -218,5 +220,5 @@ public sealed class PlayerFileRoundTripSmoke : MonoBehaviour
     {
       File.Delete(expectedSavePath);
     }
-    Application.Quit(1);
   }
+}
