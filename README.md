@@ -311,6 +311,47 @@ This endpoint is accessible only to devices in the tailnet, not the public
 Internet. Do not enable Funnel on a port whose other Serve routes proxy unrelated
 applications.
 
+##### Stable public endpoint with Tailscale Funnel (free)
+
+[Tailscale Funnel](https://tailscale.com/docs/features/tailscale-funnel) can
+give the directory a stable public HTTPS URL using your own always-on Chopper
+node and its `*.ts.net` hostname; it does not provide
+always-on hosting if that node is offline. Funnel requires MagicDNS, HTTPS
+certificates, Tailscale Funnel permission enabled for the node in the tailnet
+policy, and admin approval where required. Funnel is a Tailscale beta feature;
+the service is subject to Tailscale's non-configurable bandwidth limits.
+
+The session directory must bind only to `127.0.0.1`; the updated service unit
+enables `--accept-proxy-protocol-v2`. Funnel supplies the actual client IP in
+its PROXY header, which takes precedence over `X-Forwarded-For`; ordinary local
+HTTP from the existing Caddy routes remains supported. Deploy the updated
+`server.py` to `~/.local/share/gamebuilder-session-directory/` and the updated
+service unit to `~/.config/systemd/user/`, then run:
+
+```text
+systemctl --user daemon-reload
+systemctl --user restart gamebuilder-session-directory.service
+tailscale serve status
+tailscale funnel --bg --proxy-protocol=2 --tls-terminated-tcp=8443 tcp://127.0.0.1:47800
+tailscale funnel status
+```
+
+Use a free Funnel port not already serving another application; this setup
+uses `8443`, leaving the existing tailnet-only Serve routes on `443` unchanged.
+The public URL is `https://<node>.<tailnet>.ts.net:8443`; confirm it with
+`tailscale funnel status`, then set `GAMEBUILDER_SESSION_DIRECTORY` to that URL
+for hosts and clients or pass the matching `--session-directory=` argument.
+Funnel terminates HTTPS and forwards only to the directory's loopback listener.
+It does not expose Caddy's other routes. The API is unauthenticated, so anyone
+can list public sessions and submit registrations subject to the directory's
+rate and capacity limits.
+
+The endpoint carries session-directory HTTPS only. Game traffic remains direct
+UDP and still depends on IPv6 reachability, UPnP, or manual router forwarding.
+Funnel does not relay or make player-hosted game servers reachable through
+otherwise-blocked NAT.
+
+
 ##### Temporary public test with Cloudflare Quick Tunnel
 
 Cloudflare [Quick Tunnels](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)
@@ -341,11 +382,12 @@ only; game traffic remains direct UDP and still depends on IPv6 reachability,
 UPnP, or manual router forwarding.
 The service stores session records in memory and refreshes host data every 15
 seconds. Public listings hide entries after 60 seconds without a heartbeat;
-records remain migration-accessible for five minutes before purge. The repository
-does not provide a durable hosted service, stable public hostname, or guaranteed
-always-on endpoint. The Compose setup automates TLS certificate provisioning,
-but requires a reachable domain and open ports. The directory limits each
-source IP to eight new registrations per five minutes and supports up to 1,000
+records remain migration-accessible for five minutes before purge. The
+repository does not provide a centrally operated always-on directory. Tailscale
+Funnel can provide a stable hostname through your own always-on Chopper node
+(see above); the Compose setup automates TLS certificate provisioning but
+requires a reachable domain and open ports. The directory limits each source IP
+to eight new registrations per five minutes and supports up to 1,000
 simultaneous sessions. It does not authenticate players. Direct UDP game
 traffic is encrypted with Unity Transport's built-in DTLS and pinned server
 certificates; directory requests require HTTPS.

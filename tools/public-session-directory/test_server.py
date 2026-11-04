@@ -5,6 +5,11 @@ import unittest
 import time
 import urllib.error
 import urllib.request
+import ipaddress
+import socket
+import subprocess
+import sys
+
 
 import server
 
@@ -411,6 +416,113 @@ class IPv6DirectoryHttpTests(unittest.TestCase):
             directory.shutdown()
             directory.server_close()
             thread.join(timeout=3)
+
+
+class ProxyProtocolV2DirectoryHttpTests(unittest.TestCase):
+    def test_proxy_v2_client_address_wins_over_spoofed_forwarded_header(self):
+        state = server.DirectoryState(trusted_proxy="127.0.0.1")
+        handler = type("TestDirectoryHandler", (server.DirectoryHandler,), {"state": state})
+        directory = server.ProxyProtocolV2DirectoryServer(("127.0.0.1", 0), handler)
+        thread = threading.Thread(target=directory.serve_forever, daemon=True)
+        thread.start()
+        port = directory.server_address[1]
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+        try:
+            for source_text in ("198.51.100.23", "2001:db8::1234"):
+                source = ipaddress.ip_address(source_text)
+                destination = ipaddress.ip_address(
+                    "192.0.2.10" if source.version == 4 else "2001:db8::1")
+                address_block = (
+                    source.packed
+                    + destination.packed
+                    + (45678).to_bytes(2, "big")
+                    + (47800).to_bytes(2, "big")
+                )
+                protocol_family = 0x11 if source.version == 4 else 0x21
+                proxy_header = (
+                    server.PROXY_V2_SIGNATURE
+                    + bytes((0x21, protocol_family))
+                    + len(address_block).to_bytes(2, "big")
+                    + address_block
+                )
+                http_request = (
+                    b"GET /v1/address HTTP/1.1\r\n"
+                    b"Host: localhost\r\n"
+                    b"X-Forwarded-For: 203.0.113.99\r\n"
+                    b"Connection: close\r\n\r\n"
+                )
+                with socket.create_connection(("127.0.0.1", port), timeout=3) as connection:
+                    connection.sendall(proxy_header + http_request)
+                    response = bytearray()
+                    while True:
+                        chunk = connection.recv(4096)
+                        if not chunk:
+                            break
+                        response.extend(chunk)
+                status_line, _, response_body = bytes(response).partition(b"\r\n")
+                self.assertIn(b" 200 ", status_line)
+                self.assertEqual(
+                    json.loads(response_body.split(b"\r\n\r\n", 1)[-1].decode("utf-8"))["Address"],
+                    source_text,
+                )
+
+            with opener.open("http://127.0.0.1:{}/v1/address".format(port), timeout=3) as response:
+                self.assertEqual(response.status, 200)
+                self.assertEqual(
+                    json.loads(response.read().decode("utf-8"))["Address"],
+                    "127.0.0.1",
+                )
+        finally:
+            directory.shutdown()
+            directory.server_close()
+            thread.join(timeout=3)
+
+    def test_incomplete_proxy_header_does_not_block_http_requests(self):
+        state = server.DirectoryState()
+        handler = type("TestDirectoryHandler", (server.DirectoryHandler,), {"state": state})
+        directory = server.ProxyProtocolV2DirectoryServer(("127.0.0.1", 0), handler)
+        thread = threading.Thread(target=directory.serve_forever, daemon=True)
+        thread.start()
+        port = directory.server_address[1]
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=3) as slow_client:
+                slow_client.sendall(b"\r")
+                with opener.open("http://127.0.0.1:{}/v1/address".format(port), timeout=2) as response:
+                    self.assertEqual(response.status, 200)
+                    self.assertEqual(
+                        json.loads(response.read().decode("utf-8"))["Address"],
+                        "127.0.0.1",
+                    )
+        finally:
+            directory.shutdown()
+            directory.server_close()
+            thread.join(timeout=3)
+
+
+    def test_proxy_protocol_mode_rejects_non_loopback_bind(self):
+        result = subprocess.run(
+            [
+                sys.executable,
+                server.__file__,
+                "--bind",
+                "0.0.0.0",
+                "--port",
+                "47800",
+                "--accept-proxy-protocol-v2",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(
+            "--accept-proxy-protocol-v2 requires --bind 127.0.0.1",
+            result.stderr,
+        )
 
 
 if __name__ == "__main__":

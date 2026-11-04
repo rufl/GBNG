@@ -34,6 +34,9 @@ MIGRATION_STALE_SECONDS = 30
 REGISTER_LIMIT = 8
 REGISTER_WINDOW_SECONDS = 300
 MAX_REGISTER_SOURCES = 4096
+PROXY_V2_SIGNATURE = b"\r\n\r\n\x00\r\nQUIT\n"
+MAX_PROXY_V2_PAYLOAD_BYTES = 4096
+PROXY_V2_HEADER_TIMEOUT_SECONDS = 5
 
 
 class DirectoryState:
@@ -439,11 +442,79 @@ class IPv6DirectoryServer(DirectoryServer):
     address_family = socket.AF_INET6
 
 
+
+class ProxyProtocolV2DirectoryServer(DirectoryServer):
+    """Accept PROXY v2 and ordinary HTTP from trusted local proxies."""
+
+    @staticmethod
+    def _read_exact(connection, count, deadline):
+        data = bytearray()
+        while len(data) < count:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise socket.timeout("PROXY protocol v2 header timed out")
+            connection.settimeout(remaining)
+            chunk = connection.recv(count - len(data))
+            if not chunk:
+                raise OSError("incomplete PROXY protocol v2 header")
+            data.extend(chunk)
+        return bytes(data)
+
+    def _proxy_client_address(self, request, client_address):
+        deadline = time.monotonic() + PROXY_V2_HEADER_TIMEOUT_SECONDS
+        request.settimeout(PROXY_V2_HEADER_TIMEOUT_SECONDS)
+        if request.recv(1, socket.MSG_PEEK) != b"\r":
+            request.settimeout(None)
+            return client_address
+
+        header = self._read_exact(request, 16, deadline)
+        if header[:12] != PROXY_V2_SIGNATURE or header[12] != 0x21:
+            raise OSError("invalid PROXY protocol v2 header")
+        if header[13] == 0x11:
+            address_size = 4
+            address_type = socket.AF_INET
+        elif header[13] == 0x21:
+            address_size = 16
+            address_type = socket.AF_INET6
+        else:
+            raise OSError("unsupported PROXY protocol v2 address family")
+
+        payload_size = int.from_bytes(header[14:16], "big")
+        minimum_size = address_size * 2 + 4
+        if payload_size < minimum_size or payload_size > MAX_PROXY_V2_PAYLOAD_BYTES:
+            raise OSError("invalid PROXY protocol v2 payload length")
+        payload = self._read_exact(request, payload_size, deadline)
+        source_address = str(ipaddress.ip_address(payload[:address_size]))
+        source_port = int.from_bytes(
+            payload[address_size * 2:address_size * 2 + 2], "big")
+        request.settimeout(None)
+        if address_type == socket.AF_INET6:
+            return source_address, source_port, 0, 0
+        return source_address, source_port
+
+    def process_request_thread(self, request, client_address):
+        try:
+            client_address = self._proxy_client_address(request, client_address)
+        except (OSError, ValueError):
+            self.shutdown_request(request)
+            return
+        super().process_request_thread(request, client_address)
+
+
+
+
+
+
 def main():
     parser = argparse.ArgumentParser(description="Game Builder direct-host session directory")
     parser.add_argument("--bind", default=os.environ.get("GB_DIRECTORY_BIND", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.environ.get("GB_DIRECTORY_PORT", "47800")))
     parser.add_argument("--trusted-proxy", default=os.environ.get("GB_DIRECTORY_TRUSTED_PROXY"))
+    parser.add_argument(
+        "--accept-proxy-protocol-v2",
+        action="store_true",
+        help="accept PROXY v2 from a trusted local TLS-terminating proxy",
+    )
     args = parser.parse_args()
     if not 1 <= args.port <= 65535:
         parser.error("--port must be between 1 and 65535")
@@ -452,14 +523,19 @@ def main():
         trusted_proxy = normalize_ip(args.trusted_proxy)
         if not trusted_proxy:
             parser.error("--trusted-proxy must be an IP address")
-    handler = type("ConfiguredDirectoryHandler", (DirectoryHandler,), {
-        "state": DirectoryState(trusted_proxy),
-    })
     try:
         bind_address = ipaddress.ip_address(args.bind)
     except ValueError:
         bind_address = None
-    server_class = IPv6DirectoryServer if bind_address is not None and bind_address.version == 6 else DirectoryServer
+    if args.accept_proxy_protocol_v2 and bind_address != ipaddress.IPv4Address("127.0.0.1"):
+        parser.error("--accept-proxy-protocol-v2 requires --bind 127.0.0.1")
+    handler = type("ConfiguredDirectoryHandler", (DirectoryHandler,), {
+        "state": DirectoryState(trusted_proxy),
+    })
+    if args.accept_proxy_protocol_v2:
+        server_class = ProxyProtocolV2DirectoryServer
+    else:
+        server_class = IPv6DirectoryServer if bind_address is not None and bind_address.version == 6 else DirectoryServer
     server = server_class((args.bind, args.port), handler)
     bound_address = server.server_address
     display_address = "[{}]".format(bound_address[0]) if server.address_family == socket.AF_INET6 else bound_address[0]

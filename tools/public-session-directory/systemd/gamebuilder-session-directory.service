@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=%h/.local/share/gamebuilder-session-directory
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/usr/bin/python3 %h/.local/share/gamebuilder-session-directory/server.py --bind 127.0.0.1 --port 47800 --trusted-proxy 127.0.0.1
+ExecStart=/usr/bin/python3 %h/.local/share/gamebuilder-session-directory/server.py --bind 127.0.0.1 --port 47800 --trusted-proxy 127.0.0.1 --accept-proxy-protocol-v2
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true
