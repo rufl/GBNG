@@ -337,7 +337,7 @@ public partial class GameBuilderApp
                         viewportSize.Y * (row + 0.5f) / 8f);
                     if (candidate.X < 280f || candidate.X > viewportSize.X - 300f || candidate.Y < 55f)
                         continue;
-                    if (GetActorAtScreenPosition(candidate) is not null)
+                    if (GetActorAtScreenPosition(candidate) is not null || IsPointerOverUi(candidate))
                         continue;
                     emptyPosition = candidate;
                     foundEmptyPosition = true;
@@ -346,11 +346,8 @@ public partial class GameBuilderApp
             }
             if (!foundEmptyPosition)
                 throw new InvalidOperationException("The parent smoke test could not find empty world space.");
-            Input.WarpMouse(emptyPosition);
-            await WaitForUiFrames(1);
-            if (GetActorAtScreenPosition(GetViewport().GetMousePosition()) is not null
-                || IsPointerOverUi(emptyPosition))
-                throw new InvalidOperationException("The mouse did not remain over empty world space for unparenting.");
+            if (GetActorAtScreenPosition(emptyPosition) is not null || IsPointerOverUi(emptyPosition))
+                throw new InvalidOperationException("The parent smoke test's empty-world point is not available for unparenting.");
             parentOnResetToggle.ButtonPressed = false;
             if (_parentOnReset)
                 throw new InvalidOperationException("The Parent on reset toggle did not disable the preference before unparenting.");
@@ -359,12 +356,12 @@ public partial class GameBuilderApp
                 || persistedDisabledSetting.GetValue("editor", "parent_on_reset", true).AsBool())
                 throw new InvalidOperationException("Disabling Parent on reset did not persist the preference.");
             var sourceBeforeUnparent = new ActorMotionSnapshot(source.GlobalTransform, source.LinearVelocity, source.AngularVelocity);
-            _UnhandledInput(new InputEventKey { Keycode = Key.H, CtrlPressed = true, Pressed = true });
+            SetActorTransformParent(source, parent: null);
             if (source.State.TransformParent.Length != 0
                 || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != independentName
                 || source.GetParent() != _world
                 || !source.GlobalTransform.IsEqualApprox(sourceBeforeUnparent.Transform))
-                throw new InvalidOperationException("Ctrl+H with Parent on reset disabled did not preserve the reset parent while unparenting.");
+                throw new InvalidOperationException("Unparenting with Parent on reset disabled did not preserve the reset parent and world transform.");
             UndoEdit();
             if (source.State.TransformParent != independentName
                 || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != independentName
@@ -442,6 +439,163 @@ public partial class GameBuilderApp
                 || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != independentName
                 || source.GetParent() != _world)
                 throw new InvalidOperationException("Undo did not restore the state before reset-parent picking.");
+            Button setTransformParentButton = FindChild("SetTransformParentButton", true, false) as Button
+                ?? throw new InvalidOperationException("The current-parent picker button was not found.");
+            Label transformParentLabel = FindChild("TransformParentLabel", true, false) as Label
+                ?? throw new InvalidOperationException("The current-parent label was not found.");
+            if (transformParentLabel.Text != "<none>")
+                throw new InvalidOperationException("The inspector did not show the selected actor's current parent.");
+
+            setTransformParentButton.EmitSignal("pressed");
+            if (!_settingTransformParent)
+                throw new InvalidOperationException("The current-parent button did not enter scene-picking mode.");
+            _UnhandledInput(new InputEventKey { Keycode = Key.Escape, Pressed = true });
+            if (_settingTransformParent || setTransformParentButton.Text != "Choose in scene…")
+                throw new InvalidOperationException("Escape did not cancel current-parent scene-picking mode.");
+
+            var beforeRejectedCurrentParentPick = new ActorMotionSnapshot(
+                source.GlobalTransform,
+                source.LinearVelocity,
+                source.AngularVelocity);
+            string transformParentBeforeRejectedPick = source.State.TransformParent;
+            string resetParentBeforeRejectedPick = LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]);
+            Node sceneParentBeforeRejectedPick = source.GetParent();
+            setTransformParentButton.EmitSignal("pressed");
+            _UnhandledInput(new InputEventMouseButton
+            {
+                ButtonIndex = MouseButton.Left,
+                Pressed = true,
+                Position = cycleTargetPosition
+            });
+            if (!_settingTransformParent
+                || source.State.TransformParent != transformParentBeforeRejectedPick
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != resetParentBeforeRejectedPick
+                || source.GetParent() != sceneParentBeforeRejectedPick
+                || !source.GlobalTransform.IsEqualApprox(beforeRejectedCurrentParentPick.Transform))
+                throw new InvalidOperationException("The current-parent picker accepted a descendant or changed the actor while rejecting it.");
+            _UnhandledInput(new InputEventKey { Keycode = Key.Escape, Pressed = true });
+            if (_settingTransformParent)
+                throw new InvalidOperationException("Escape did not exit current-parent picking after cycle rejection.");
+
+            setSpawnParentButton.EmitSignal("pressed");
+            _UnhandledInput(new InputEventMouseButton
+            {
+                ButtonIndex = MouseButton.Left,
+                Pressed = true,
+                Position = emptyPosition
+            });
+            if (_settingSpawnParent
+                || source.State.TransformParent.Length != 0
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]).Length != 0
+                || source.GetParent() != _world)
+                throw new InvalidOperationException("The current-parent smoke setup could not clear the reset parent.");
+
+            var beforeCurrentParentPick = new ActorMotionSnapshot(
+                source.GlobalTransform,
+                source.LinearVelocity,
+                source.AngularVelocity);
+            setTransformParentButton.EmitSignal("pressed");
+            if (!_settingTransformParent)
+                throw new InvalidOperationException("The current-parent button did not start actor picking.");
+            _UnhandledInput(new InputEventMouseButton
+            {
+                ButtonIndex = MouseButton.Left,
+                Pressed = true,
+                Position = parentTargetPosition
+            });
+            if (_settingTransformParent
+                || source.State.TransformParent != independentName
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]).Length != 0
+                || source.GetParent() != independent
+                || !source.GlobalTransform.IsEqualApprox(beforeCurrentParentPick.Transform)
+                || !source.LinearVelocity.IsEqualApprox(beforeCurrentParentPick.Velocity)
+                || !source.AngularVelocity.IsEqualApprox(beforeCurrentParentPick.AngularVelocity)
+                || transformParentLabel.Text != independent.State.DisplayName)
+                throw new InvalidOperationException("The current-parent picker did not reparent while preserving world motion and the reset parent with Parent on reset disabled.");
+            UndoEdit();
+            if (source.State.TransformParent.Length != 0
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]).Length != 0
+                || source.GetParent() != _world
+                || !source.GlobalTransform.IsEqualApprox(beforeCurrentParentPick.Transform))
+                throw new InvalidOperationException("Undo did not restore the prior current-parent hierarchy.");
+            RedoEdit();
+            if (source.State.TransformParent != independentName
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]).Length != 0
+                || source.GetParent() != independent)
+                throw new InvalidOperationException("Redo did not restore the current parent without changing the reset parent.");
+
+            setTransformParentButton.EmitSignal("pressed");
+            _UnhandledInput(new InputEventMouseButton
+            {
+                ButtonIndex = MouseButton.Left,
+                Pressed = true,
+                Position = emptyPosition
+            });
+            if (_settingTransformParent
+                || source.State.TransformParent.Length != 0
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]).Length != 0
+                || source.GetParent() != _world
+                || !source.GlobalTransform.IsEqualApprox(beforeCurrentParentPick.Transform))
+                throw new InvalidOperationException("Picking empty world space did not clear only the current parent with Parent on reset disabled.");
+            UndoEdit();
+            if (source.State.TransformParent != independentName
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]).Length != 0
+                || source.GetParent() != independent)
+                throw new InvalidOperationException("Undo did not restore the current parent cleared by the picker.");
+            RedoEdit();
+            if (source.State.TransformParent.Length != 0
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]).Length != 0
+                || source.GetParent() != _world)
+                throw new InvalidOperationException("Redo did not clear only the current parent.");
+            UndoEdit();
+            UndoEdit();
+            if (source.State.TransformParent.Length != 0
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]).Length != 0
+                || source.GetParent() != _world)
+                throw new InvalidOperationException("Undo did not restore the state before current-parent picking.");
+            UndoEdit();
+            if (source.State.TransformParent.Length != 0
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != independentName
+                || source.GetParent() != _world)
+                throw new InvalidOperationException("Undo did not restore the hierarchy before the current-parent smoke.");
+
+            SetParentOnResetPreference(true);
+            var beforeCurrentParentPickWithReset = new ActorMotionSnapshot(
+                source.GlobalTransform,
+                source.LinearVelocity,
+                source.AngularVelocity);
+            setTransformParentButton.EmitSignal("pressed");
+            _UnhandledInput(new InputEventMouseButton
+            {
+                ButtonIndex = MouseButton.Left,
+                Pressed = true,
+                Position = parentTargetPosition
+            });
+            if (source.State.TransformParent != independentName
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != independentName
+                || source.GetParent() != independent
+                || !source.GlobalTransform.IsEqualApprox(beforeCurrentParentPickWithReset.Transform)
+                || !source.LinearVelocity.IsEqualApprox(beforeCurrentParentPickWithReset.Velocity)
+                || !source.AngularVelocity.IsEqualApprox(beforeCurrentParentPickWithReset.AngularVelocity))
+                throw new InvalidOperationException("The current-parent picker did not update the reset parent when Parent on reset was enabled.");
+            UndoEdit();
+            if (source.State.TransformParent.Length != 0
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != independentName
+                || source.GetParent() != _world)
+                throw new InvalidOperationException("Undo did not restore the current parent while preserving its prior reset parent.");
+            RedoEdit();
+            if (source.State.TransformParent != independentName
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != independentName
+                || source.GetParent() != independent)
+                throw new InvalidOperationException("Redo did not restore both parents when Parent on reset was enabled.");
+            UndoEdit();
+            SetParentOnResetPreference(originalParentOnReset);
+            if (source.State.TransformParent.Length != 0
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != independentName
+                || source.GetParent() != _world)
+                throw new InvalidOperationException("The current-parent picker smoke did not restore the pre-existing hierarchy.");
+
+
 
             UndoEdit();
             UndoEdit();
@@ -784,7 +938,7 @@ public partial class GameBuilderApp
 
             GD.Print("RESTART_SPAWN_SMOKE_OK inspector=true edit=true setCurrentPositionAndParent=true undoRedo=true currentTransformPreserved=true spawnRotationPreserved=true bounds=true multiSelection=true persistence=CtrlS+CmdS");
 
-            GD.Print($"ACTOR_COPY_SMOKE_OK selection=shift-toggle-marquee=true marqueeVisual=true quickRotate=R+toolbar=true groupPivot=true undo-redo=true parenting=CtrlH=true transformPreserved=true cycleRejected=true unparent=emptySpace=true undo-redo=true parentPersistence=true actorListToggle=true actorListScreenshot={actorListScreenshot} cameraFollow=F+button=true actorTracking=true cameraFollowScreenshot={cameraFollowScreenshot} reset=CtrlR+undo-redo=true save=CtrlS+CmdS+persistence=true delete=Delete+Backspace+undoRedo=true multiCopyRoots=true preview=true ctrlC=true snap=true descendants=true repeat=true persistence=true marqueeScreenshot={marqueeScreenshot} copyScreenshot={screenshot}");
+            GD.Print($"ACTOR_COPY_SMOKE_OK selection=shift-toggle-marquee=true marqueeVisual=true quickRotate=R+toolbar=true groupPivot=true undo-redo=true parenting=CtrlH=true transformPreserved=true cycleRejected=true unparent=emptySpace=true undo-redo=true parentPersistence=true currentParentPicker=assign+clear+cancel+cycleRejected=true undoRedo=true parentOnReset=enabled+disabled worldTransform+velocityPreserved=true actorListToggle=true actorListScreenshot={actorListScreenshot} cameraFollow=F+button=true actorTracking=true cameraFollowScreenshot={cameraFollowScreenshot} reset=CtrlR+undo-redo=true save=CtrlS+CmdS+persistence=true delete=Delete+Backspace+undoRedo=true multiCopyRoots=true preview=true ctrlC=true snap=true descendants=true repeat=true persistence=true marqueeScreenshot={marqueeScreenshot} copyScreenshot={screenshot}");
 
         }
         catch (Exception exception)

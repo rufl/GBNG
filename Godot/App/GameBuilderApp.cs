@@ -33,6 +33,9 @@ public partial class GameBuilderApp : Node3D
     private Label _spawnParentLabel = null!;
     private Button _spawnParentButton = null!;
     private bool _settingSpawnParent;
+    private Label _transformParentLabel = null!;
+    private Button _transformParentButton = null!;
+    private bool _settingTransformParent;
     private OptionButton _assetPicker = null!;
     private LineEdit _assetSearch = null!;
     private Label _assetCount = null!;
@@ -277,7 +280,10 @@ public partial class GameBuilderApp : Node3D
     private bool IsPointerOverUi(Vector2 viewportPosition)
     {
         Control? hovered = GetViewport().GuiGetHoveredControl();
-        return (hovered is not null && hovered != _behaviorUi) || _behaviorUi.IsInteractivePoint(viewportPosition);
+        return (hovered is not null
+                && hovered != _behaviorUi
+                && hovered.GetGlobalRect().HasPoint(viewportPosition))
+            || _behaviorUi.IsInteractivePoint(viewportPosition);
     }
     public override void _Input(InputEvent @event)
     {
@@ -296,7 +302,12 @@ public partial class GameBuilderApp : Node3D
                 Input.MouseMode = mouseButton.Pressed ? Input.MouseModeEnum.Captured : Input.MouseModeEnum.Visible;
             if (mouseButton.ButtonIndex == MouseButton.Left && mouseButton.Pressed && !_playMode)
             {
-                if (_settingSpawnParent)
+                if (_settingTransformParent)
+                {
+                    if (!IsPointerOverUi(mouseButton.Position))
+                        SetSelectedActorTransformParentAtScreenPosition(mouseButton.Position);
+                }
+                else if (_settingSpawnParent)
                 {
                     if (!IsPointerOverUi(mouseButton.Position))
                         SetSelectedActorSpawnParentAtScreenPosition(mouseButton.Position);
@@ -363,7 +374,7 @@ public partial class GameBuilderApp : Node3D
         }
         else if (@event is InputEventKey key && key.Pressed && !key.Echo)
         {
-            if (_settingSpawnParent && key.Keycode != Key.Escape)
+            if ((_settingSpawnParent || _settingTransformParent) && key.Keycode != Key.Escape)
                 return;
             Control? focusedControl = GetViewport().GuiGetFocusOwner();
             bool editingText = focusedControl is LineEdit or TextEdit;
@@ -394,6 +405,8 @@ public partial class GameBuilderApp : Node3D
             {
                 if (_playMode)
                     SetPlayMode(false);
+                else if (_settingTransformParent)
+                    CancelTransformParentSelection();
                 else if (_settingSpawnParent)
                     CancelSpawnParentSelection();
                 else if (_selectionMarqueeActive)
@@ -755,6 +768,19 @@ public partial class GameBuilderApp : Node3D
         _autoSetSpawnOnRotateToggle.Toggled += SetAutoSetSpawnOnRotatePreference;
         autoSpawnSettings.AddChild(_autoSetSpawnOnRotateToggle);
         inspector.AddChild(autoSpawnSettings);
+        inspector.AddChild(CreateLabel("Transform parent", 14));
+        _transformParentLabel = CreateLabel("<none>", 13);
+        _transformParentLabel.Name = "TransformParentLabel";
+        inspector.AddChild(_transformParentLabel);
+        _transformParentButton = new Button
+        {
+            Name = "SetTransformParentButton",
+            Text = "Choose in scene…",
+            TooltipText = "Choose an actor in the scene, or empty space, to set the current parent. Parent on reset controls whether the reset parent follows.",
+            Disabled = true
+        };
+        _transformParentButton.Pressed += BeginTransformParentSelection;
+        inspector.AddChild(_transformParentButton);
         inspector.AddChild(CreateLabel("Reset parent", 14));
         _spawnParentLabel = CreateLabel("<none>", 13);
         _spawnParentLabel.Name = "SpawnParentLabel";
@@ -2347,6 +2373,8 @@ public partial class GameBuilderApp : Node3D
 
     private void SetActorSelection(IEnumerable<WorldActorNode> actors, WorldActorNode? focus)
     {
+        if (_settingTransformParent)
+            CancelTransformParentSelection(showStatus: false);
         if (_settingSpawnParent)
             CancelSpawnParentSelection(showStatus: false);
         WorldActorNode[] requestedSelection = actors.ToArray();
@@ -2406,6 +2434,12 @@ public partial class GameBuilderApp : Node3D
                 : spawnParent.LegacyName;
         else
             _spawnParentLabel.Text = spawnParentName.Length == 0 ? "<none>" : spawnParentName;
+        string transformParentName = hasActor ? _selectedActor!.State.TransformParent : string.Empty;
+        WorldActorNode? transformParent = transformParentName.Length == 0 ? null : FindActor(transformParentName);
+        _transformParentLabel.Text = transformParent is not null
+            ? transformParent.State.DisplayName.Length > 0 ? transformParent.State.DisplayName : transformParent.LegacyName
+            : transformParentName.Length == 0 ? "<none>" : transformParentName;
+        _transformParentButton.Disabled = !hasActor || _selectedActors.Count != 1 || _playMode;
         _spawnParentButton.Disabled = !hasActor || _selectedActors.Count != 1 || _playMode;
         _setSpawnToCurrentButton.Disabled = !hasActor || _selectedActors.Count != 1 || _playMode;
         SetInspectorInputsEnabled(hasActor && !_playMode);
@@ -2528,9 +2562,11 @@ public partial class GameBuilderApp : Node3D
             _worldSettingsWindow.Hide();
             EndTerrainStroke();
             CancelSpawnParentSelection(showStatus: false);
+            CancelTransformParentSelection(showStatus: false);
         }
         _playMode = enabled;
         _spawnParentButton.Disabled = enabled || _selectedActors.Count != 1;
+        _transformParentButton.Disabled = enabled || _selectedActors.Count != 1;
         UpdateCameraFollowButton();
         Input.MouseMode = Input.MouseModeEnum.Visible;
         foreach (WorldActorNode actor in _actors)
@@ -2855,6 +2891,7 @@ public partial class GameBuilderApp : Node3D
         }
         if (_document is null || _playMode || _selectedActors.Count != 1)
             return;
+        CancelTransformParentSelection(showStatus: false);
         CancelCopyPlacement(showStatus: false);
         Input.MouseMode = Input.MouseModeEnum.Visible;
 
@@ -2872,6 +2909,60 @@ public partial class GameBuilderApp : Node3D
         if (showStatus)
             _status.Text = "Reset parent selection canceled.";
     }
+    private void BeginTransformParentSelection()
+    {
+        if (_settingTransformParent)
+        {
+            CancelTransformParentSelection();
+            return;
+        }
+        if (_document is null || _playMode || _selectedActors.Count != 1)
+            return;
+        CancelSpawnParentSelection(showStatus: false);
+        CancelCopyPlacement(showStatus: false);
+        Input.MouseMode = Input.MouseModeEnum.Visible;
+
+        _settingTransformParent = true;
+        _transformParentButton.Text = "Cancel pick";
+        _status.Text = "Click an actor to set its current parent, or empty world space to clear it. Press Esc to cancel.";
+    }
+
+    private void CancelTransformParentSelection(bool showStatus = true)
+    {
+        if (!_settingTransformParent)
+            return;
+        _settingTransformParent = false;
+        _transformParentButton.Text = "Choose in scene…";
+        if (showStatus)
+            _status.Text = "Current parent selection canceled.";
+    }
+
+    private void SetSelectedActorTransformParentAtScreenPosition(Vector2 screenPosition)
+    {
+        if (_document is null || _playMode || _selectedActors.Count != 1)
+        {
+            CancelTransformParentSelection(showStatus: false);
+            return;
+        }
+
+        WorldActorNode actor = _selectedActors[0];
+        if (!_actors.Contains(actor))
+        {
+            CancelTransformParentSelection(showStatus: false);
+            return;
+        }
+
+        WorldActorNode? parent = GetActorAtScreenPosition(screenPosition);
+        if (parent is not null && (parent == actor || actor.IsAncestorOf(parent)))
+        {
+            _status.Text = "An actor cannot be parented to itself or one of its descendants.";
+            return;
+        }
+
+        CancelTransformParentSelection(showStatus: false);
+        SetActorTransformParent(actor, parent);
+    }
+
 
     private void SetSelectedActorSpawnParentAtScreenPosition(Vector2 screenPosition)
     {
@@ -2978,7 +3069,14 @@ public partial class GameBuilderApp : Node3D
         if (!_actors.Contains(actor))
             return;
         WorldActorNode? parent = GetActorAtScreenPosition(GetViewport().GetMousePosition());
-        if (parent is not null && (parent == actor || actor.IsAncestorOf(parent)))
+        SetActorTransformParent(actor, parent);
+    }
+
+    private void SetActorTransformParent(WorldActorNode actor, WorldActorNode? parent)
+    {
+        if (_document is null || _playMode || !_actors.Contains(actor))
+            return;
+        if (parent is not null && (!_actors.Contains(parent) || parent == actor || actor.IsAncestorOf(parent)))
         {
             _status.Text = "An actor cannot be parented to itself or one of its descendants.";
             return;
@@ -2997,7 +3095,10 @@ public partial class GameBuilderApp : Node3D
         if (before.TransformParent == parentName
             && before.SpawnTransformParent == spawnParentName
             && actor.GetParent() == targetParent)
+        {
+            _status.Text = "Current parent unchanged.";
             return;
+        }
 
         var after = new ActorParentSnapshot(
             parentName,
