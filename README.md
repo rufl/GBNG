@@ -212,6 +212,8 @@ falls back to `::1`, which is only reachable from the host itself.
   work, but automatic host migration and public-address invite resolution are
   unavailable. The directory returns the host's request-observed IP through
   `/v1/address`; it is discovery/coordination only, not a relay or NAT traversal service.
+  Public directory listings carry each game's zipped JPEG thumbnail when it
+  fits the 16 KiB limit; missing or oversized thumbnails use the generic image.
 
 #### Self-hosted public session directory
 

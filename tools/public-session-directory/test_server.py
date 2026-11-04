@@ -1,3 +1,4 @@
+import base64
 import json
 import threading
 import unittest
@@ -40,6 +41,25 @@ class ServerCertificateValidationTests(unittest.TestCase):
             + ("A" * server.MAX_CERTIFICATE_PEM_BYTES)
             + "-----END CERTIFICATE-----"
         )
+        with self.assertRaisesRegex(ValueError, "supported size"):
+            server.validate_session(session)
+
+
+class ThumbnailValidationTests(unittest.TestCase):
+    def test_accepts_bounded_base64_thumbnail(self):
+        thumbnail = base64.b64encode(b"compressed thumbnail").decode("ascii")
+        session = make_session()
+        session["ThumbnailZippedJpegBase64"] = thumbnail
+        self.assertEqual(server.validate_session(session)[-1], thumbnail)
+
+    def test_rejects_invalid_and_oversized_thumbnails(self):
+        session = make_session()
+        session["ThumbnailZippedJpegBase64"] = "not base64!"
+        with self.assertRaisesRegex(ValueError, "invalid base64"):
+            server.validate_session(session)
+
+        session["ThumbnailZippedJpegBase64"] = base64.b64encode(
+            b"x" * (server.MAX_THUMBNAIL_BYTES + 1)).decode("ascii")
         with self.assertRaisesRegex(ValueError, "supported size"):
             server.validate_session(session)
 
@@ -130,6 +150,8 @@ class SessionMigrationHttpTests(unittest.TestCase):
             public_status, public_bytes = request("/v1/sessions", "POST", make_session())
             private = make_session()
             private["IsPublic"] = False
+            private_thumbnail = base64.b64encode(b"private thumbnail").decode("ascii")
+            private["ThumbnailZippedJpegBase64"] = private_thumbnail
             private_status, private_bytes = request("/v1/sessions", "POST", private)
             self.assertEqual((public_status, private_status), (201, 201))
             public = json.loads(public_bytes.decode("utf-8"))
@@ -151,6 +173,7 @@ class SessionMigrationHttpTests(unittest.TestCase):
             self.assertEqual(status, 200)
             private_info = json.loads(private_info.decode("utf-8"))
             self.assertFalse(private_info["IsPublic"])
+            self.assertEqual(private_info["ThumbnailZippedJpegBase64"], private_thumbnail)
             self.assertEqual(private_info["AddressFamily"], 4)
 
             migrate_path = "/v1/sessions/{}/migrate".format(private_id)
@@ -165,6 +188,7 @@ class SessionMigrationHttpTests(unittest.TestCase):
                 "Port": 8888,
                 "ServerCertificatePem": UPDATED_CERTIFICATE,
                 "IsPublic": False,
+                "ThumbnailZippedJpegBase64": base64.b64encode(b"migrated thumbnail").decode("ascii"),
             })
             status, migrated_bytes = request(
                 migrate_path, "POST", update, private_registration["MigrationToken"])
@@ -183,6 +207,9 @@ class SessionMigrationHttpTests(unittest.TestCase):
             self.assertEqual(info["Port"], 8888)
             self.assertEqual(info["ServerCertificatePem"], UPDATED_CERTIFICATE)
             self.assertEqual(info["Name"], "Migrated private game")
+            self.assertEqual(
+                info["ThumbnailZippedJpegBase64"],
+                base64.b64encode(b"migrated thumbnail").decode("ascii"))
             self.assertEqual(info["Generation"], 2)
             self.assertFalse(info["IsPublic"])
             status, listing_after_private_migration = request("/v1/sessions")
@@ -288,6 +315,8 @@ class IPv4DirectoryHttpTests(unittest.TestCase):
             return opener.open(message, timeout=3)
 
         body = make_session()
+        thumbnail = base64.b64encode(b"x" * server.MAX_THUMBNAIL_BYTES).decode("ascii")
+        body["ThumbnailZippedJpegBase64"] = thumbnail
 
         del body["AddressFamily"]
         try:
@@ -303,6 +332,7 @@ class IPv4DirectoryHttpTests(unittest.TestCase):
             self.assertEqual(len(sessions), 1)
             self.assertEqual(sessions[0]["Address"], "127.0.0.1")
             self.assertEqual(sessions[0]["ServerCertificatePem"], CERTIFICATE)
+            self.assertEqual(sessions[0]["ThumbnailZippedJpegBase64"], thumbnail)
         finally:
             directory.shutdown()
             directory.server_close()

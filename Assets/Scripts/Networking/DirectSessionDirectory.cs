@@ -14,6 +14,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
   const float HeartbeatInterval = 15f;
   const float SessionRefreshInterval = 10f;
   const int RequestTimeoutSeconds = 10;
+  internal const int MaxPublicThumbnailBytes = 16 * 1024;
   const int MaxSessionNameBytes = 96;
 
 [Serializable]
@@ -25,6 +26,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
     public int Port;
     public int PlayerCount;
     public int MaxPlayers;
+    public string ThumbnailZippedJpegBase64;
     public string ServerCertificatePem;
     public int Generation;
     public bool IsPublic;
@@ -55,6 +57,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
     public int Port;
     public int AddressFamily;
     public string ServerCertificatePem;
+    public string ThumbnailZippedJpegBase64;
     public bool IsPublic;
   }
 
@@ -644,6 +647,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
       SessionInfo b = right[i];
       if (a.SessionId != b.SessionId || a.Name != b.Name || a.Address != b.Address
         || a.Port != b.Port || a.PlayerCount != b.PlayerCount || a.MaxPlayers != b.MaxPlayers
+        || a.ThumbnailZippedJpegBase64 != b.ThumbnailZippedJpegBase64
         || a.ServerCertificatePem != b.ServerCertificatePem)
         return false;
     }
@@ -658,7 +662,12 @@ public sealed class DirectSessionDirectory : MonoBehaviour
       string nickname = PhotonNetwork.player == null ? null : PhotonNetwork.player.NickName;
       name = string.IsNullOrWhiteSpace(nickname) ? "Game Builder game" : nickname + "'s game";
     }
-    name = LimitUtf8Bytes(name, MaxSessionNameBytes);
+    byte[] thumbnailBytes = GameBuilderApplication.CurrentGameOptions.thumbnailZippedJpegBytes;
+    string thumbnailBase64 = thumbnailBytes != null
+      && thumbnailBytes.Length > 0
+      && thumbnailBytes.Length <= MaxPublicThumbnailBytes
+      ? Convert.ToBase64String(thumbnailBytes)
+      : null;
     int playerCount = manager == null || manager.ConnectedClientsIds == null
       ? 1
       : Mathf.Clamp(manager.ConnectedClientsIds.Count, 1, PhotonNetwork.MaximumDirectPlayers);
@@ -671,6 +680,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
       Port = DirectHostPortMapper.PublicPort,
       ServerCertificatePem = DirectHostTls.GetHostCredentials().CertificatePem,
       IsPublic = GameBuilderApplication.CurrentGameOptions.playOptions.startAsPublic,
+      ThumbnailZippedJpegBase64 = thumbnailBase64,
     };
   }
 

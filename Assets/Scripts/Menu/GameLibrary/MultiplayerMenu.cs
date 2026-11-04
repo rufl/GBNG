@@ -422,6 +422,22 @@ public class MultiplayerMenu : ThumbnailMenu
     {
       foreach (DirectSessionDirectory.SessionInfo session in publicSessions)
       {
+        Texture2D thumbnailTexture = spoofGameTexture;
+        string thumbnailBase64 = session.ThumbnailZippedJpegBase64;
+        int maxEncodedThumbnailChars = ((DirectSessionDirectory.MaxPublicThumbnailBytes + 2) / 3) * 4;
+        if (!string.IsNullOrEmpty(thumbnailBase64) && thumbnailBase64.Length <= maxEncodedThumbnailChars)
+        {
+          try
+          {
+            byte[] thumbnailBytes = System.Convert.FromBase64String(thumbnailBase64);
+            if (thumbnailBytes.Length > 0 && thumbnailBytes.Length <= DirectSessionDirectory.MaxPublicThumbnailBytes)
+              thumbnailTexture = Util.ZippedJpegToTexture2D(thumbnailBytes);
+          }
+          catch (System.Exception)
+          {
+            // Keep the generic multiplayer image for malformed thumbnails.
+          }
+        }
         DirectHostDiscovery.HostInfo host = new DirectHostDiscovery.HostInfo
         {
           Address = session.Address,
@@ -432,7 +448,7 @@ public class MultiplayerMenu : ThumbnailMenu
           ServerCertificatePem = session.ServerCertificatePem
         };
         GameThumbnail publicThumbnail = Instantiate(gameThumbnailPrefab).GetComponent<GameThumbnail>();
-        publicThumbnail.SetThumbnail(spoofGameTexture);
+        publicThumbnail.SetThumbnail(thumbnailTexture);
         publicThumbnail.SetGameSource(GameDetail.GameSource.Multiplayer);
         publicThumbnail.SetName(session.Name);
         publicThumbnail.OnClick = () => JoinDiscoveredHost(host);

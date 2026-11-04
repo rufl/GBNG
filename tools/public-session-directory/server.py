@@ -8,6 +8,7 @@ X-Forwarded-For; pass --trusted-proxy with the proxy's peer IP to use it.
 import argparse
 import hashlib
 import hmac
+import binascii
 import base64
 import ipaddress
 import json
@@ -20,7 +21,8 @@ from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote, urlsplit
 
-MAX_BODY_BYTES = 4096
+MAX_BODY_BYTES = 32768
+MAX_THUMBNAIL_BYTES = 16 * 1024
 MAX_NAME_BYTES = 96
 MAX_CERTIFICATE_PEM_BYTES = 2048
 MAX_CERTIFICATE_DER_BYTES = 1536
@@ -52,7 +54,7 @@ class DirectoryState:
             del self._registers[key]
 
     def register(self, body, address):
-        name, count, capacity, port, address_family, certificate, is_public = validate_session(body)
+        name, count, capacity, port, address_family, certificate, is_public, thumbnail = validate_session(body)
         require_address_family(address, address_family)
         now = time.monotonic()
         with self._lock:
@@ -78,6 +80,7 @@ class DirectoryState:
                 "PlayerCount": count,
                 "MaxPlayers": capacity,
                 "ServerCertificatePem": certificate,
+                "ThumbnailZippedJpegBase64": thumbnail,
                 "AddressFamily": address_family,
                 "IsPublic": is_public,
                 "Generation": 1,
@@ -89,7 +92,7 @@ class DirectoryState:
                     "MigrationToken": migration_token, "Generation": 1}, None
 
     def heartbeat(self, session_id, token, body, address):
-        name, count, capacity, port, address_family, certificate, is_public = validate_session(body)
+        name, count, capacity, port, address_family, certificate, is_public, thumbnail = validate_session(body)
         require_address_family(address, address_family)
         token_hash = hashlib.sha256(token.encode("utf-8")).digest()
         now = time.monotonic()
@@ -107,6 +110,7 @@ class DirectoryState:
                 "PlayerCount": count,
                 "MaxPlayers": capacity,
                 "ServerCertificatePem": certificate,
+                "ThumbnailZippedJpegBase64": thumbnail,
                 "IsPublic": is_public,
                 "Updated": now,
             })
@@ -121,11 +125,11 @@ class DirectoryState:
                 return None
             return {key: session[key] for key in (
                 "SessionId", "Address", "Port", "ServerCertificatePem", "Name",
-                "PlayerCount", "MaxPlayers", "Generation", "IsPublic", "AddressFamily")}
+                "PlayerCount", "MaxPlayers", "Generation", "IsPublic", "AddressFamily",
+                "ThumbnailZippedJpegBase64")}
 
     def migrate(self, session_id, token, body, address):
-        name, count, capacity, port, address_family, certificate, is_public = validate_session(body)
-        require_address_family(address, address_family)
+        name, count, capacity, port, address_family, certificate, is_public, thumbnail = validate_session(body)
         token_hash = hashlib.sha256(token.encode("utf-8")).digest()
         now = time.monotonic()
         with self._lock:
@@ -143,6 +147,7 @@ class DirectoryState:
                 "PlayerCount": count,
                 "MaxPlayers": capacity,
                 "ServerCertificatePem": certificate,
+                "ThumbnailZippedJpegBase64": thumbnail,
                 "AddressFamily": address_family,
                 "IsPublic": is_public,
                 "Generation": session["Generation"] + 1,
@@ -256,7 +261,25 @@ def validate_session(body):
         raise ValueError("ServerCertificatePem contains invalid base64.") from error
     if not der or len(der) > MAX_CERTIFICATE_DER_BYTES:
         raise ValueError("ServerCertificatePem contains an empty or oversized certificate.")
-    return name, count, capacity, port, address_family, certificate_bytes.decode("ascii"), is_public
+    thumbnail = body.get("ThumbnailZippedJpegBase64")
+    if thumbnail is not None:
+        if not isinstance(thumbnail, str):
+            raise ValueError("ThumbnailZippedJpegBase64 must be base64 text.")
+        if not thumbnail:
+            thumbnail = None
+        else:
+            max_encoded_size = ((MAX_THUMBNAIL_BYTES + 2) // 3) * 4
+            if len(thumbnail) > max_encoded_size:
+                raise ValueError("Thumbnail exceeds the supported size.")
+            try:
+                thumbnail_bytes = base64.b64decode(thumbnail, validate=True)
+            except (binascii.Error, ValueError) as error:
+                raise ValueError("ThumbnailZippedJpegBase64 contains invalid base64.") from error
+            if (len(thumbnail_bytes) > MAX_THUMBNAIL_BYTES
+                    or base64.b64encode(thumbnail_bytes).decode("ascii") != thumbnail):
+                raise ValueError("Thumbnail exceeds the supported size or is not canonical base64.")
+    return (name, count, capacity, port, address_family,
+            certificate_bytes.decode("ascii"), is_public, thumbnail)
 
 
 class DirectoryHandler(BaseHTTPRequestHandler):
