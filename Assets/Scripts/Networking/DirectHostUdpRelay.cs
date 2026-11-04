@@ -13,8 +13,6 @@ using UnityEngine;
 public sealed class DirectHostUdpRelay : MonoBehaviour
 {
   const int HeaderSize = 37;
-  const int HeartbeatBytes = 32;
-  const string WireMagic = "GBR1";
   const float HeartbeatSeconds = 3f;
 
   sealed class HostRoute
@@ -23,6 +21,7 @@ public sealed class DirectHostUdpRelay : MonoBehaviour
     public UdpClient Socket;
     public Thread Thread;
     public volatile bool Running;
+    public long LastActivityTicks;
   }
 
   static DirectHostUdpRelay instance;
@@ -40,6 +39,19 @@ public sealed class DirectHostUdpRelay : MonoBehaviour
   bool hostIpv6;
   volatile bool running;
   ulong heartbeatSequence;
+  long lastHeartbeatAckTicks;
+
+  public static bool IsTunnelReady
+  {
+    get
+    {
+      DirectHostUdpRelay current = instance;
+      if (current == null || !current.running) return false;
+      long acknowledged = Interlocked.Read(ref current.lastHeartbeatAckTicks);
+      return acknowledged != 0
+        && DateTime.UtcNow.Ticks - acknowledged < TimeSpan.FromSeconds(10).Ticks;
+    }
+  }
 
   public static void EnsureAvailable()
   {
@@ -181,6 +193,12 @@ public sealed class DirectHostUdpRelay : MonoBehaviour
   void ProcessRelayFrame(byte[] frame)
   {
     if (!TryReadFrame(frame, sessionId, out byte messageType, out ulong clientId)) return;
+    if (messageType == (byte)'R')
+    {
+      if (frame.Length == HeaderSize && clientId == heartbeatSequence)
+        Interlocked.Exchange(ref lastHeartbeatAckTicks, DateTime.UtcNow.Ticks);
+      return;
+    }
     if (messageType == (byte)'X')
     {
       CloseRoute(clientId);
@@ -198,6 +216,7 @@ public sealed class DirectHostUdpRelay : MonoBehaviour
         route.Thread.Start();
       }
     }
+    Interlocked.Exchange(ref route.LastActivityTicks, DateTime.UtcNow.Ticks);
 
     try
     {
@@ -221,7 +240,8 @@ public sealed class DirectHostUdpRelay : MonoBehaviour
     {
       ClientId = clientId,
       Socket = new UdpClient(family),
-      Running = true
+      Running = true,
+      LastActivityTicks = DateTime.UtcNow.Ticks
     };
     route.Socket.Client.ReceiveTimeout = 500;
     route.Thread = new Thread(() => ReceiveHostReplies(route))
@@ -253,6 +273,9 @@ public sealed class DirectHostUdpRelay : MonoBehaviour
           Debug.LogWarning("Could not receive a Unity Transport relay reply: " + e.Message);
           break;
         }
+        if (DateTime.UtcNow.Ticks - Interlocked.Read(ref route.LastActivityTicks)
+          > TimeSpan.FromSeconds(75).Ticks)
+          break;
       }
       catch (ObjectDisposedException) { break; }
       catch (Exception e)
@@ -285,11 +308,17 @@ public sealed class DirectHostUdpRelay : MonoBehaviour
 
   void RemoveRoute(ulong clientId, HostRoute route)
   {
+    bool removed = false;
     lock (routesGate)
     {
       if (routes.TryGetValue(clientId, out HostRoute current) && current == route)
+      {
         routes.Remove(clientId);
+        removed = true;
+      }
     }
+    if (removed && running)
+      SendToRelay(CreateFrame((byte)'X', sessionId, clientId, null));
     StopRoute(route);
   }
 
@@ -330,10 +359,8 @@ public sealed class DirectHostUdpRelay : MonoBehaviour
     }
     foreach (HostRoute route in oldRoutes) StopRoute(route);
     relayEndpoint = null;
-    sessionKey = null;
-    sessionId = null;
-    activeConfig = null;
     heartbeatSequence = 0;
+    Interlocked.Exchange(ref lastHeartbeatAckTicks, 0);
   }
 
   void OnDestroy()

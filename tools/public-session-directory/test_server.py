@@ -213,6 +213,8 @@ class SessionMigrationHttpTests(unittest.TestCase):
             self.assertEqual(migrated["MigrationToken"], private_registration["MigrationToken"])
             self.assertEqual(request("/v1/sessions/" + private_id, "PUT", update,
                                      private_registration["Token"])[0], 404)
+            self.assertEqual(request("/v1/sessions/" + private_id, "PUT", update,
+                                     migrated["Token"])[0], 204)
             self.assertEqual(request(migrate_path, "POST", update, migrated["MigrationToken"])[0], 409)
             status, info_bytes = request(migration_path, token=migrated["MigrationToken"])
             self.assertEqual(status, 200)
@@ -563,13 +565,27 @@ class UdpRelayTests(unittest.TestCase):
         return client
 
     def test_authenticated_host_and_exact_bidirectional_datagrams(self):
+        listing = self.state.list_sessions()["Sessions"][0]
+        self.assertNotIn("RelayAddress", listing)
         self.heartbeat(1)
+        ready, _ = self.host.recvfrom(1024)
+        self.assertEqual(ready, self.header("R", 1))
+        listing = self.state.list_sessions()["Sessions"][0]
+        self.assertEqual(listing["RelayAddress"], "127.0.0.1")
+        self.assertEqual(listing["RelayPort"], self.control_port)
         client = self.allocate(99)
         try:
             response, _ = client.recvfrom(1024)
             self.assertEqual(response[:server.RELAY_HEADER.size],
                              self.header("O", 99))
             port = struct.unpack("!H", response[server.RELAY_HEADER.size:])[0]
+            client.sendto(self.header("A", 99), ("127.0.0.1", self.control_port))
+            retry_response, _ = client.recvfrom(1024)
+            self.assertEqual(retry_response[:server.RELAY_HEADER.size],
+                             self.header("O", 99))
+            self.assertEqual(struct.unpack(
+                "!H", retry_response[server.RELAY_HEADER.size:])[0], port)
+            self.assertEqual(len(self.relay._routes), 1)
             second_client = self.allocate(100)
             try:
                 second_response, _ = second_client.recvfrom(1024)
@@ -605,6 +621,8 @@ class UdpRelayTests(unittest.TestCase):
         client.close()
         self.state._sessions[self.session_id]["RelayHeartbeat"] -= (
             server.RELAY_HOST_TTL_SECONDS + 1)
+        listing = self.state.list_sessions()["Sessions"][0]
+        self.assertNotIn("RelayAddress", listing)
         unavailable = self.allocate(3)
         with self.assertRaises(socket.timeout):
             unavailable.recvfrom(1024)

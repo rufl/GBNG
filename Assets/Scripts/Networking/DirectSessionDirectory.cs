@@ -178,7 +178,8 @@ public sealed class DirectSessionDirectory : MonoBehaviour
       ? (ushort)0
       : (ushort)service.hostRelayPort;
     return !string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(token)
-      && id.Length == 24 && !string.IsNullOrWhiteSpace(relayAddress) && relayPort != 0;
+      && id.Length == 24 && !string.IsNullOrWhiteSpace(relayAddress)
+      && relayAddress.Length <= 253 && relayAddress.IndexOf('|') < 0 && relayPort != 0;
   }
   public static bool TryGetMigrationTicket(out MigrationTicket ticket)
   {
@@ -594,6 +595,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
           && migrated.AddressFamily == (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? 6 : 4)
           && (string.IsNullOrEmpty(migrated.RelayAddress) && migrated.RelayPort == 0
             || !string.IsNullOrWhiteSpace(migrated.RelayAddress)
+              && migrated.RelayAddress.Length <= 253
               && migrated.RelayAddress.IndexOf('|') < 0
               && migrated.RelayPort >= 1 && migrated.RelayPort <= 65535)
           && DirectHostTls.IsUsablePinnedCertificate(migrated.ServerCertificatePem);
@@ -655,7 +657,9 @@ public sealed class DirectSessionDirectory : MonoBehaviour
             continue;
           item.AddressFamily = address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? 6 : 4;
           item.IsPublic = true;
-          if (string.IsNullOrEmpty(item.RelayAddress) || item.RelayPort < 1 || item.RelayPort > 65535)
+          if (string.IsNullOrEmpty(item.RelayAddress)
+            || item.RelayAddress.Length > 253 || item.RelayAddress.IndexOf('|') >= 0
+            || item.RelayPort < 1 || item.RelayPort > 65535)
           {
             item.RelayAddress = null;
             item.RelayPort = 0;

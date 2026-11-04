@@ -28,7 +28,9 @@ RELAY_MAGIC = b"GBR1"
 RELAY_MAX_DATAGRAM = 65507
 RELAY_MAX_PAYLOAD = 65507 - RELAY_HEADER.size
 RELAY_CLIENT_IDLE_SECONDS = 60
-RELAY_MAX_CLIENTS = 4096
+RELAY_HOST_TTL_SECONDS = 12
+RELAY_MAX_CLIENTS = 1000
+RELAY_MAX_CLIENTS_PER_IP = 64
 RELAY_MAX_PER_SESSION = 16
 
 MAX_BODY_BYTES = 32768
@@ -63,6 +65,12 @@ class DirectoryState:
             return {}
         return {"RelayAddress": self.relay_address, "RelayPort": self.relay_port}
 
+    def _active_relay_fields(self, session, now):
+        heartbeat = session.get("RelayHeartbeat", 0)
+        if (self.relay_address is None or self.relay_port is None
+                or not heartbeat or now - heartbeat > RELAY_HOST_TTL_SECONDS):
+            return {}
+        return self._relay_fields()
     def _purge_locked(self, now):
         expired = [key for key, value in self._sessions.items()
                    if now - value["Updated"] > SESSION_TTL_SECONDS]
@@ -220,14 +228,15 @@ class DirectoryState:
         now = time.monotonic()
         with self._lock:
             self._purge_locked(now)
-            values = [
-                {**{key: value for key, value in session.items()
-                    if key not in ("TokenHash", "MigrationTokenHash", "Updated",
-                                   "AddressFamily", "RelaySequence", "RelayHeartbeat")},
-                 **self._relay_fields()}
-                for session in self._sessions.values()
-                if session["IsPublic"] and now - session["Updated"] <= PUBLIC_SESSION_TTL_SECONDS
-            ]
+            values = []
+            for session in self._sessions.values():
+                if not session["IsPublic"] or now - session["Updated"] > PUBLIC_SESSION_TTL_SECONDS:
+                    continue
+                value = {key: item for key, item in session.items()
+                         if key not in ("TokenHash", "MigrationTokenHash", "Updated",
+                                        "AddressFamily", "RelaySequence", "RelayHeartbeat")}
+                value.update(self._active_relay_fields(session, now))
+                values.append(value)
         values.sort(key=lambda value: (value["Name"].casefold(), value["SessionId"]))
         return {"Sessions": values}
 
@@ -598,6 +607,7 @@ class UdpRelay:
         self._control.bind((self.bind, self.control_port))
         self._selector.register(self._control, selectors.EVENT_READ)
         self.control_port = self._control.getsockname()[1]
+        self.state.relay_port = self.control_port
         self._thread = threading.Thread(target=self._run, name="udp-relay", daemon=True)
         self._thread.start()
         return self.control_port
@@ -622,14 +632,19 @@ class UdpRelay:
             return None
         return endpoint
 
-    def _route_capacity(self, session_id):
+    def _route_capacity(self, session_id, endpoint):
         snapshot = self.state.relay_session_snapshot(session_id)
         if not snapshot:
             return False
         _, max_players, player_count = snapshot
+        address = normalize_ip(endpoint[0])
+        per_ip = sum(
+            1 for route in self._routes.values()
+            if normalize_ip(route["allocation_endpoint"][0]) == address)
         return (len(self._session_routes.get(session_id, ())) <
                 min(RELAY_MAX_PER_SESSION, max(0, max_players - player_count))
-                and len(self._routes) < RELAY_MAX_CLIENTS)
+                and len(self._routes) < RELAY_MAX_CLIENTS
+                and per_ip < RELAY_MAX_CLIENTS_PER_IP)
 
     def _allocate(self, session_id, nonce, endpoint):
         if not self._host(session_id):
@@ -643,7 +658,7 @@ class UdpRelay:
                         struct.pack("!H", route["socket"].getsockname()[1]))
                     self._control.sendto(response, endpoint)
                 return
-        if not self._route_capacity(session_id):
+        if not self._route_capacity(session_id, endpoint):
             return
         sock = socket.socket(self._control.family, socket.SOCK_DGRAM)
         try:
@@ -675,6 +690,12 @@ class UdpRelay:
 
     def _close_route(self, route):
         ident, session_id = route["id"], route["session"]
+        host = self._host(session_id)
+        if host:
+            try:
+                self._control.sendto(self._frame("X", session_id, ident), host)
+            except OSError:
+                pass
         self._routes.pop(ident, None)
         self._by_socket.pop(route["socket"], None)
         try:
@@ -700,6 +721,8 @@ class UdpRelay:
         if kind == ord("H"):
             if self.state.verify_relay_heartbeat(session_id, ident, header, payload):
                 self._hosts[session_id] = endpoint
+                response = self._frame("R", session_id, ident)
+                self._control.sendto(response, endpoint)
             return
         if kind == ord("A") and not payload:
             self._allocate(session_id, ident, endpoint)
@@ -718,6 +741,8 @@ class UdpRelay:
 
     def _handle_client(self, route, packet, endpoint):
         if not packet or len(packet) > RELAY_MAX_PAYLOAD:
+            return
+        if normalize_ip(endpoint[0]) != normalize_ip(route["allocation_endpoint"][0]):
             return
         if not self._host(route["session"]):
             return
@@ -789,8 +814,12 @@ def main():
         if (not 0 <= args.relay_data_port_start <= args.relay_data_port_end <= 65535
                 or (args.relay_data_port_start == 0) != (args.relay_data_port_end == 0)):
             parser.error("relay data port range must be 1..65535 or 0..0")
-        if not args.relay_public_address:
-            parser.error("--relay-public-address is required when UDP relay is enabled")
+        if (not args.relay_public_address or len(args.relay_public_address) > 253
+                or any(ord(character) < 33 or character == "|" for character in args.relay_public_address)):
+            parser.error("--relay-public-address must be a hostname or IP without separators or whitespace")
+        if (args.relay_control_port != 0
+                and args.relay_data_port_start <= args.relay_control_port <= args.relay_data_port_end):
+            parser.error("relay control port must not overlap the data-port range")
     trusted_proxy = None
     if args.trusted_proxy:
         trusted_proxy = normalize_ip(args.trusted_proxy)

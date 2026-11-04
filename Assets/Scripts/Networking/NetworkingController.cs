@@ -343,10 +343,13 @@ public class NetworkingController : Photon.PunBehaviour
     string certificate = string.IsNullOrEmpty(certificatePem)
       ? DirectHostTls.GetHostCredentials().CertificatePem
       : certificatePem;
+#if !USE_PUN
     if (!string.IsNullOrEmpty(relaySessionId)
-      && !string.IsNullOrWhiteSpace(relayAddress) && relayPort != 0)
+      && !string.IsNullOrWhiteSpace(relayAddress) && relayPort != 0
+      && (!IsDirectHost() || DirectHostUdpRelay.IsTunnelReady))
       return DirectHostTls.CreateRelayInvite(
         address, port, certificate, relayAddress, relayPort, relaySessionId);
+#endif
     return DirectHostTls.CreateInvite(address, port, certificate);
   }
 

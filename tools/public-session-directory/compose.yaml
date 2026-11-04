@@ -18,12 +18,12 @@ services:
       - --relay-data-port-start
       - "48000"
       - --relay-data-port-end
-      - "48100"
+      - "48999"
     expose:
       - "47800"
     ports:
       - "47801:47801/udp"
-      - "48000-48100:48000-48100/udp"
+      - "48000-48999:48000-48999/udp"
     restart: unless-stopped
     read_only: true
     tmpfs:

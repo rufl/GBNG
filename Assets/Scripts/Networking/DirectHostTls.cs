@@ -122,9 +122,12 @@ public static class DirectHostTls
     string host = string.IsNullOrWhiteSpace(address) ? null : address.Trim();
     string relay = string.IsNullOrWhiteSpace(relayAddress) ? null : relayAddress.Trim();
     if (host == null || host.IndexOf('|') >= 0 || port == 0
-      || relay == null || relay.IndexOf('|') >= 0 || relayPort == 0
+      || relay == null || relay.Length > 253 || relay.IndexOf('|') >= 0 || relayPort == 0
       || string.IsNullOrEmpty(relaySessionId) || relaySessionId.Length != 24)
       throw new ArgumentException("A relayed direct-host invite requires valid host and relay endpoints.");
+    for (int i = 0; i < relay.Length; i++)
+      if (char.IsWhiteSpace(relay[i]) || char.IsControl(relay[i]))
+        throw new ArgumentException("The relay address must be a hostname or IP.", nameof(relayAddress));
     for (int i = 0; i < relaySessionId.Length; i++)
     {
       char c = relaySessionId[i];
