@@ -371,8 +371,11 @@ starts a replacement host. It can claim the session after the old host heartbeat
 has been stale for 30 seconds; remaining clients poll the authenticated private
 or public session record and rejoin the new endpoint using its new certificate
 pin. The new host serves its local autosave, so changes not present in that
-player's copy cannot be recovered. If migration is unavailable or times out,
-the saved local copy remains recoverable offline.
+player's copy cannot be recovered. The replacement host retries while the
+directory reports the previous host as active; invalid-request (400) or
+expired-session (404) rejections end automatic migration. Network failures
+remain retryable. If migration is unavailable or times out, the saved local
+copy remains recoverable offline.
 
 Direct-host mode implements the core player-hosted flow without PUN or paid
 Unity networking plugins; it does not include every PUN/cloud feature. The

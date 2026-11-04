@@ -340,6 +340,11 @@ public sealed class DirectSessionDirectory : MonoBehaviour
     return isListening && isServer && playOptions.isMultiplayer;
   }
 
+  internal static bool IsPermanentMigrationRejection(long responseCode)
+  {
+    return responseCode == 400;
+  }
+
 
   IEnumerator PublishHostRoutine(int generation)
   {
@@ -410,6 +415,15 @@ public sealed class DirectSessionDirectory : MonoBehaviour
         migrationUnavailable = true;
         ClearMigrationTicket();
         Debug.LogWarning("The previous direct session expired before host migration completed.");
+      }
+      else if (migrating && IsPermanentMigrationRejection(responseCode))
+      {
+        sessionId = null;
+        sessionToken = null;
+        migrationToken = null;
+        migrationPending = false;
+        migrationUnavailable = true;
+        ClearMigrationTicket();
       }
       else if (responseCode == 404)
       {
