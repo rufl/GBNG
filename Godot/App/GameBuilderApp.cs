@@ -357,6 +357,8 @@ public partial class GameBuilderApp : Node3D
             {
                 if (key.Keycode == Key.C)
                     BeginCopyPlacement();
+                else if (key.Keycode == Key.R && key.CtrlPressed)
+                    ResetActors();
                 else if (key.Keycode == Key.H)
                     SetSelectedActorParentAtCursor();
                 else if (key.Keycode == Key.L)

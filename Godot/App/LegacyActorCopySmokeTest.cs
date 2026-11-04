@@ -132,6 +132,31 @@ public partial class GameBuilderApp
             _cameraTarget = cameraTargetBeforeFollow;
             UpdateOrbitCamera();
 
+            var sourceStoredMotion = new ActorMotionSnapshot(
+                source.State.GetWorldTransform(),
+                source.State.Velocity,
+                source.State.AngularVelocity);
+            source.GlobalPosition += Vector3.Right * 3f;
+            source.LinearVelocity = new Vector3(3f, 2f, 1f);
+            source.AngularVelocity = new Vector3(0.5f, 0.25f, 0.75f);
+            var sourceBeforeReset = new ActorMotionSnapshot(source.GlobalTransform, source.LinearVelocity, source.AngularVelocity);
+            _actorList.GrabFocus();
+            _UnhandledInput(new InputEventKey { Keycode = Key.R, CtrlPressed = true, Pressed = true });
+            if (!source.GlobalTransform.IsEqualApprox(sourceStoredMotion.Transform)
+                || !source.LinearVelocity.IsEqualApprox(sourceStoredMotion.Velocity)
+                || !source.AngularVelocity.IsEqualApprox(sourceStoredMotion.AngularVelocity))
+                throw new InvalidOperationException("Ctrl+R did not restore the selected actor's stored transform and motion.");
+            UndoEdit();
+            if (!source.GlobalTransform.IsEqualApprox(sourceBeforeReset.Transform)
+                || !source.LinearVelocity.IsEqualApprox(sourceBeforeReset.Velocity)
+                || !source.AngularVelocity.IsEqualApprox(sourceBeforeReset.AngularVelocity))
+                throw new InvalidOperationException("Undo did not restore actor motion from before Ctrl+R.");
+            RedoEdit();
+            if (!source.GlobalTransform.IsEqualApprox(sourceStoredMotion.Transform)
+                || !source.LinearVelocity.IsEqualApprox(sourceStoredMotion.Velocity)
+                || !source.AngularVelocity.IsEqualApprox(sourceStoredMotion.AngularVelocity))
+                throw new InvalidOperationException("Redo did not restore the Ctrl+R reset state.");
+            ClearHistory();
             ClickActorForSmoke(source);
             AssertActorSelectionForSmoke(source);
             ClickActorForSmoke(independent, addToSelection: true);
@@ -482,7 +507,7 @@ public partial class GameBuilderApp
                 || persistedSource.GetParent() != persistedParent)
                 throw new InvalidOperationException("The actor parent and reset parent did not persist through save and reload.");
 
-            GD.Print($"ACTOR_COPY_SMOKE_OK selection=shift-toggle-marquee=true marqueeVisual=true quickRotate=R+toolbar=true groupPivot=true undo-redo=true parenting=CtrlH=true transformPreserved=true cycleRejected=true unparent=emptySpace=true undo-redo=true parentPersistence=true actorListToggle=true actorListScreenshot={actorListScreenshot} cameraFollow=F+button=true actorTracking=true cameraFollowScreenshot={cameraFollowScreenshot} multiCopyRoots=true multiDelete=undo-redo=true preview=true ctrlC=true snap=true descendants=true repeat=true persistence=true marqueeScreenshot={marqueeScreenshot} copyScreenshot={screenshot}");
+            GD.Print($"ACTOR_COPY_SMOKE_OK selection=shift-toggle-marquee=true marqueeVisual=true quickRotate=R+toolbar=true groupPivot=true undo-redo=true parenting=CtrlH=true transformPreserved=true cycleRejected=true unparent=emptySpace=true undo-redo=true parentPersistence=true actorListToggle=true actorListScreenshot={actorListScreenshot} cameraFollow=F+button=true actorTracking=true cameraFollowScreenshot={cameraFollowScreenshot} reset=CtrlR+undo-redo=true multiCopyRoots=true multiDelete=undo-redo=true preview=true ctrlC=true snap=true descendants=true repeat=true persistence=true marqueeScreenshot={marqueeScreenshot} copyScreenshot={screenshot}");
 
         }
         catch (Exception exception)
