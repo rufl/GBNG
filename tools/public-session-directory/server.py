@@ -14,12 +14,22 @@ import ipaddress
 import json
 import os
 import secrets
+import selectors
 import socket
+import struct
 import threading
 import time
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote, urlsplit
+
+RELAY_HEADER = struct.Struct("!4sB24sQ")
+RELAY_MAGIC = b"GBR1"
+RELAY_MAX_DATAGRAM = 65507
+RELAY_MAX_PAYLOAD = 65507 - RELAY_HEADER.size
+RELAY_CLIENT_IDLE_SECONDS = 60
+RELAY_MAX_CLIENTS = 4096
+RELAY_MAX_PER_SESSION = 16
 
 MAX_BODY_BYTES = 32768
 MAX_THUMBNAIL_BYTES = 16 * 1024
@@ -40,11 +50,18 @@ PROXY_V2_HEADER_TIMEOUT_SECONDS = 5
 
 
 class DirectoryState:
-    def __init__(self, trusted_proxy=None):
+    def __init__(self, trusted_proxy=None, relay_address=None, relay_port=None):
         self._lock = threading.Lock()
         self._sessions = {}
         self._registers = {}
         self._trusted_proxy = trusted_proxy
+        self.relay_address = relay_address
+        self.relay_port = relay_port
+
+    def _relay_fields(self):
+        if self.relay_address is None or self.relay_port is None:
+            return {}
+        return {"RelayAddress": self.relay_address, "RelayPort": self.relay_port}
 
     def _purge_locked(self, now):
         expired = [key for key, value in self._sessions.items()
@@ -92,7 +109,8 @@ class DirectoryState:
                 "Updated": now,
             }
             return {"SessionId": session_id, "Token": token,
-                    "MigrationToken": migration_token, "Generation": 1}, None
+                    "MigrationToken": migration_token, "Generation": 1,
+                    **self._relay_fields()}, None
 
     def heartbeat(self, session_id, token, body, address):
         name, count, capacity, port, address_family, certificate, is_public, thumbnail = validate_session(body)
@@ -118,6 +136,30 @@ class DirectoryState:
                 "Updated": now,
             })
             return True
+    def verify_relay_heartbeat(self, session_id, sequence, header, signature):
+        now = time.monotonic()
+        with self._lock:
+            self._purge_locked(now)
+            session = self._sessions.get(session_id)
+            if session is None or len(signature) != hashlib.sha256().digest_size:
+                return False
+            expected = hmac.new(session["TokenHash"], header, hashlib.sha256).digest()
+            if not hmac.compare_digest(expected, signature):
+                return False
+            if sequence <= session.get("RelaySequence", 0):
+                return False
+            session["RelaySequence"] = sequence
+            session["RelayHeartbeat"] = now
+            return True
+
+    def relay_session_snapshot(self, session_id):
+        with self._lock:
+            self._purge_locked(time.monotonic())
+            session = self._sessions.get(session_id)
+            if session is None:
+                return None
+            return (session.get("RelayHeartbeat", 0), session["MaxPlayers"],
+                    session["PlayerCount"])
 
     def migration_info(self, session_id, token):
         token_hash = hashlib.sha256(token.encode("utf-8")).digest()
@@ -126,10 +168,11 @@ class DirectoryState:
             session = self._sessions.get(session_id)
             if session is None or not hmac.compare_digest(session["MigrationTokenHash"], token_hash):
                 return None
-            return {key: session[key] for key in (
+            result = {key: session[key] for key in (
                 "SessionId", "Address", "Port", "ServerCertificatePem", "Name",
                 "PlayerCount", "MaxPlayers", "Generation", "IsPublic", "AddressFamily",
                 "ThumbnailZippedJpegBase64")}
+            return {**result, **self._relay_fields()}
 
     def migrate(self, session_id, token, body, address):
         name, count, capacity, port, address_family, certificate, is_public, thumbnail = validate_session(body)
@@ -155,11 +198,14 @@ class DirectoryState:
                 "AddressFamily": address_family,
                 "IsPublic": is_public,
                 "Generation": session["Generation"] + 1,
-                "TokenHash": hashlib.sha256(new_token.encode("ascii")).digest(),
                 "Updated": now,
+                "TokenHash": hashlib.sha256(new_token.encode("ascii")).digest(),
+                "RelayHeartbeat": 0,
+                "RelaySequence": 0,
             })
             return {"SessionId": session_id, "Token": new_token,
-                    "MigrationToken": token, "Generation": session["Generation"]}, None
+                    "MigrationToken": token, "Generation": session["Generation"],
+                    **self._relay_fields()}, None
 
     def unregister(self, session_id, token):
         token_hash = hashlib.sha256(token.encode("utf-8")).digest()
@@ -175,8 +221,10 @@ class DirectoryState:
         with self._lock:
             self._purge_locked(now)
             values = [
-                {key: value for key, value in session.items()
-                 if key not in ("TokenHash", "MigrationTokenHash", "Updated", "AddressFamily")}
+                {**{key: value for key, value in session.items()
+                    if key not in ("TokenHash", "MigrationTokenHash", "Updated",
+                                   "AddressFamily", "RelaySequence", "RelayHeartbeat")},
+                 **self._relay_fields()}
                 for session in self._sessions.values()
                 if session["IsPublic"] and now - session["Updated"] <= PUBLIC_SESSION_TTL_SECONDS
             ]
@@ -505,11 +553,227 @@ class ProxyProtocolV2DirectoryServer(DirectoryServer):
 
 
 
+class UdpRelay:
+    def __init__(self, state, bind, control_port, port_start, port_end):
+        self.state = state
+        self.bind = bind
+        self.control_port = control_port
+        self.port_start = port_start
+        self.port_end = port_end
+        self._stop = threading.Event()
+        self._thread = None
+        self._control = None
+        self._selector = selectors.DefaultSelector()
+        self._routes = {}
+        self._by_socket = {}
+        self._hosts = {}
+        self._session_routes = {}
+
+    @staticmethod
+    def _session_id(raw):
+        try:
+            text = raw.decode("ascii")
+        except UnicodeDecodeError:
+            return None
+        if "\0" in text:
+            text = text.split("\0", 1)[0]
+            if raw != text.encode("ascii").ljust(24, b"\0"):
+                return None
+        return text if text and len(text) <= 24 else None
+
+    @staticmethod
+    def _frame(kind, session_id, ident, payload=b""):
+        try:
+            session = session_id.encode("ascii")
+        except UnicodeEncodeError:
+            return None
+        if len(session) > 24:
+            return None
+        return RELAY_HEADER.pack(RELAY_MAGIC, ord(kind), session.ljust(24, b"\0"), ident) + payload
+
+    def start(self):
+        address = ipaddress.ip_address(self.bind)
+        family = socket.AF_INET6 if address.version == 6 else socket.AF_INET
+        self._control = socket.socket(family, socket.SOCK_DGRAM)
+        self._control.bind((self.bind, self.control_port))
+        self._selector.register(self._control, selectors.EVENT_READ)
+        self.control_port = self._control.getsockname()[1]
+        self._thread = threading.Thread(target=self._run, name="udp-relay", daemon=True)
+        self._thread.start()
+        return self.control_port
+
+    def stop(self):
+        self._stop.set()
+        if self._thread:
+            self._thread.join()
+        for route in list(self._routes.values()):
+            self._close_route(route)
+        if self._control:
+            self._control.close()
+        self._selector.close()
+
+    def _host(self, session_id):
+        snapshot = self.state.relay_session_snapshot(session_id)
+        if not snapshot:
+            return None
+        heartbeat, _, _ = snapshot
+        endpoint = self._hosts.get(session_id)
+        if not endpoint or time.monotonic() - heartbeat > RELAY_HOST_TTL_SECONDS:
+            return None
+        return endpoint
+
+    def _route_capacity(self, session_id):
+        snapshot = self.state.relay_session_snapshot(session_id)
+        if not snapshot:
+            return False
+        _, max_players, player_count = snapshot
+        return (len(self._session_routes.get(session_id, ())) <
+                min(RELAY_MAX_PER_SESSION, max(0, max_players - player_count))
+                and len(self._routes) < RELAY_MAX_CLIENTS)
+
+    def _allocate(self, session_id, nonce, endpoint):
+        if not self._host(session_id):
+            return
+        for ident in self._session_routes.get(session_id, ()):
+            route = self._routes[ident]
+            if route["nonce"] == nonce:
+                if route["allocation_endpoint"] == endpoint:
+                    response = self._frame(
+                        "O", session_id, nonce,
+                        struct.pack("!H", route["socket"].getsockname()[1]))
+                    self._control.sendto(response, endpoint)
+                return
+        if not self._route_capacity(session_id):
+            return
+        sock = socket.socket(self._control.family, socket.SOCK_DGRAM)
+        try:
+            ports = [0] if self.port_start == self.port_end == 0 else range(self.port_start, self.port_end + 1)
+            for port in ports:
+                try:
+                    sock.bind((self.bind, port))
+                    break
+                except OSError:
+                    continue
+            else:
+                sock.close()
+                return
+        except OSError:
+            sock.close()
+            return
+        client_id = secrets.randbits(64) or 1
+        while client_id in self._routes:
+            client_id = secrets.randbits(64) or 1
+        route = {"id": client_id, "session": session_id, "nonce": nonce,
+                 "socket": sock, "endpoint": None, "allocation_endpoint": endpoint,
+                 "updated": time.monotonic()}
+        self._routes[client_id] = route
+        self._by_socket[sock] = route
+        self._selector.register(sock, selectors.EVENT_READ)
+        self._session_routes.setdefault(session_id, set()).add(client_id)
+        response = self._frame("O", session_id, nonce, struct.pack("!H", sock.getsockname()[1]))
+        self._control.sendto(response, endpoint)
+
+    def _close_route(self, route):
+        ident, session_id = route["id"], route["session"]
+        self._routes.pop(ident, None)
+        self._by_socket.pop(route["socket"], None)
+        try:
+            self._selector.unregister(route["socket"])
+        except (KeyError, ValueError):
+            pass
+        clients = self._session_routes.get(session_id)
+        if clients:
+            clients.discard(ident)
+            if not clients:
+                self._session_routes.pop(session_id, None)
+        route["socket"].close()
+
+    def _handle_control(self, packet, endpoint):
+        if len(packet) < RELAY_HEADER.size or len(packet) > RELAY_MAX_DATAGRAM:
+            return
+        header = packet[:RELAY_HEADER.size]
+        magic, kind, raw_session, ident = RELAY_HEADER.unpack(header)
+        session_id = self._session_id(raw_session)
+        if magic != RELAY_MAGIC or session_id is None:
+            return
+        payload = packet[RELAY_HEADER.size:]
+        if kind == ord("H"):
+            if self.state.verify_relay_heartbeat(session_id, ident, header, payload):
+                self._hosts[session_id] = endpoint
+            return
+        if kind == ord("A") and not payload:
+            self._allocate(session_id, ident, endpoint)
+            return
+        route = self._routes.get(ident)
+        if route is None or route["session"] != session_id:
+            return
+        if kind == ord("X") and not payload:
+            self._close_route(route)
+        elif kind == ord("B") and payload and self._host(session_id) == endpoint and route["endpoint"]:
+            route["updated"] = time.monotonic()
+            try:
+                route["socket"].sendto(payload, route["endpoint"])
+            except OSError:
+                pass
+
+    def _handle_client(self, route, packet, endpoint):
+        if not packet or len(packet) > RELAY_MAX_PAYLOAD:
+            return
+        if not self._host(route["session"]):
+            return
+        route["endpoint"] = endpoint
+        route["updated"] = time.monotonic()
+        frame = self._frame("D", route["session"], route["id"], packet)
+        try:
+            self._control.sendto(frame, self._hosts[route["session"]])
+        except OSError:
+            pass
+
+    def _cleanup(self):
+        now = time.monotonic()
+        for route in list(self._routes.values()):
+            if now - route["updated"] > RELAY_CLIENT_IDLE_SECONDS or not self._host(route["session"]):
+                self._close_route(route)
+        for session_id in list(self._hosts):
+            if not self._host(session_id):
+                self._hosts.pop(session_id, None)
+
+    def _run(self):
+        while not self._stop.is_set():
+            try:
+                ready = self._selector.select(0.25)
+            except (OSError, ValueError):
+                break
+            for key, _ in ready:
+                ready_socket = key.fileobj
+                try:
+                    packet, endpoint = ready_socket.recvfrom(RELAY_MAX_DATAGRAM + 1)
+                except OSError:
+                    continue
+                if ready_socket is self._control:
+                    self._handle_control(packet, endpoint)
+                else:
+                    route = self._by_socket.get(ready_socket)
+                    if route:
+                        self._handle_client(route, packet, endpoint)
+            self._cleanup()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Game Builder direct-host session directory")
     parser.add_argument("--bind", default=os.environ.get("GB_DIRECTORY_BIND", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.environ.get("GB_DIRECTORY_PORT", "47800")))
     parser.add_argument("--trusted-proxy", default=os.environ.get("GB_DIRECTORY_TRUSTED_PROXY"))
+    parser.add_argument("--relay-bind", default=os.environ.get("GB_RELAY_BIND"))
+    parser.add_argument("--relay-control-port", type=int,
+                        default=int(os.environ["GB_RELAY_CONTROL_PORT"])
+                        if os.environ.get("GB_RELAY_CONTROL_PORT") else None)
+    parser.add_argument("--relay-public-address", default=os.environ.get("GB_RELAY_PUBLIC_ADDRESS"))
+    parser.add_argument("--relay-data-port-start", type=int,
+                        default=int(os.environ.get("GB_RELAY_DATA_PORT_START", "48000")))
+    parser.add_argument("--relay-data-port-end", type=int,
+                        default=int(os.environ.get("GB_RELAY_DATA_PORT_END", "48100")))
+    parser.add_argument("--relay-disabled", action="store_true")
     parser.add_argument(
         "--accept-proxy-protocol-v2",
         action="store_true",
@@ -518,6 +782,15 @@ def main():
     args = parser.parse_args()
     if not 1 <= args.port <= 65535:
         parser.error("--port must be between 1 and 65535")
+    relay_enabled = args.relay_control_port is not None and not args.relay_disabled
+    if relay_enabled:
+        if not 0 <= args.relay_control_port <= 65535:
+            parser.error("--relay-control-port must be between 0 and 65535")
+        if (not 0 <= args.relay_data_port_start <= args.relay_data_port_end <= 65535
+                or (args.relay_data_port_start == 0) != (args.relay_data_port_end == 0)):
+            parser.error("relay data port range must be 1..65535 or 0..0")
+        if not args.relay_public_address:
+            parser.error("--relay-public-address is required when UDP relay is enabled")
     trusted_proxy = None
     if args.trusted_proxy:
         trusted_proxy = normalize_ip(args.trusted_proxy)
@@ -529,9 +802,14 @@ def main():
         bind_address = None
     if args.accept_proxy_protocol_v2 and bind_address != ipaddress.IPv4Address("127.0.0.1"):
         parser.error("--accept-proxy-protocol-v2 requires --bind 127.0.0.1")
-    handler = type("ConfiguredDirectoryHandler", (DirectoryHandler,), {
-        "state": DirectoryState(trusted_proxy),
-    })
+    state = DirectoryState(trusted_proxy, args.relay_public_address if relay_enabled else None,
+                           args.relay_control_port if relay_enabled else None)
+    relay = None
+    if relay_enabled:
+        relay = UdpRelay(state, args.relay_bind or args.bind, args.relay_control_port,
+                         args.relay_data_port_start, args.relay_data_port_end)
+        state.relay_port = relay.start()
+    handler = type("ConfiguredDirectoryHandler", (DirectoryHandler,), {"state": state})
     if args.accept_proxy_protocol_v2:
         server_class = ProxyProtocolV2DirectoryServer
     else:
@@ -546,6 +824,8 @@ def main():
         pass
     finally:
         server.server_close()
+        if relay:
+            relay.stop()
 
 
 if __name__ == "__main__":

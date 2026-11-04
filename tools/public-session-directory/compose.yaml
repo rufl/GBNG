@@ -9,8 +9,21 @@ services:
       - "47800"
       - --trusted-proxy
       - ${DIRECTORY_PROXY_IP:-172.30.0.2}
+      - --relay-bind
+      - 0.0.0.0
+      - --relay-control-port
+      - "47801"
+      - --relay-public-address
+      - ${RELAY_PUBLIC_ADDRESS:?Set RELAY_PUBLIC_ADDRESS in .env}
+      - --relay-data-port-start
+      - "48000"
+      - --relay-data-port-end
+      - "48100"
     expose:
       - "47800"
+    ports:
+      - "47801:47801/udp"
+      - "48000-48100:48000-48100/udp"
     restart: unless-stopped
     read_only: true
     tmpfs:

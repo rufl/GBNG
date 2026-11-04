@@ -207,11 +207,13 @@ public class NetworkingController : Photon.PunBehaviour
       return string.Empty;
     if (!IsDirectHost())
     {
-      if (directHostShareAddress.IsNullOrEmpty())
-        directHostShareAddress = DirectHostTls.CreateInvite(
-          options.joinAddress,
-          port,
-          options.trustedHostCertificatePem);
+      directHostShareAddress = CreateDirectHostInvite(
+        options.joinAddress,
+        port,
+        options.trustedHostCertificatePem,
+        options.directRelaySessionId,
+        options.directRelayAddress,
+        options.directRelayPort);
       return directHostShareAddress;
     }
 
@@ -291,13 +293,15 @@ public class NetworkingController : Photon.PunBehaviour
   }
   string GetOrCreateDirectHostShareAddress(string address, ushort port)
   {
+    string invite = CreateDirectHostInvite(address, port, null, null, null, 0);
     if (directHostShareAddress.IsNullOrEmpty()
       || directHostShareAddressAddress != address
-      || directHostShareAddressPort != port)
+      || directHostShareAddressPort != port
+      || directHostShareAddress != invite)
     {
       directHostShareAddressAddress = address;
       directHostShareAddressPort = port;
-      directHostShareAddress = CreateDirectHostInvite(address, port);
+      directHostShareAddress = invite;
     }
     return directHostShareAddress;
   }
@@ -315,9 +319,35 @@ public class NetworkingController : Photon.PunBehaviour
       && !(octets[0] == 100 && octets[1] >= 64 && octets[1] <= 127);
   }
 
-  string CreateDirectHostInvite(string address, ushort port)
+  string CreateDirectHostInvite(
+    string address,
+    ushort port,
+    string certificatePem,
+    string relaySessionId,
+    string relayAddress,
+    ushort relayPort)
   {
-    return DirectHostTls.CreateInvite(address, port, DirectHostTls.GetHostCredentials().CertificatePem);
+#if !USE_PUN
+    if (IsDirectHost()
+      && DirectSessionDirectory.TryGetHostRelayCredentials(
+        out string hostSessionId,
+        out _,
+        out string hostRelayAddress,
+        out ushort hostRelayPort))
+    {
+      relaySessionId = hostSessionId;
+      relayAddress = hostRelayAddress;
+      relayPort = hostRelayPort;
+    }
+#endif
+    string certificate = string.IsNullOrEmpty(certificatePem)
+      ? DirectHostTls.GetHostCredentials().CertificatePem
+      : certificatePem;
+    if (!string.IsNullOrEmpty(relaySessionId)
+      && !string.IsNullOrWhiteSpace(relayAddress) && relayPort != 0)
+      return DirectHostTls.CreateRelayInvite(
+        address, port, certificate, relayAddress, relayPort, relaySessionId);
+    return DirectHostTls.CreateInvite(address, port, certificate);
   }
 
 
@@ -693,7 +723,7 @@ public class NetworkingController : Photon.PunBehaviour
       {
         if (!DirectHostTls.IsUsablePinnedCertificate(options.trustedHostCertificatePem))
         {
-          OnFatalError("This direct-host join requires a valid GBDIRECT1 invite with the host certificate pin.");
+          OnFatalError("This direct-host join requires a valid GBDIRECT1 or GBDIRECT2 invite with the host certificate pin.");
           return;
         }
         directHostShareAddress = null;
@@ -721,6 +751,13 @@ public class NetworkingController : Photon.PunBehaviour
     }
     else
     {
+      if (!string.IsNullOrEmpty(options.directRelaySessionId))
+      {
+        PhotonNetwork.isMasterClient = false;
+        PhotonNetwork.offlineMode = false;
+        StartCoroutine(StartDirectClientViaRelay(options));
+        return;
+      }
       ushort port = options.joinPort == 0 ? DefaultDirectHostPort : options.joinPort;
       directTransport.SetConnectionData(options.joinAddress, port);
       if (!directNetworkManager.StartClient())
@@ -732,10 +769,40 @@ public class NetworkingController : Photon.PunBehaviour
       PhotonNetwork.isMasterClient = false;
       PhotonNetwork.offlineMode = false;
       RegisterDirectNetworkHandlers();
-    }
   }
 #endif
 
+#if !USE_PUN
+  IEnumerator StartDirectClientViaRelay(GameBuilderApplication.GameOptions options)
+  {
+    System.Threading.Tasks.Task<DirectHostUdpRelay.AllocationResult> allocation = System.Threading.Tasks.Task.Run(
+      () => DirectHostUdpRelay.Allocate(
+        options.directRelayAddress,
+        options.directRelayPort,
+        options.directRelaySessionId));
+    while (!allocation.IsCompleted) yield return null;
+    if (allocation.IsCanceled || allocation.IsFaulted)
+    {
+      string detail = allocation.Exception == null
+        ? "relay allocation was cancelled"
+        : allocation.Exception.GetBaseException().Message;
+      OnFatalError("Could not connect through the self-hosted UDP relay: " + detail);
+      yield break;
+    }
+
+    DirectHostUdpRelay.AllocationResult route = allocation.GetAwaiter().GetResult();
+    directTransport.SetConnectionData(route.Address, route.Port);
+    if (!directNetworkManager.StartClient())
+    {
+      OnFatalError($"Could not connect to relay {route.Address}:{route.Port}.");
+      yield break;
+    }
+    directRpcRouter.Initialize(directNetworkManager);
+    PhotonNetwork.isMasterClient = false;
+    PhotonNetwork.offlineMode = false;
+    RegisterDirectNetworkHandlers();
+  }
+#endif
   IEnumerator NonPunStartRoutine(bool startHost)
   {
     yield return null;
@@ -794,6 +861,9 @@ public class NetworkingController : Photon.PunBehaviour
     DirectHostDiscovery.EnsureAvailable();
     DirectHostPortMapper.EnsureAvailable();
     DirectSessionDirectory.EnsureAvailable();
+#if !USE_PUN
+    DirectHostUdpRelay.EnsureAvailable();
+#endif
   }
 
   void RegisterDirectNetworkHandlers()
@@ -1595,10 +1665,15 @@ public class NetworkingController : Photon.PunBehaviour
     }
     else
     {
-      options.joinAddress = migrated.Address;
-      options.joinPort = (ushort)migrated.Port;
       options.directHostUsesIpv6 = migrated.AddressFamily == 6;
       options.trustedHostCertificatePem = migrated.ServerCertificatePem;
+      options.directRelaySessionId = migrated.RelayPort >= 1 && migrated.RelayPort <= 65535
+        ? migrated.SessionId
+        : null;
+      options.directRelayAddress = migrated.RelayAddress;
+      options.directRelayPort = migrated.RelayPort >= 1 && migrated.RelayPort <= 65535
+        ? (ushort)migrated.RelayPort
+        : (ushort)0;
     }
     return options;
   }
@@ -2423,6 +2498,9 @@ public class NetworkingController : Photon.PunBehaviour
       joinPort = currentOptions.joinPort,
       directHostUsesIpv6 = currentOptions.directHostUsesIpv6,
       trustedHostCertificatePem = currentOptions.trustedHostCertificatePem,
+      directRelaySessionId = currentOptions.directRelaySessionId,
+      directRelayAddress = currentOptions.directRelayAddress,
+      directRelayPort = currentOptions.directRelayPort,
       directHostMigrationSessionId = currentOptions.directHostMigrationSessionId,
       directHostMigrationToken = currentOptions.directHostMigrationToken,
       directHostMigrationName = currentOptions.directHostMigrationName,

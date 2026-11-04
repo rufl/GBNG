@@ -6,6 +6,7 @@ import time
 import urllib.error
 import urllib.request
 import ipaddress
+import struct
 import socket
 import subprocess
 import sys
@@ -523,6 +524,108 @@ class ProxyProtocolV2DirectoryHttpTests(unittest.TestCase):
             "--accept-proxy-protocol-v2 requires --bind 127.0.0.1",
             result.stderr,
         )
+
+
+class UdpRelayTests(unittest.TestCase):
+    def setUp(self):
+        self.state = server.DirectoryState(relay_address="127.0.0.1", relay_port=0)
+        body = make_session()
+        result, error = self.state.register(body, "127.0.0.1")
+        self.assertIsNone(error)
+        self.session_id = result["SessionId"]
+        self.token = result["Token"]
+        self.token_hash = self.state._sessions[self.session_id]["TokenHash"]
+        self.host = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.host.bind(("127.0.0.1", 0))
+        self.host.settimeout(1)
+        self.relay = server.UdpRelay(self.state, "127.0.0.1", 0, 0, 0)
+        self.control_port = self.relay.start()
+
+    def tearDown(self):
+        self.relay.stop()
+        self.host.close()
+
+    def header(self, kind, ident):
+        return server.RELAY_HEADER.pack(
+            server.RELAY_MAGIC, ord(kind), self.session_id.encode("ascii"), ident)
+
+    def heartbeat(self, sequence, signature=True):
+        header = self.header("H", sequence)
+        mac = server.hmac.new(self.token_hash, header, server.hashlib.sha256).digest()
+        self.host.sendto(header + (mac if signature else b"x" * 32),
+                         ("127.0.0.1", self.control_port))
+
+    def allocate(self, nonce):
+        client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        client.bind(("127.0.0.1", 0))
+        client.settimeout(.5)
+        client.sendto(self.header("A", nonce), ("127.0.0.1", self.control_port))
+        return client
+
+    def test_authenticated_host_and_exact_bidirectional_datagrams(self):
+        self.heartbeat(1)
+        client = self.allocate(99)
+        try:
+            response, _ = client.recvfrom(1024)
+            self.assertEqual(response[:server.RELAY_HEADER.size],
+                             self.header("O", 99))
+            port = struct.unpack("!H", response[server.RELAY_HEADER.size:])[0]
+            second_client = self.allocate(100)
+            try:
+                second_response, _ = second_client.recvfrom(1024)
+                second_port = struct.unpack(
+                    "!H", second_response[server.RELAY_HEADER.size:])[0]
+                self.assertNotEqual(port, second_port)
+            finally:
+                second_client.close()
+            self.assertGreater(port, 0)
+            raw_client_packet = b"\x00UTP\xff\x10\x00client"
+            client.sendto(raw_client_packet, ("127.0.0.1", port))
+            forwarded, _ = self.host.recvfrom(2048)
+            self.assertEqual(forwarded, self.header("D", server.RELAY_HEADER.unpack(
+                forwarded[:server.RELAY_HEADER.size])[3]) + raw_client_packet)
+            client_id = server.RELAY_HEADER.unpack(forwarded[:server.RELAY_HEADER.size])[3]
+            raw_host_packet = b"\xfe\x00UTP\x00host\xff"
+            self.host.sendto(self.header("B", client_id) + raw_host_packet,
+                             ("127.0.0.1", self.control_port))
+            returned, _ = client.recvfrom(2048)
+            self.assertEqual(returned, raw_host_packet)
+        finally:
+            client.close()
+
+    def test_bad_hmac_and_unavailable_host_do_not_allocate(self):
+        self.heartbeat(1, signature=False)
+        client = self.allocate(1)
+        with self.assertRaises(socket.timeout):
+            client.recvfrom(1024)
+        self.heartbeat(2)
+        client.sendto(self.header("A", 2), ("127.0.0.1", self.control_port))
+        response, _ = client.recvfrom(1024)
+        self.assertEqual(response[4], ord("O"))
+        client.close()
+        self.state._sessions[self.session_id]["RelayHeartbeat"] -= (
+            server.RELAY_HOST_TTL_SECONDS + 1)
+        unavailable = self.allocate(3)
+        with self.assertRaises(socket.timeout):
+            unavailable.recvfrom(1024)
+        unavailable.close()
+
+    def test_capacity_and_idle_route_expiry(self):
+        self.state._sessions[self.session_id]["MaxPlayers"] = 2
+        self.state._sessions[self.session_id]["PlayerCount"] = 1
+        self.heartbeat(1)
+        first = self.allocate(10)
+        response, _ = first.recvfrom(1024)
+        self.assertEqual(response[4], ord("O"))
+        second = self.allocate(11)
+        with self.assertRaises(socket.timeout):
+            second.recvfrom(1024)
+        route_id = next(iter(self.relay._routes))
+        self.relay._routes[route_id]["updated"] -= server.RELAY_CLIENT_IDLE_SECONDS + 1
+        self.relay._cleanup()
+        self.assertNotIn(route_id, self.relay._routes)
+        first.close()
+        second.close()
 
 
 if __name__ == "__main__":

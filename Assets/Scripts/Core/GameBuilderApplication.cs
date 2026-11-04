@@ -141,6 +141,10 @@ public class GameBuilderApplication
     public bool directHostUsesIpv6;
     // Public host certificate pin distributed to joining clients; never a private key.
     public string trustedHostCertificatePem;
+    // Public relay address and session identity; the relay carries encrypted UTP datagrams.
+    public string directRelaySessionId;
+    public string directRelayAddress;
+    public ushort directRelayPort;
     // Authenticated self-hosted directory state used to migrate direct sessions.
     public string directHostMigrationSessionId;
     public string directHostMigrationToken;

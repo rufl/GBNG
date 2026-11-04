@@ -9,6 +9,7 @@ public static class DirectHostTls
 {
   public const string ServerCommonName = "gamebuilder-direct-host";
   public const string InvitePrefix = "GBDIRECT1";
+  public const string RelayInvitePrefix = "GBDIRECT2";
   const string CertificateBegin = "-----BEGIN CERTIFICATE-----";
   const string CertificateEnd = "-----END CERTIFICATE-----";
   const int MaximumCertificateBytes = 4096;
@@ -109,6 +110,31 @@ public static class DirectHostTls
       throw new ArgumentException("A direct-host invite requires a hostname or IP address and a non-zero port.");
     return InvitePrefix + "|" + host + "|" + port.ToString(CultureInfo.InvariantCulture)
       + "|" + EncodeCertificateForInvite(certificatePem);
+  }
+  public static string CreateRelayInvite(
+    string address,
+    ushort port,
+    string certificatePem,
+    string relayAddress,
+    ushort relayPort,
+    string relaySessionId)
+  {
+    string host = string.IsNullOrWhiteSpace(address) ? null : address.Trim();
+    string relay = string.IsNullOrWhiteSpace(relayAddress) ? null : relayAddress.Trim();
+    if (host == null || host.IndexOf('|') >= 0 || port == 0
+      || relay == null || relay.IndexOf('|') >= 0 || relayPort == 0
+      || string.IsNullOrEmpty(relaySessionId) || relaySessionId.Length != 24)
+      throw new ArgumentException("A relayed direct-host invite requires valid host and relay endpoints.");
+    for (int i = 0; i < relaySessionId.Length; i++)
+    {
+      char c = relaySessionId[i];
+      if (!(c >= 'A' && c <= 'Z') && !(c >= 'a' && c <= 'z')
+        && !(c >= '0' && c <= '9') && c != '-' && c != '_')
+        throw new ArgumentException("The relay session id is invalid.", nameof(relaySessionId));
+    }
+    return RelayInvitePrefix + "|" + host + "|" + port.ToString(CultureInfo.InvariantCulture)
+      + "|" + relay + "|" + relayPort.ToString(CultureInfo.InvariantCulture)
+      + "|" + relaySessionId + "|" + EncodeCertificateForInvite(certificatePem);
   }
 
   public static bool TryDecodeCertificateFromInvite(string encodedCertificate, out string certificatePem)

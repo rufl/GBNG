@@ -434,7 +434,12 @@ public class MultiplayerMenu : ThumbnailMenu
         publicThumbnail.SetThumbnail(thumbnailTexture);
         publicThumbnail.SetGameSource(GameDetail.GameSource.Multiplayer);
         publicThumbnail.SetName(session.Name);
-        publicThumbnail.OnClick = () => JoinDiscoveredHost(host);
+        string relayAddress = session.RelayAddress;
+        ushort relayPort = session.RelayPort > 0 && session.RelayPort <= 65535
+          ? (ushort)session.RelayPort
+          : (ushort)0;
+        string relaySessionId = relayPort == 0 ? null : session.SessionId;
+        publicThumbnail.OnClick = () => JoinDiscoveredHost(host, relayAddress, relayPort, relaySessionId);
         publicThumbnail.GetWriteTime = () => System.DateTime.Today;
         publicThumbnail.GetDescription = () => $"{session.PlayerCount}/{session.MaxPlayers} players - {FormatAddressAndPort(session.Address, session.Port)} (public)";
         publicThumbnail.GetPlayerCount = () => session.PlayerCount;
@@ -467,14 +472,21 @@ public class MultiplayerMenu : ThumbnailMenu
     return $"{address}:{port}";
   }
 
-  void JoinDiscoveredHost(DirectHostDiscovery.HostInfo host)
+  void JoinDiscoveredHost(
+    DirectHostDiscovery.HostInfo host,
+    string relayAddress = null,
+    ushort relayPort = 0,
+    string relaySessionId = null)
   {
     if (!DirectHostTls.IsUsablePinnedCertificate(host.ServerCertificatePem))
     {
       Util.LogError("This discovered host has no valid TLS certificate pin and cannot be joined securely.");
       return;
     }
-    string invite = DirectHostTls.CreateInvite(host.Address, host.Port, host.ServerCertificatePem);
+    string invite = !string.IsNullOrEmpty(relaySessionId)
+      ? DirectHostTls.CreateRelayInvite(
+        host.Address, host.Port, host.ServerCertificatePem, relayAddress, relayPort, relaySessionId)
+      : DirectHostTls.CreateInvite(host.Address, host.Port, host.ServerCertificatePem);
     PlayerPrefs.SetString(LastJoinedRoomPrefsKey, invite);
     PlayerPrefs.Save();
     var options = new GameBuilderApplication.GameOptions
@@ -484,6 +496,9 @@ public class MultiplayerMenu : ThumbnailMenu
       directHostUsesIpv6 = System.Net.IPAddress.TryParse(host.Address, out System.Net.IPAddress parsedPublicAddress)
         && parsedPublicAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6,
       trustedHostCertificatePem = host.ServerCertificatePem,
+      directRelaySessionId = relaySessionId,
+      directRelayAddress = relayAddress,
+      directRelayPort = relayPort,
       playOptions = new GameBuilderApplication.PlayOptions { isMultiplayer = true }
     };
     loadingScreen.ShowAndDo(() => scenes.LoadMainSceneAsync(options));
@@ -573,14 +588,21 @@ public class MultiplayerMenu : ThumbnailMenu
     string input,
     out string address,
     out ushort port,
-    out string certificatePem)
+    out string certificatePem,
+    out string relayAddress,
+    out ushort relayPort,
+    out string relaySessionId)
   {
     address = null;
     port = NetworkingController.DefaultDirectHostPort;
     certificatePem = null;
+    relayAddress = null;
+    relayPort = 0;
+    relaySessionId = null;
     if (string.IsNullOrWhiteSpace(input)) return false;
     string[] parts = input.Trim().Split('|');
-    if (parts.Length != 4 || parts[0] != DirectHostTls.InvitePrefix
+    bool hasRelay = parts.Length == 7 && parts[0] == DirectHostTls.RelayInvitePrefix;
+    if ((!hasRelay && (parts.Length != 4 || parts[0] != DirectHostTls.InvitePrefix))
       || !ushort.TryParse(
         parts[2],
         System.Globalization.NumberStyles.None,
@@ -591,7 +613,34 @@ public class MultiplayerMenu : ThumbnailMenu
     if (!TryParseDirectHostAddress(parts[1], out address, out ushort embeddedPort)
       || embeddedPort != NetworkingController.DefaultDirectHostPort)
       return false;
-    return DirectHostTls.TryDecodeCertificateFromInvite(parts[3], out certificatePem);
+    string encodedCertificate;
+    if (hasRelay)
+    {
+      relayAddress = parts[3];
+      if (string.IsNullOrWhiteSpace(relayAddress) || relayAddress.Length > 253
+        || relayAddress.IndexOf('|') >= 0
+        || !ushort.TryParse(
+          parts[4],
+          System.Globalization.NumberStyles.None,
+          System.Globalization.CultureInfo.InvariantCulture,
+          out relayPort)
+        || relayPort == 0 || parts[5].Length != 24)
+        return false;
+      for (int i = 0; i < parts[5].Length; i++)
+      {
+        char c = parts[5][i];
+        if (!(c >= 'A' && c <= 'Z') && !(c >= 'a' && c <= 'z')
+          && !(c >= '0' && c <= '9') && c != '-' && c != '_')
+          return false;
+      }
+      relaySessionId = parts[5];
+      encodedCertificate = parts[6];
+    }
+    else
+    {
+      encodedCertificate = parts[3];
+    }
+    return DirectHostTls.TryDecodeCertificateFromInvite(encodedCertificate, out certificatePem);
   }
 
   static System.Net.IPAddress SelectDirectHostAddress(System.Net.IPAddress[] candidates)
@@ -610,26 +659,44 @@ public class MultiplayerMenu : ThumbnailMenu
 
   void JoinMultiplayer(string inviteText)
   {
-    if (!TryParseDirectHostInvite(inviteText, out string address, out ushort port, out string certificatePem))
+    if (!TryParseDirectHostInvite(
+      inviteText,
+      out string address,
+      out ushort port,
+      out string certificatePem,
+      out string relayAddress,
+      out ushort relayPort,
+      out string relaySessionId))
     {
       if (TryParseDirectHostAddress(inviteText, out _, out _))
-        Util.LogError("Direct-host connections require encryption. Paste the complete GBDIRECT1 invite copied from the host; raw addresses are not accepted.");
+        Util.LogError("Direct-host connections require encryption. Paste the complete GBDIRECT1 or GBDIRECT2 invite copied from the host; raw addresses are not accepted.");
       else
-        Util.LogError("Paste the complete GBDIRECT1 invite copied from the host.");
+        Util.LogError("Paste the complete GBDIRECT1 or GBDIRECT2 invite copied from the host.");
       return;
     }
 
     string invite = inviteText.Trim();
+    if (!string.IsNullOrEmpty(relaySessionId))
+    {
+      JoinMultiplayerByAddress(
+        address, port, certificatePem, invite, relayAddress, relayPort, relaySessionId);
+      return;
+    }
     if (System.Net.IPAddress.TryParse(address, out System.Net.IPAddress parsedAddress))
     {
-      JoinMultiplayerByAddress(parsedAddress.ToString(), port, certificatePem, invite);
+      JoinMultiplayerByAddress(parsedAddress.ToString(), port, certificatePem, invite, null, 0, null);
       return;
     }
 
     StartCoroutine(ResolveAndJoinHost(address, port, certificatePem, invite));
   }
 
-  System.Collections.IEnumerator ResolveAndJoinHost(string hostName, ushort port, string certificatePem, string originalInvite)
+
+  System.Collections.IEnumerator ResolveAndJoinHost(
+    string hostName,
+    ushort port,
+    string certificatePem,
+    string originalInvite)
   {
     System.Threading.Tasks.Task<System.Net.IPAddress[]> resolution;
     try
@@ -656,11 +723,17 @@ public class MultiplayerMenu : ThumbnailMenu
       Util.LogError($"Host '{hostName}' has no IPv4 or IPv6 address.");
       yield break;
     }
-    JoinMultiplayerByAddress(resolvedAddress.ToString(), port, certificatePem, originalInvite);
+    JoinMultiplayerByAddress(resolvedAddress.ToString(), port, certificatePem, originalInvite, null, 0, null);
   }
 
-
-  void JoinMultiplayerByAddress(string address, ushort port, string certificatePem, string savedInvite)
+  void JoinMultiplayerByAddress(
+    string address,
+    ushort port,
+    string certificatePem,
+    string savedInvite,
+    string relayAddress,
+    ushort relayPort,
+    string relaySessionId)
   {
     PlayerPrefs.SetString(LastJoinedRoomPrefsKey, savedInvite);
     PlayerPrefs.Save();
@@ -672,6 +745,9 @@ public class MultiplayerMenu : ThumbnailMenu
       directHostUsesIpv6 = System.Net.IPAddress.TryParse(address, out System.Net.IPAddress parsedDirectAddress)
         && parsedDirectAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6,
       trustedHostCertificatePem = certificatePem,
+      directRelaySessionId = relaySessionId,
+      directRelayAddress = relayAddress,
+      directRelayPort = relayPort,
       playOptions = new GameBuilderApplication.PlayOptions { isMultiplayer = true }
     };
     loadingScreen.ShowAndDo(() => scenes.LoadMainSceneAsync(options));

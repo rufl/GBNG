@@ -31,6 +31,8 @@ public sealed class DirectSessionDirectory : MonoBehaviour
     public int Generation;
     public bool IsPublic;
     public int AddressFamily;
+    public string RelayAddress;
+    public int RelayPort;
   }
 
   public struct MigrationTicket
@@ -68,6 +70,8 @@ public sealed class DirectSessionDirectory : MonoBehaviour
     public string Token;
     public string MigrationToken;
     public int Generation;
+    public string RelayAddress;
+    public int RelayPort;
   }
 
   [Serializable]
@@ -89,6 +93,8 @@ public sealed class DirectSessionDirectory : MonoBehaviour
   string sessionId;
   string sessionToken;
   string migrationToken;
+  string hostRelayAddress;
+  int hostRelayPort;
   int sessionGeneration;
   bool migrationPending;
   bool migrationUnavailable;
@@ -157,6 +163,22 @@ public sealed class DirectSessionDirectory : MonoBehaviour
     SessionInfo[] copy = new SessionInfo[current.Length];
     Array.Copy(current, copy, current.Length);
     return copy;
+  }
+  public static bool TryGetHostRelayCredentials(
+    out string id,
+    out string token,
+    out string relayAddress,
+    out ushort relayPort)
+  {
+    DirectSessionDirectory service = instance;
+    id = service == null ? null : service.sessionId;
+    token = service == null ? null : service.sessionToken;
+    relayAddress = service == null ? null : service.hostRelayAddress;
+    relayPort = service == null || service.hostRelayPort < 1 || service.hostRelayPort > 65535
+      ? (ushort)0
+      : (ushort)service.hostRelayPort;
+    return !string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(token)
+      && id.Length == 24 && !string.IsNullOrWhiteSpace(relayAddress) && relayPort != 0;
   }
   public static bool TryGetMigrationTicket(out MigrationTicket ticket)
   {
@@ -321,6 +343,8 @@ public sealed class DirectSessionDirectory : MonoBehaviour
         sessionId = null;
         sessionToken = null;
         migrationToken = null;
+        hostRelayAddress = null;
+        hostRelayPort = 0;
         migrationPending = false;
       }
     }
@@ -392,6 +416,10 @@ public sealed class DirectSessionDirectory : MonoBehaviour
         sessionToken = response.Token;
         migrationToken = response.MigrationToken;
         sessionGeneration = response.Generation;
+        hostRelayAddress = response.RelayAddress;
+        hostRelayPort = response.RelayPort >= 1 && response.RelayPort <= 65535
+          ? response.RelayPort
+          : 0;
         migrationPending = false;
         SetMigrationTicket(
           sessionId, migrationToken, sessionGeneration,
@@ -412,6 +440,8 @@ public sealed class DirectSessionDirectory : MonoBehaviour
       {
         sessionToken = null;
         migrationPending = false;
+        hostRelayAddress = null;
+        hostRelayPort = 0;
         migrationUnavailable = true;
         ClearMigrationTicket();
         Debug.LogWarning("The previous direct session expired before host migration completed.");
@@ -422,6 +452,8 @@ public sealed class DirectSessionDirectory : MonoBehaviour
         sessionToken = null;
         migrationToken = null;
         migrationPending = false;
+        hostRelayAddress = null;
+        hostRelayPort = 0;
         migrationUnavailable = true;
         ClearMigrationTicket();
       }
@@ -432,6 +464,8 @@ public sealed class DirectSessionDirectory : MonoBehaviour
         migrationToken = null;
         migrationPending = false;
         nextHostRequestTime = Time.realtimeSinceStartup + 5f;
+        hostRelayAddress = null;
+        hostRelayPort = 0;
       }
       if (requestError != "" || responseCode != 0)
       {
@@ -455,6 +489,8 @@ public sealed class DirectSessionDirectory : MonoBehaviour
       sessionToken = null;
       migrationToken = null;
       migrationPending = false;
+      hostRelayAddress = null;
+      hostRelayPort = 0;
       yield return UnregisterRoutine(endedSessionId, endedToken);
     }
     sessionRequestInFlight = false;
@@ -556,6 +592,10 @@ public sealed class DirectSessionDirectory : MonoBehaviour
           && migrated.PlayerCount >= 1 && migrated.MaxPlayers >= migrated.PlayerCount
           && migrated.MaxPlayers <= PhotonNetwork.MaximumDirectPlayers
           && migrated.AddressFamily == (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? 6 : 4)
+          && (string.IsNullOrEmpty(migrated.RelayAddress) && migrated.RelayPort == 0
+            || !string.IsNullOrWhiteSpace(migrated.RelayAddress)
+              && migrated.RelayAddress.IndexOf('|') < 0
+              && migrated.RelayPort >= 1 && migrated.RelayPort <= 65535)
           && DirectHostTls.IsUsablePinnedCertificate(migrated.ServerCertificatePem);
         if (valid)
         {
@@ -615,6 +655,11 @@ public sealed class DirectSessionDirectory : MonoBehaviour
             continue;
           item.AddressFamily = address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? 6 : 4;
           item.IsPublic = true;
+          if (string.IsNullOrEmpty(item.RelayAddress) || item.RelayPort < 1 || item.RelayPort > 65535)
+          {
+            item.RelayAddress = null;
+            item.RelayPort = 0;
+          }
           validSessions.Add(item);
         }
         validSessions.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
@@ -662,6 +707,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
       if (a.SessionId != b.SessionId || a.Name != b.Name || a.Address != b.Address
         || a.Port != b.Port || a.PlayerCount != b.PlayerCount || a.MaxPlayers != b.MaxPlayers
         || a.ThumbnailZippedJpegBase64 != b.ThumbnailZippedJpegBase64
+        || a.RelayAddress != b.RelayAddress || a.RelayPort != b.RelayPort
         || a.ServerCertificatePem != b.ServerCertificatePem)
         return false;
     }
