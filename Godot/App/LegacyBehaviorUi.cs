@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Xml;
 using System.Text.Json.Nodes;
 using GBNG.Assets;
 
@@ -9,6 +11,15 @@ namespace GBNG.App;
 public partial class LegacyBehaviorUi : Control
 {
     private const float GameUiWidth = 1600f;
+    private const float DefaultTextSize = 29.5f;
+    private const float DefaultCharWidth = 13f;
+    private const float DefaultLineHeight = 20f;
+    private const string LegacyFontConfigPath = "res://Assets/third_party/Fonts/ProggyClean/ProggyClean.fnt";
+    private const string LegacyFontAtlasPath = "res://Assets/third_party/Fonts/ProggyClean/ProggyClean.png";
+    private readonly record struct BitmapGlyph(int X, int Y, int Width, int Height, int XOffset, int YOffset, int XAdvance);
+    private readonly CanvasTexture _fontAtlas;
+    private readonly Dictionary<int, BitmapGlyph> _fontGlyphs;
+    private readonly int _fontBaseSize;
     private readonly LegacyRenderableCatalog? _catalog;
     private readonly HashSet<string> _unresolvedImages = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Texture2D> _importedImages = new(StringComparer.Ordinal);
@@ -28,6 +39,52 @@ public partial class LegacyBehaviorUi : Control
     public LegacyBehaviorUi(LegacyRenderableCatalog? catalog)
     {
         _catalog = catalog;
+        Texture2D? fontAtlas = ResourceLoader.Load<Texture2D>(LegacyFontAtlasPath);
+        if (fontAtlas is null)
+            throw new InvalidOperationException($"Could not load the bundled legacy UI font atlas at {LegacyFontAtlasPath}.");
+        _fontAtlas = new CanvasTexture
+        {
+            DiffuseTexture = fontAtlas,
+            TextureFilter = CanvasItem.TextureFilterEnum.Linear
+        };
+
+        var document = new XmlDocument();
+        document.LoadXml(Godot.FileAccess.GetFileAsString(LegacyFontConfigPath));
+        XmlElement? root = document.DocumentElement;
+        if (root is null || root.Name != "font")
+            throw new InvalidOperationException("The legacy UI bitmap font config must have a <font> root.");
+        XmlElement? info = root.SelectSingleNode("info") as XmlElement;
+        XmlElement? common = root.SelectSingleNode("common") as XmlElement;
+        _fontBaseSize = ReadFontMetric(info, "size");
+        if (_fontBaseSize <= 0
+            || ReadFontMetric(common, "scaleW") != fontAtlas.GetWidth()
+            || ReadFontMetric(common, "scaleH") != fontAtlas.GetHeight())
+            throw new InvalidOperationException("The legacy UI bitmap font metrics do not match the bundled atlas.");
+
+        XmlNodeList? pages = root.SelectNodes("pages/page");
+        if (pages is null || pages.Count != 1 || pages[0] is not XmlElement page
+            || ReadFontMetric(page, "id") != 0 || page.GetAttribute("file") != "ProggyClean.png")
+            throw new InvalidOperationException("The legacy UI bitmap font must use the bundled ProggyClean.png atlas.");
+        XmlNodeList? characters = root.SelectNodes("chars/char");
+        if (characters is null)
+            throw new InvalidOperationException("The legacy UI bitmap font has no character table.");
+        _fontGlyphs = new Dictionary<int, BitmapGlyph>(characters.Count);
+        foreach (XmlNode characterNode in characters)
+        {
+            if (characterNode is not XmlElement character)
+                continue;
+            _fontGlyphs.Add(ReadFontMetric(character, "id"), new BitmapGlyph(
+                ReadFontMetric(character, "x"),
+                ReadFontMetric(character, "y"),
+                ReadFontMetric(character, "width"),
+                ReadFontMetric(character, "height"),
+                ReadFontMetric(character, "xoffset"),
+                ReadFontMetric(character, "yoffset"),
+                ReadFontMetric(character, "xadvance")));
+        }
+        if (_fontGlyphs.Count != ReadFontMetric(root.SelectSingleNode("chars") as XmlElement, "count"))
+            throw new InvalidOperationException("The legacy UI bitmap font character count does not match its table.");
+
         MouseFilter = MouseFilterEnum.Pass;
         SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
     }
@@ -149,13 +206,11 @@ public partial class LegacyBehaviorUi : Control
         float x = LegacySaveDocument.ReadFloat(rect["x"], 0f);
         float y = LegacySaveDocument.ReadFloat(rect["y"], 0f);
         float size = GetTextSize(command);
-        Font font = ThemeDB.FallbackFont;
         string text = LegacySaveDocument.ReadString(command["text"]);
         Color color = DecodeColor(LegacySaveDocument.ReadInt(command["textColor"], 0xffffff), opacity);
-        int fontSize = GetFontRasterSize(size);
-        float fontScale = size / fontSize;
-        float lineHeight = 20f * size / 29.5f;
-        float baseline = y + font.GetAscent(fontSize) * fontScale;
+        float fontScale = size / _fontBaseSize;
+        float lineHeight = DefaultLineHeight * size / DefaultTextSize;
+        float lineTop = y;
         float lineStartX = x;
         int lineStart = 0;
         _textColorStackCount = 0;
@@ -171,11 +226,11 @@ public partial class LegacyBehaviorUi : Control
             if (i != text.Length && !isNewline && !isTag)
                 continue;
 
-            DrawTextRun(text, lineStart, i - lineStart, ref x, baseline, fontSize, fontScale, font, color, bold);
+            DrawTextRun(text, lineStart, i - lineStart, ref x, lineTop, fontScale, color, bold);
             if (isNewline)
             {
                 x = lineStartX;
-                baseline += lineHeight;
+                lineTop += lineHeight;
                 lineStart = i + 1;
                 continue;
             }
@@ -207,20 +262,32 @@ public partial class LegacyBehaviorUi : Control
         }
     }
 
-    private void DrawTextRun(string text, int start, int length, ref float x, float baseline, int fontSize, float fontScale, Font font, Color color, bool bold)
+    private void DrawTextRun(string text, int start, int length, ref float x, float lineTop, float fontScale, Color color, bool bold)
     {
-        if (length <= 0)
-            return;
-        string run = text.Substring(start, length);
-        float scaledDrawSize = _drawScale * fontScale;
-        DrawSetTransform(Vector2.Zero, 0f, Vector2.One * scaledDrawSize);
-        Vector2 position = new Vector2(x, baseline) / fontScale;
-        DrawString(font, position, run, HorizontalAlignment.Left, -1f, fontSize, color);
-        if (bold)
-            DrawString(font, new Vector2(position.X + 1f / scaledDrawSize, position.Y), run, HorizontalAlignment.Left, -1f, fontSize, color);
-        x += font.GetStringSize(run, HorizontalAlignment.Left, -1f, fontSize).X * fontScale;
-        DrawSetTransform(Vector2.Zero, 0f, Vector2.One * _drawScale);
+        int end = start + length;
+        for (int i = start; i < end; i++)
+        {
+            if (!_fontGlyphs.TryGetValue(text[i], out BitmapGlyph glyph))
+                continue;
+            if (glyph.Width > 0 && glyph.Height > 0)
+            {
+                var source = new Rect2(glyph.X, glyph.Y, glyph.Width, glyph.Height);
+                var destination = new Rect2(
+                    x + glyph.XOffset * fontScale,
+                    lineTop + glyph.YOffset * fontScale,
+                    glyph.Width * fontScale,
+                    glyph.Height * fontScale);
+                DrawTextureRectRegion(_fontAtlas, destination, source, color);
+                if (bold)
+                {
+                    destination.Position += Vector2.Right / _drawScale;
+                    DrawTextureRectRegion(_fontAtlas, destination, source, color);
+                }
+            }
+            x += glyph.XAdvance * fontScale;
+        }
     }
+
 
     private static bool TryReadTextTag(string text, int start, out int tagEnd, out int tagNameStart, out int valueStart)
     {
@@ -295,15 +362,14 @@ public partial class LegacyBehaviorUi : Control
         DrawRect(rect, background);
         DrawRect(rect, DecodeColor(0xffffff, opacity), false, 1f);
         float size = GetTextSize(command);
-        Font font = ThemeDB.FallbackFont;
-        int fontSize = GetFontRasterSize(size);
-        float fontScale = size / fontSize;
+        float fontScale = size / _fontBaseSize;
         Color textColor = DecodeColor(LegacySaveDocument.ReadInt(command["textColor"], 0xffffff), 1f);
         string text = LegacySaveDocument.ReadString(command["text"]);
-        float baseline = rect.Position.Y + (rect.Size.Y + (font.GetAscent(fontSize) - font.GetDescent(fontSize)) * fontScale) * 0.5f;
-        DrawSetTransform(Vector2.Zero, 0f, Vector2.One * (_drawScale * fontScale));
-        DrawString(font, new Vector2(rect.Position.X / fontScale, baseline / fontScale), text, HorizontalAlignment.Center, rect.Size.X / fontScale, fontSize, textColor);
-        DrawSetTransform(Vector2.Zero, 0f, Vector2.One * _drawScale);
+        float textWidth = text.Length * DefaultCharWidth * size / DefaultTextSize;
+        float lineHeight = DefaultLineHeight * size / DefaultTextSize;
+        float x = rect.Position.X + (rect.Size.X - textWidth) * 0.5f;
+        float lineTop = rect.Position.Y + (rect.Size.Y - lineHeight) * 0.5f;
+        DrawTextRun(text, 0, text.Length, ref x, lineTop, fontScale, textColor, false);
     }
 
     private void DrawCircle(JsonObject command, Color color, string style)
@@ -500,13 +566,19 @@ public partial class LegacyBehaviorUi : Control
         return true;
     }
 
+
+    private static int ReadFontMetric(XmlElement? element, string attribute)
+    {
+        if (element is null || !int.TryParse(element.GetAttribute(attribute), NumberStyles.Integer, CultureInfo.InvariantCulture, out int metric))
+            throw new InvalidOperationException($"The legacy UI bitmap font has an invalid '{attribute}' value.");
+        return metric;
+    }
     private static float GetTextSize(JsonObject command)
     {
         float size = LegacySaveDocument.ReadFloat(command["textSize"], 0f);
-        return size > 0f ? size : 29.5f;
+        return size > 0f ? size : DefaultTextSize;
     }
 
-    private static int GetFontRasterSize(float textSize) => Mathf.Max(1, Mathf.CeilToInt(textSize));
 
     private static Color DecodeColor(int value, float opacity) => new(
         ((value >> 16) & 0xff) / 255f,

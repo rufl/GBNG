@@ -1372,6 +1372,9 @@ public partial class GameBuilderApp
             int largerTextWidth = GetOpaqueTextWidth(rendered, 250, 600);
             if (largerTextWidth <= smallerTextWidth)
                 throw new InvalidOperationException($"Fractional behavior UI text sizes collapsed to the same rendered size: 40.01 width={smallerTextWidth}, 40.49 width={largerTextWidth}. Screenshot: {screenshot}");
+            float expectedLargeTextWidth = (11 * 44f + 46f) * 40.49f / 100f * (viewportWidth / 1600f);
+            if (Math.Abs(largerTextWidth - expectedLargeTextWidth) > 28f)
+                throw new InvalidOperationException($"Behavior UI text does not match the legacy ProggyClean glyph advance: expected≈{expectedLargeTextWidth}, rendered={largerTextWidth}. Screenshot: {screenshot}");
             return screenshot;
         }
         finally

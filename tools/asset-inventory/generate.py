@@ -27,7 +27,7 @@ def category(path: Path) -> str:
         return "Audio & video"
     if ext in {".fbx", ".obj", ".blend", ".gltf", ".glb", ".dae", ".3ds"}:
         return "3D models"
-    if ext in {".ttf", ".otf", ".woff", ".woff2"}:
+    if ext in {".fnt", ".font", ".ttf", ".otf", ".woff", ".woff2"}:
         return "Fonts"
     if ext in {".unity", ".prefab", ".asset", ".mat", ".controller", ".anim"}:
         return "Unity assets"
