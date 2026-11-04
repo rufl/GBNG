@@ -198,6 +198,8 @@ public partial class GameBuilderApp : Node3D
             RunWorldMapSizeSmoke();
         if (commandLineArgs.Contains("--smoke-camera-effects", StringComparer.Ordinal))
             RunCameraEffectsSmoke();
+        if (commandLineArgs.Contains("--smoke-terrain", StringComparer.Ordinal))
+            RunTerrainEditorSmokeStandalone();
         if (commandLineArgs.Contains("--smoke-copy-actors", StringComparer.Ordinal))
             RunActorCopySmoke();
     }
@@ -302,7 +304,8 @@ public partial class GameBuilderApp : Node3D
     {
         if (@event is InputEventMouseButton mouseButton)
         {
-            if (mouseButton.ButtonIndex == MouseButton.Right && !_copyPlacementActive)
+            if (mouseButton.ButtonIndex == MouseButton.Right
+                && !_copyPlacementActive && !_terrainCopyActive && !_terrainSelectionDragging)
                 Input.MouseMode = mouseButton.Pressed ? Input.MouseModeEnum.Captured : Input.MouseModeEnum.Visible;
             if (mouseButton.ButtonIndex == MouseButton.Left && mouseButton.Pressed && !_playMode)
             {
@@ -320,6 +323,16 @@ public partial class GameBuilderApp : Node3D
                 {
                     if (!IsPointerOverUi(mouseButton.Position))
                         PasteCopyAtCursor(mouseButton.Position, mouseButton.CtrlPressed || mouseButton.MetaPressed);
+                }
+                else if (_terrainCopyActive)
+                {
+                    if (!IsPointerOverUi(mouseButton.Position))
+                        PasteTerrainCopyAtScreen(mouseButton.Position);
+                }
+                else if (IsTerrainSelectionModeActive)
+                {
+                    if (!IsPointerOverUi(mouseButton.Position))
+                        BeginTerrainSelectionAtScreen(mouseButton.Position);
                 }
                 else if (IsTerrainBrushActive)
                 {
@@ -340,6 +353,8 @@ public partial class GameBuilderApp : Node3D
             }
             if (mouseButton.ButtonIndex == MouseButton.Left && !mouseButton.Pressed)
             {
+                if (_terrainSelectionDragging)
+                    CompleteTerrainSelectionAtScreen(mouseButton.Position);
                 CompleteSelectionMarquee(mouseButton.Position);
                 EndTerrainStroke();
             }
@@ -360,6 +375,16 @@ public partial class GameBuilderApp : Node3D
             {
                 if (!IsPointerOverUi(motion.Position))
                     UpdateCopyPreview(motion.Position, motion.CtrlPressed || motion.MetaPressed);
+            }
+            else if (_terrainCopyActive)
+            {
+                if (!IsPointerOverUi(motion.Position))
+                    UpdateTerrainCopyPreviewAtScreen(motion.Position);
+            }
+            else if (_terrainSelectionDragging)
+            {
+                if (!IsPointerOverUi(motion.Position))
+                    UpdateTerrainSelectionAtScreen(motion.Position);
             }
             else
             {
@@ -391,7 +416,12 @@ public partial class GameBuilderApp : Node3D
             else if (!_playMode && !editingText && (key.CtrlPressed || key.MetaPressed))
             {
                 if (key.Keycode == Key.C)
-                    BeginCopyPlacement();
+                {
+                    if (_terrainSelectionData is not null)
+                        BeginTerrainCopy();
+                    else
+                        BeginCopyPlacement();
+                }
                 else if (key.Keycode == Key.R && key.CtrlPressed)
                     ResetActors();
                 else if (key.Keycode == Key.S)
@@ -413,6 +443,12 @@ public partial class GameBuilderApp : Node3D
                     CancelTransformParentSelection();
                 else if (_settingSpawnParent)
                     CancelSpawnParentSelection();
+                else if (_terrainCopyActive)
+                    CancelTerrainCopy();
+                else if (_terrainSelectionDragging)
+                    CancelTerrainSelectionDrag();
+                else if (_terrainSelectionData is not null)
+                    ClearTerrainSelection();
                 else if (_selectionMarqueeActive)
                     CancelSelectionMarquee();
                 else if (_copyPlacementActive)
@@ -1099,12 +1135,23 @@ public partial class GameBuilderApp : Node3D
             _terrainEditorWindow.ActiveChanged += active =>
             {
                 if (!active)
+                {
                     EndTerrainStroke();
+                    CancelTerrainSelectionDrag();
+                }
                 _status.Text = active ? "Terrain brush active — click or drag in the viewport." : "Terrain brush disabled.";
             };
+            _terrainEditorWindow.BrushChanged += brush =>
+            {
+                if (brush.Mode != LegacyTerrainBrushMode.Select)
+                    ClearTerrainSelection();
+            };
+            _terrainEditorWindow.CopySelectionRequested += BeginTerrainCopy;
+            _terrainEditorWindow.ClearSelectionRequested += ClearTerrainSelection;
+            _terrainEditorWindow.CloseRequested += ClearTerrainSelection;
             AddChild(_terrainEditorWindow);
         }
-        _terrainEditorWindow.PopupCentered(new Vector2I(380, 560));
+        _terrainEditorWindow.PopupCentered(new Vector2I(380, 600));
     }
 
     private bool IsTerrainBrushActive
@@ -1382,6 +1429,7 @@ public partial class GameBuilderApp : Node3D
             return;
         }
         _terrainEditorWindow?.SetBrushActive(false);
+        ClearTerrainSelection();
         CancelCopyPlacement(showStatus: false);
         CancelSpawnParentSelection(showStatus: false);
         EndTerrainStroke();
@@ -1548,6 +1596,7 @@ public partial class GameBuilderApp : Node3D
             return;
 
         EndTerrainStroke();
+        ClearTerrainSelection();
         _terrain?.FlushUpdates();
         if (_terrain is not null)
             _document.SaveTerrainPayload(_terrain.Encode());
@@ -2679,6 +2728,7 @@ public partial class GameBuilderApp : Node3D
         if (enabled)
         {
             CancelCopyPlacement(showStatus: false);
+            ClearTerrainSelection();
             _terrainEditorWindow?.SetBrushActive(false);
             _worldSettingsWindow.Hide();
             EndTerrainStroke();

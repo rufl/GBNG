@@ -371,18 +371,28 @@ public partial class GameBuilderApp
 
     private async System.Threading.Tasks.Task RunTerrainEditorSmoke()
     {
-        LegacyTerrainNode terrain = _terrain
+        LegacyTerrainNode originalTerrain = _terrain
             ?? throw new InvalidOperationException("The sample project did not load its legacy terrain.");
-        if (!terrain.TryGetCell(100, 19, 100, out byte originalShape, out ushort originalStyle, out byte originalDirection)
-            || originalShape != 0
-            || originalStyle != 27)
-            throw new InvalidOperationException("The sample's interior terrain test cell changed.");
+        var targetCell = new Vector3I(4, 19, 4);
+        var createdCell = new Vector3I(4, 20, 4);
+        var fixtureData = LegacyTerrainData.CreateEmpty(8, 32, 8);
+        if (!fixtureData.SetCell(targetCell.X, targetCell.Y, targetCell.Z, 0, 27, 0))
+            throw new InvalidOperationException("Could not prepare the terrain editor smoke fixture.");
+        LegacyTerrainNode terrain = LegacyTerrainNode.Create(fixtureData);
+        _world.RemoveChild(originalTerrain);
+        _terrain = terrain;
+        _world.AddChild(terrain);
+        await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+        await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+        await WaitForUiFrames(2);
 
+        const byte originalShape = 0;
+        const ushort originalStyle = 27;
+        const byte originalDirection = 0;
+        TerrainCellSnapshot originalTargetValue = new(originalShape, originalStyle, originalDirection);
+        TerrainCellSnapshot originalCreatedValue = new(-1, 0, 0);
         Transform3D oldCameraTransform = _camera.GlobalTransform;
-        var target = new Vector3(
-            0f,
-            (19 + LegacyTerrainData.CellsYStart) * LegacyTerrainData.CellHeight + LegacyTerrainData.CellHeight * 0.5f,
-            0f);
+        Vector3 target = terrain.GetCellCenterGlobal(targetCell.X, targetCell.Y, targetCell.Z);
         _camera.GlobalPosition = target + Vector3.Up * 12f;
         _camera.LookAt(target, Vector3.Forward);
         OpenTerrainEditor();
@@ -392,26 +402,29 @@ public partial class GameBuilderApp
             ?? throw new InvalidOperationException("The terrain editor window did not open.");
         if (!window.Visible)
             throw new InvalidOperationException("The terrain editor window is not visible.");
-        window.SetBrushActive(true);
-        Vector2 center = GetViewport().GetVisibleRect().Size * 0.5f;
+        window.Position = new Vector2I(20, 20);
         await WaitForUiFrames(2);
-
+        window.SetBrushActive(true);
+        Vector2 center = _camera.UnprojectPosition(terrain.GetCellCenterGlobal(targetCell.X, targetCell.Y, targetCell.Z));
+        await WaitForUiFrames(2);
+        if (!TryGetTerrainSelectionCellAtScreen(center, out Vector3I brushTarget) || brushTarget != targetCell)
+            throw new InvalidOperationException($"Terrain fixture ray mismatch expected={targetCell} selected={brushTarget}.");
         OptionButton mode = (OptionButton)window.FindChild("TerrainMode", true, false);
         OptionButton shape = (OptionButton)window.FindChild("TerrainShape", true, false);
         OptionButton direction = (OptionButton)window.FindChild("TerrainDirection", true, false);
         OptionButton style = (OptionButton)window.FindChild("TerrainStyle", true, false);
         mode.Select((int)LegacyTerrainBrushMode.Dig);
         ApplyTerrainSmokeStroke(center);
-        if (terrain.TryGetCell(100, 19, 100, out _, out _, out _))
+        if (terrain.TryGetCell(targetCell.X, targetCell.Y, targetCell.Z, out _, out _, out _))
             throw new InvalidOperationException("The dig brush did not remove the targeted .voos terrain cell.");
         UndoEdit();
         await WaitForUiFrames(2);
-        if (!terrain.TryGetCell(100, 19, 100, out byte restoredShape, out ushort restoredStyle, out byte restoredDirection)
+        if (!terrain.TryGetCell(targetCell.X, targetCell.Y, targetCell.Z, out byte restoredShape, out ushort restoredStyle, out byte restoredDirection)
             || restoredShape != originalShape || restoredStyle != originalStyle || restoredDirection != originalDirection)
             throw new InvalidOperationException("Terrain undo did not restore shape, style, and direction.");
         RedoEdit();
         await WaitForUiFrames(2);
-        if (terrain.TryGetCell(100, 19, 100, out _, out _, out _))
+        if (terrain.TryGetCell(targetCell.X, targetCell.Y, targetCell.Z, out _, out _, out _))
             throw new InvalidOperationException("Terrain redo did not reapply the dig stroke.");
         UndoEdit();
         await WaitForUiFrames(2);
@@ -419,16 +432,16 @@ public partial class GameBuilderApp
         mode.Select((int)LegacyTerrainBrushMode.Paint);
         style.Select(24);
         ApplyTerrainSmokeStroke(center);
-        if (!terrain.TryGetCell(100, 19, 100, out byte paintedShape, out ushort paintedStyle, out byte paintedDirection)
+        if (!terrain.TryGetCell(targetCell.X, targetCell.Y, targetCell.Z, out byte paintedShape, out ushort paintedStyle, out byte paintedDirection)
             || paintedShape != originalShape || paintedStyle != 24 || paintedDirection != originalDirection)
             throw new InvalidOperationException("The paint brush did not preserve the cell shape and direction while changing style.");
         UndoEdit();
         await WaitForUiFrames(2);
-        if (!terrain.TryGetCell(100, 19, 100, out _, out ushort undoneStyle, out _) || undoneStyle != originalStyle)
+        if (!terrain.TryGetCell(targetCell.X, targetCell.Y, targetCell.Z, out _, out ushort undoneStyle, out _) || undoneStyle != originalStyle)
             throw new InvalidOperationException("Paint undo did not restore the original terrain style.");
         RedoEdit();
         await WaitForUiFrames(2);
-        if (!terrain.TryGetCell(100, 19, 100, out _, out ushort redoneStyle, out _) || redoneStyle != 24)
+        if (!terrain.TryGetCell(targetCell.X, targetCell.Y, targetCell.Z, out _, out ushort redoneStyle, out _) || redoneStyle != 24)
             throw new InvalidOperationException("Paint redo did not restore the painted terrain style.");
         UndoEdit();
         await WaitForUiFrames(2);
@@ -438,27 +451,48 @@ public partial class GameBuilderApp
         direction.Select(2);
         style.Select(25);
         ApplyTerrainSmokeStroke(center);
-        if (!terrain.TryGetCell(100, 20, 100, out byte createdShape, out ushort createdStyle, out byte createdDirection)
+        if (!terrain.TryGetCell(createdCell.X, createdCell.Y, createdCell.Z, out byte createdShape, out ushort createdStyle, out byte createdDirection)
             || createdShape != 3 || createdStyle != 25 || createdDirection != 2)
             throw new InvalidOperationException("The create brush did not add the configured adjacent .voos cell.");
         UndoEdit();
         await WaitForUiFrames(2);
-        if (terrain.TryGetCell(100, 20, 100, out _, out _, out _))
+        if (terrain.TryGetCell(createdCell.X, createdCell.Y, createdCell.Z, out _, out _, out _))
             throw new InvalidOperationException("Terrain creation undo did not remove its cell.");
         RedoEdit();
         await WaitForUiFrames(2);
-        if (!terrain.TryGetCell(100, 20, 100, out _, out _, out _))
+        if (!terrain.TryGetCell(createdCell.X, createdCell.Y, createdCell.Z, out _, out _, out _))
             throw new InvalidOperationException("Terrain creation redo did not restore its cell.");
         UndoEdit();
         await WaitForUiFrames(2);
+        await RunTerrainCopySmoke(terrain, window, mode, targetCell);
 
-        _document!.SaveTerrainPayload(terrain.Encode());
+
+        bool hadGridState = _document!.Root.TryGetPropertyValue("gridState", out JsonNode? originalGridState);
+        originalGridState = originalGridState?.DeepClone();
+        _document.SaveTerrainPayload(terrain.Encode());
         LegacyTerrainData? roundTrip = LegacyTerrainData.Decode(_document.GridState);
-        if (roundTrip is null
-            || !roundTrip.TryGetCell(100, 19, 100, out byte savedShape, out ushort savedStyle, out byte savedDirection)
-            || savedShape != originalShape || savedStyle != originalStyle || savedDirection != originalDirection
-            || roundTrip.TryGetCell(100, 20, 100, out _, out _, out _))
+        if (roundTrip is null)
             throw new InvalidOperationException("Terrain edits did not round-trip through the original .voos payload.");
+        TerrainCellSnapshot savedTarget = roundTrip.TryGetCell(targetCell.X, targetCell.Y, targetCell.Z,
+            out byte savedShape, out ushort savedStyle, out byte savedDirection)
+            ? new TerrainCellSnapshot(savedShape, savedStyle, savedDirection)
+            : new TerrainCellSnapshot(-1, 0, 0);
+        TerrainCellSnapshot savedCreated = roundTrip.TryGetCell(createdCell.X, createdCell.Y, createdCell.Z,
+            out byte savedCreatedShape, out ushort savedCreatedStyle, out byte savedCreatedDirection)
+            ? new TerrainCellSnapshot(savedCreatedShape, savedCreatedStyle, savedCreatedDirection)
+            : new TerrainCellSnapshot(-1, 0, 0);
+        if (savedTarget != originalTargetValue || savedCreated != originalCreatedValue)
+            throw new InvalidOperationException("Terrain edits did not restore and round-trip the original .voos cell values.");
+        if (hadGridState)
+            _document.Root["gridState"] = originalGridState;
+        else
+            _document.Root.Remove("gridState");
+        _world.RemoveChild(terrain);
+        terrain.QueueFree();
+        _terrain = originalTerrain;
+        _world.AddChild(originalTerrain);
+        await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
 
         string screenshot = ProjectSettings.GlobalizePath("res://.godot/terrain-editor-smoke.png");
         if (window.GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
@@ -468,7 +502,7 @@ public partial class GameBuilderApp
         _camera.GlobalTransform = oldCameraTransform;
         UpdateOrbitCamera();
         ClearHistory();
-        GD.Print($"TERRAIN_EDITOR_SMOKE_OK cell=({100 - terrain.Width / 2},{19 + LegacyTerrainData.CellsYStart},{100 - terrain.Depth / 2}) create=dig=paint undo=redo=.voos-roundtrip screenshot={screenshot}");
+        GD.Print($"TERRAIN_EDITOR_SMOKE_OK cell=({targetCell.X - terrain.Width / 2},{targetCell.Y + LegacyTerrainData.CellsYStart},{targetCell.Z - terrain.Depth / 2}) create=dig=paint undo=redo=.voos-roundtrip screenshot={screenshot}");
     }
 
     private void ApplyTerrainSmokeStroke(Vector2 screenPosition)
@@ -477,6 +511,151 @@ public partial class GameBuilderApp
         ApplyTerrainBrush(screenPosition);
         EndTerrainStroke();
     }
+    private async System.Threading.Tasks.Task RunTerrainCopySmoke(
+        LegacyTerrainNode terrain,
+        LegacyTerrainEditorWindow window,
+        OptionButton mode,
+        Vector3I sourceA)
+    {
+        Vector2I originalWindowPosition = window.Position;
+        var sourceB = new Vector3I(sourceA.X + 1, sourceA.Y, sourceA.Z);
+        var overwriteA = new Vector3I(sourceA.X + 2, sourceA.Y, sourceA.Z);
+        var overwriteB = new Vector3I(sourceA.X + 3, sourceA.Y, sourceA.Z);
+        var aboveA = new Vector3I(sourceA.X, sourceA.Y + 1, sourceA.Z);
+        var aboveB = new Vector3I(sourceB.X, sourceB.Y + 1, sourceB.Z);
+        var originalCells = new Dictionary<Vector3I, TerrainCellSnapshot>();
+        for (int y = sourceA.Y; y < terrain.Data.Height; y++)
+        {
+            var sourceColumnA = new Vector3I(sourceA.X, y, sourceA.Z);
+            var sourceColumnB = new Vector3I(sourceB.X, y, sourceB.Z);
+            originalCells.Add(sourceColumnA, ReadTerrainCell(sourceColumnA));
+            originalCells.Add(sourceColumnB, ReadTerrainCell(sourceColumnB));
+        }
+        originalCells.Add(overwriteA, ReadTerrainCell(overwriteA));
+        originalCells.Add(overwriteB, ReadTerrainCell(overwriteB));
+
+        void SetCell(Vector3I cell, TerrainCellSnapshot value)
+        {
+            if (!terrain.SetCell(cell.X, cell.Y, cell.Z, value.Shape, value.Style, value.Direction))
+                throw new InvalidOperationException($"Could not prepare terrain-copy fixture cell {cell}.");
+        }
+
+        void AssertCell(Vector3I cell, TerrainCellSnapshot expected, string message)
+        {
+            if (ReadTerrainCell(cell) != expected)
+                throw new InvalidOperationException(message);
+        }
+
+        try
+        {
+            if (originalCells[sourceA] != new TerrainCellSnapshot(0, 27, originalCells[sourceA].Direction))
+                throw new InvalidOperationException("The terrain-copy source fixture cell changed.");
+
+            var sourceBValue = new TerrainCellSnapshot(2, 25, 3);
+            SetCell(sourceB, sourceBValue);
+            for (int y = sourceA.Y + 1; y < terrain.Data.Height; y++)
+            {
+                SetCell(new Vector3I(sourceA.X, y, sourceA.Z), new TerrainCellSnapshot(-1, 0, 0));
+                SetCell(new Vector3I(sourceB.X, y, sourceB.Z), new TerrainCellSnapshot(-1, 0, 0));
+            }
+
+            SetCell(overwriteA, new TerrainCellSnapshot(1, 24, 1));
+            SetCell(overwriteB, new TerrainCellSnapshot(3, 28, 2));
+            terrain.FlushUpdates();
+            window.Position = new Vector2I(20, 20);
+            await WaitForUiFrames(3);
+
+            mode.Select((int)LegacyTerrainBrushMode.Select);
+            Vector2 start = _camera.UnprojectPosition(terrain.GetCellCenterGlobal(sourceA.X, sourceA.Y, sourceA.Z));
+            Vector2 end = _camera.UnprojectPosition(terrain.GetCellCenterGlobal(sourceB.X, sourceB.Y, sourceB.Z));
+            if (!TryGetTerrainSelectionCellAtScreen(start, out Vector3I startCell) || startCell != sourceA
+                || !TryGetTerrainSelectionCellAtScreen(end, out Vector3I endCell) || endCell != sourceB)
+                throw new InvalidOperationException("Terrain selection screen rays did not resolve to the intended source cells.");
+
+            BeginTerrainSelectionAtScreen(start);
+            UpdateTerrainSelectionAtScreen(end);
+            CompleteTerrainSelectionAtScreen(end);
+            if (_terrainSelectionDragging || _terrainSelectionCellCount != 2
+                || _terrainSelectionData is null
+                || _terrainSelectionData.Width != 2
+                || _terrainSelectionData.Height != 1
+                || _terrainSelectionData.Depth != 1)
+                throw new InvalidOperationException("Dragging across two occupied cells did not create the expected terrain selection.");
+
+            Button copyButton = (Button)window.FindChild("TerrainCopySelectionButton", true, false);
+            if (copyButton.Disabled)
+                throw new InvalidOperationException("The terrain copy button remained disabled after selecting cells.");
+            copyButton.EmitSignal("pressed");
+            if (!_terrainCopyActive || _terrainCopyPreview is null
+                || _terrainCopyPreview.GetNodeOrNull<MeshInstance3D>("TerrainMesh")?.Mesh is not ArrayMesh copyMesh
+                || copyMesh.GetSurfaceCount() == 0)
+                throw new InvalidOperationException("Copy selection did not create a visible terrain preview.");
+
+            if (!TryGetTerrainPlacementCellAtScreen(start, out Vector3I emptyTarget)
+                || emptyTarget != aboveA)
+                throw new InvalidOperationException("The terrain copy fixture did not resolve the empty cell above its source.");
+            UpdateTerrainCopyPreviewAtScreen(start);
+            if (_terrainCopyTargetOrigin != emptyTarget)
+                throw new InvalidOperationException("Moving the cursor did not position the terrain-copy preview at the snapped cell.");
+            await WaitForUiFrames(2);
+            string previewScreenshot = ProjectSettings.GlobalizePath("res://.godot/terrain-copy-preview-smoke.png");
+            if (GetViewport().GetTexture().GetImage().SavePng(previewScreenshot) != Error.Ok)
+                throw new InvalidOperationException("Could not save the terrain-copy preview screenshot.");
+
+            PasteTerrainCopyAtScreen(start);
+            AssertCell(aboveA, originalCells[sourceA], "Terrain paste did not preserve the source shape, style, and direction.");
+            AssertCell(aboveB, sourceBValue, "Terrain paste did not copy the adjacent source cell.");
+            AssertCell(sourceA, originalCells[sourceA], "Terrain paste changed its source cell.");
+            AssertCell(sourceB, sourceBValue, "Terrain paste changed the adjacent source cell.");
+            UndoEdit();
+            await WaitForUiFrames(2);
+            AssertCell(aboveA, originalCells[aboveA], "Terrain paste undo did not restore the first destination.");
+            AssertCell(aboveB, originalCells[aboveB], "Terrain paste undo did not restore the second destination.");
+            RedoEdit();
+            await WaitForUiFrames(2);
+            AssertCell(aboveA, originalCells[sourceA], "Terrain paste redo did not restore the first copied cell.");
+            AssertCell(aboveB, sourceBValue, "Terrain paste redo did not restore the second copied cell.");
+            UndoEdit();
+            await WaitForUiFrames(2);
+
+            Vector3I overwriteOrigin = overwriteA;
+            SetTerrainCopyTargetOrigin(overwriteOrigin);
+            if (!PasteTerrainCopyAtOrigin(overwriteOrigin))
+                throw new InvalidOperationException("Pasting over existing terrain was rejected.");
+            AssertCell(overwriteA, originalCells[sourceA], "Overwriting terrain did not copy the source cell data.");
+            AssertCell(overwriteB, sourceBValue, "Overwriting terrain did not copy the adjacent source cell data.");
+            UndoEdit();
+            await WaitForUiFrames(2);
+            AssertCell(overwriteA, new TerrainCellSnapshot(1, 24, 1), "Undo did not restore the first overwritten terrain cell.");
+            AssertCell(overwriteB, new TerrainCellSnapshot(3, 28, 2), "Undo did not restore the second overwritten terrain cell.");
+            RedoEdit();
+            await WaitForUiFrames(2);
+            AssertCell(overwriteA, originalCells[sourceA], "Redo did not restore the first overwritten terrain cell.");
+            AssertCell(overwriteB, sourceBValue, "Redo did not restore the second overwritten terrain cell.");
+            UndoEdit();
+            await WaitForUiFrames(2);
+
+            _UnhandledInput(new InputEventKey { Keycode = Key.Escape, Pressed = true });
+            if (_terrainCopyActive || _terrainCopyPreview is not null || _terrainSelectionCellCount != 2)
+                throw new InvalidOperationException("Esc did not cancel the copy preview while retaining the source selection.");
+            Button clearButton = (Button)window.FindChild("TerrainClearSelectionButton", true, false);
+            clearButton.EmitSignal("pressed");
+            if (_terrainSelectionCellCount != 0 || _terrainSelectionPreview is not null || !copyButton.Disabled)
+                throw new InvalidOperationException("Clear selection did not remove the selection preview and disable copy.");
+            GD.Print($"TERRAIN_COPY_SMOKE_OK selection=dragged-two preview=visible paste=snapped-and-overwrite undo=redo cancel=escape clear=button screenshot={previewScreenshot}");
+        }
+        finally
+        {
+            ClearTerrainSelection();
+            foreach ((Vector3I cell, TerrainCellSnapshot value) in originalCells)
+                SetCell(cell, value);
+            terrain.FlushUpdates();
+            mode.Select((int)LegacyTerrainBrushMode.Create);
+            window.Position = originalWindowPosition;
+            await WaitForUiFrames(2);
+        }
+    }
+
 
     private async void RunAssetStoreSmoke()
     {
@@ -544,6 +723,27 @@ public partial class GameBuilderApp
             GetTree().Quit(exitCode);
         }
     }
+    private async void RunTerrainEditorSmokeStandalone()
+    {
+        int exitCode = 0;
+        try
+        {
+            await WaitForUiFrames(1);
+            if (_document is null)
+                throw new InvalidOperationException("The sample project did not load for the terrain smoke run.");
+            await RunTerrainEditorSmoke();
+        }
+        catch (Exception exception)
+        {
+            exitCode = 1;
+            GD.PushError($"TERRAIN_EDITOR_SMOKE_FAILED: {exception}");
+        }
+        finally
+        {
+            GetTree().Quit(exitCode);
+        }
+    }
+
 
     private async void RunCardLibrarySmoke()
     {
