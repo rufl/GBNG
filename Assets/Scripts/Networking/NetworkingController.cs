@@ -774,6 +774,7 @@ public class NetworkingController : Photon.PunBehaviour
       RegisterDirectNetworkHandlers();
   }
 #endif
+  }
 
 #if !USE_PUN
   IEnumerator StartDirectClientViaRelay(GameBuilderApplication.GameOptions options)

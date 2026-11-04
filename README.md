@@ -180,11 +180,10 @@ Photon PUN nor a paid Unity service is required.
   by manually sharing their address. Switching a discovered host to private
   sends an IPv4 broadcast or IPv6 multicast withdrawal; missed or unrecognized
   withdrawals leave cached entries visible for up to six seconds. Use
-  **Join by invite** and paste the full `GBDIRECT1|address|port|certificate`
-  invite copied from the host. Bare addresses are rejected because direct
-  connections pin the host certificate; hostnames in a valid invite resolve
-  IPv4-first with IPv6 fallback. Use **Copy invite** in the multiplayer panel
-  to share the generated invite.
+  **Join by invite** and paste the host's `GBDIRECT1` direct invite or, when
+  its self-hosted relay is active, the `GBDIRECT2` relay invite. Both formats
+  pin the host certificate; hostnames in a valid invite resolve IPv4-first
+  with IPv6 fallback. Use **Copy invite** in the multiplayer panel to share it.
 - The IPv4 host listens on UDP port `7777`; LAN discovery broadcasts on UDP
   `47778`. Allow UDP `47778` through the local firewall for IPv4 broadcasts and
   IPv6 multicast discovery.
@@ -218,7 +217,10 @@ falls back to `::1`, which is only reachable from the host itself.
   Without the directory, LAN discovery and local-network manual invites still
   work, but automatic host migration and public-address invite resolution are
   unavailable. The directory returns the host's request-observed IP through
-  `/v1/address`; it is discovery/coordination only, not a relay or NAT traversal service.
+  `/v1/address`. When the UDP relay is enabled, it advertises a relay endpoint
+  only while the host's authenticated tunnel is healthy. The relay forwards
+  encrypted Unity Transport datagrams; it does not terminate transport
+  encryption or make the host authoritative.
   Public directory listings carry each game's zipped JPEG thumbnail when it
   fits the 16 KiB limit; missing or oversized thumbnails use the generic image.
 
@@ -283,6 +285,18 @@ ports; the directory API stays on the private Docker network. Set
 browser, or pass the matching `--session-directory=` argument. Change
 `DIRECTORY_SUBNET`, `DIRECTORY_PROXY_IP`, and `DIRECTORY_SERVICE_IP` in `.env`
 if the default Docker subnet conflicts with another network.
+
+The Compose stack also runs the self-hosted UDP relay. Set
+`RELAY_PUBLIC_ADDRESS` to a DNS name or IP reachable by hosts and players.
+Open inbound UDP `47801` (relay control) and UDP `48000-48999` (allocated game
+routes) on the server and forward them to this Docker host. Caddy/Funnel
+terminate HTTPS only; neither proxies UDP. Hosts and players need outbound UDP
+access to the relay. The default stack binds IPv4; IPv6-only clients cannot use
+it, though IPv6 game hosts can tunnel through it when they can reach its IPv4
+endpoint. The service caps relay capacity at 1,000 concurrent routes globally,
+64 per source IP, and the remaining player slots (up to 15 remote players) per
+game. Bandwidth and server costs depend on the host/provider; no paid Unity
+multiplayer plugin or Unity-hosted relay is involved.
 
 
 ##### Tailnet-only simulation
