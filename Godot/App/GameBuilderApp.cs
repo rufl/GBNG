@@ -23,6 +23,9 @@ public partial class GameBuilderApp : Node3D
     private Camera3D _camera = null!;
     private ItemList _actorList = null!;
     private Button _actorListToggleButton = null!;
+    private CheckBox _parentOnResetToggle = null!;
+    private bool _parentOnReset = true;
+    private const string ParentOnResetSettingsPath = "user://editor-settings.cfg";
     private OptionButton _assetPicker = null!;
     private LineEdit _assetSearch = null!;
     private Label _assetCount = null!;
@@ -151,6 +154,7 @@ public partial class GameBuilderApp : Node3D
         _lanSession.StateChanged += OnLanSessionStateChanged;
         AddChild(_lanSession);
         BuildWorldServices();
+        LoadParentOnResetPreference();
         BuildInterface();
         PopulateSamples();
         string[] commandLineArgs = OS.GetCmdlineUserArgs();
@@ -654,6 +658,15 @@ public partial class GameBuilderApp : Node3D
         _actorListToggleButton.Pressed += ToggleActorList;
         actorListHeader.AddChild(_actorListToggleButton);
         left.AddChild(actorListHeader);
+        _parentOnResetToggle = new CheckBox
+        {
+            Name = "ParentOnResetToggle",
+            Text = "Parent on reset",
+            TooltipText = "When enabled, Ctrl/Cmd+H also changes the actor's parent after reset.",
+            ButtonPressed = _parentOnReset
+        };
+        _parentOnResetToggle.Toggled += SetParentOnResetPreference;
+        left.AddChild(_parentOnResetToggle);
         _actorList = new ItemList { SizeFlagsVertical = Control.SizeFlags.ExpandFill, SelectMode = ItemList.SelectModeEnum.Multi };
         _actorList.MultiSelected += SelectActorByIndex;
         left.AddChild(_actorList);
@@ -2646,6 +2659,33 @@ public partial class GameBuilderApp : Node3D
         }
     }
 
+    private void LoadParentOnResetPreference()
+    {
+        var settings = new ConfigFile();
+        if (settings.Load(ParentOnResetSettingsPath) == Error.Ok)
+            _parentOnReset = settings.GetValue("editor", "parent_on_reset", true).AsBool();
+    }
+
+    private void SetParentOnResetPreference(bool enabled)
+    {
+        _parentOnReset = enabled;
+        if (_parentOnResetToggle is not null
+            && IsInstanceValid(_parentOnResetToggle)
+            && _parentOnResetToggle.ButtonPressed != enabled)
+            _parentOnResetToggle.SetPressedNoSignal(enabled);
+
+        var settings = new ConfigFile();
+        settings.SetValue("editor", "parent_on_reset", enabled);
+        Error error = settings.Save(ParentOnResetSettingsPath);
+        if (error != Error.Ok)
+        {
+            string message = $"Could not save Parent on reset preference: {error}.";
+            GD.PushWarning(message);
+            if (_status is not null && IsInstanceValid(_status))
+                _status.Text = message;
+        }
+    }
+
     private void SetSelectedActorParentAtCursor()
     {
         if (_document is null || _playMode || _selectedActors.Count != 1)
@@ -2670,14 +2710,15 @@ public partial class GameBuilderApp : Node3D
             actor.LinearVelocity,
             actor.AngularVelocity);
         Node targetParent = parent ?? _world;
+        string spawnParentName = _parentOnReset ? parentName : before.SpawnTransformParent;
         if (before.TransformParent == parentName
-            && before.SpawnTransformParent == parentName
+            && before.SpawnTransformParent == spawnParentName
             && actor.GetParent() == targetParent)
             return;
 
         var after = new ActorParentSnapshot(
             parentName,
-            parentName,
+            spawnParentName,
             before.Transform,
             before.Velocity,
             before.AngularVelocity);

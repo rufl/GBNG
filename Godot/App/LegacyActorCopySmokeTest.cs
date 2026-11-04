@@ -15,6 +15,7 @@ public partial class GameBuilderApp
     {
         int exitCode = 0;
         string? originalProjectPath = _document?.SourcePath;
+        bool originalParentOnReset = _parentOnReset;
         string? temporaryDirectory = null;
         try
         {
@@ -237,6 +238,20 @@ public partial class GameBuilderApp
             await WaitForUiFrames(2);
             AssertQuickRotationForSmoke(source, sourceBeforeRotate, rotationPivot, rotationDelta, rotated: false);
             AssertQuickRotationForSmoke(independent, independentBeforeRotate, rotationPivot, rotationDelta, rotated: false);
+            CheckBox parentOnResetToggle = FindChild("ParentOnResetToggle", true, false) as CheckBox
+                ?? throw new InvalidOperationException("The Parent on reset preference toggle was not found.");
+            if (parentOnResetToggle.ButtonPressed != _parentOnReset)
+                throw new InvalidOperationException("The Parent on reset toggle did not reflect the loaded preference.");
+            parentOnResetToggle.ButtonPressed = false;
+            if (_parentOnReset)
+                throw new InvalidOperationException("The Parent on reset toggle did not disable the preference.");
+            parentOnResetToggle.ButtonPressed = true;
+            if (!_parentOnReset)
+                throw new InvalidOperationException("The Parent on reset toggle did not enable the preference.");
+            var persistedParentSetting = new ConfigFile();
+            if (persistedParentSetting.Load(ParentOnResetSettingsPath) != Error.Ok
+                || !persistedParentSetting.GetValue("editor", "parent_on_reset", false).AsBool())
+                throw new InvalidOperationException("Enabling Parent on reset did not persist the preference.");
             SetActorSelection(new[] { source }, source);
             string originalTransformParent = source.State.TransformParent;
             string originalSpawnTransformParent = LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]);
@@ -304,22 +319,31 @@ public partial class GameBuilderApp
             await WaitForUiFrames(1);
             if (GetActorAtScreenPosition(GetViewport().GetMousePosition()) is not null)
                 throw new InvalidOperationException("The mouse did not remain over empty world space for unparenting.");
+            parentOnResetToggle.ButtonPressed = false;
+            if (_parentOnReset)
+                throw new InvalidOperationException("The Parent on reset toggle did not disable the preference before unparenting.");
+            var persistedDisabledSetting = new ConfigFile();
+            if (persistedDisabledSetting.Load(ParentOnResetSettingsPath) != Error.Ok
+                || persistedDisabledSetting.GetValue("editor", "parent_on_reset", true).AsBool())
+                throw new InvalidOperationException("Disabling Parent on reset did not persist the preference.");
             var sourceBeforeUnparent = new ActorMotionSnapshot(source.GlobalTransform, source.LinearVelocity, source.AngularVelocity);
             _UnhandledInput(new InputEventKey { Keycode = Key.H, CtrlPressed = true, Pressed = true });
             if (source.State.TransformParent.Length != 0
-                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]).Length != 0
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != independentName
                 || source.GetParent() != _world
                 || !source.GlobalTransform.IsEqualApprox(sourceBeforeUnparent.Transform))
-                throw new InvalidOperationException("Ctrl+H over empty world space did not unparent the selected actor.");
+                throw new InvalidOperationException("Ctrl+H with Parent on reset disabled did not preserve the reset parent while unparenting.");
             UndoEdit();
             if (source.State.TransformParent != independentName
                 || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != independentName
                 || source.GetParent() != independent
                 || !source.GlobalTransform.IsEqualApprox(sourceBeforeUnparent.Transform))
-                throw new InvalidOperationException("Undo did not restore the actor parent after unparenting.");
+                throw new InvalidOperationException("Undo did not restore the actor's current and reset parents after unparenting.");
             RedoEdit();
-            if (source.State.TransformParent.Length != 0 || source.GetParent() != _world)
-                throw new InvalidOperationException("Redo did not restore the unparented actor state.");
+            if (source.State.TransformParent.Length != 0
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != independentName
+                || source.GetParent() != _world)
+                throw new InvalidOperationException("Redo did not restore the unparented actor while preserving its reset parent.");
             UndoEdit();
             UndoEdit();
             if (source.State.TransformParent != originalTransformParent
@@ -556,6 +580,7 @@ public partial class GameBuilderApp
         }
         finally
         {
+            SetParentOnResetPreference(originalParentOnReset);
             CancelCopyPlacement(showStatus: false);
             if (originalProjectPath is not null)
             {
