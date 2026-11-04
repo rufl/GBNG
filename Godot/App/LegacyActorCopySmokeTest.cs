@@ -127,6 +127,38 @@ public partial class GameBuilderApp
 
             ClickActorForSmoke(source, addToSelection: true);
             AssertActorSelectionForSmoke(independent, source);
+            var sourceBeforeRotate = new ActorMotionSnapshot(source.GlobalTransform, source.LinearVelocity, source.AngularVelocity);
+            var independentBeforeRotate = new ActorMotionSnapshot(independent.GlobalTransform, independent.LinearVelocity, independent.AngularVelocity);
+            Vector3 rotationPivot = (source.GlobalPosition + independent.GlobalPosition) * 0.5f;
+            Quaternion rotationDelta = CoordinateSpace.ToGodot(new Quaternion(Vector3.Up, Mathf.DegToRad(45f)));
+            Button rotateButton = FindChild("QuickRotateActorsButton", true, false) as Button
+                ?? throw new InvalidOperationException("The quick-rotate toolbar button was not found.");
+            _actorList.GrabFocus();
+            _UnhandledInput(new InputEventKey { Keycode = Key.R, Pressed = true });
+            await WaitForUiFrames(2);
+            AssertQuickRotationForSmoke(source, sourceBeforeRotate, rotationPivot, rotationDelta, rotated: true);
+            AssertQuickRotationForSmoke(independent, independentBeforeRotate, rotationPivot, rotationDelta, rotated: true);
+            UndoEdit();
+            await WaitForUiFrames(2);
+            AssertQuickRotationForSmoke(source, sourceBeforeRotate, rotationPivot, rotationDelta, rotated: false);
+            AssertQuickRotationForSmoke(independent, independentBeforeRotate, rotationPivot, rotationDelta, rotated: false);
+            rotateButton.EmitSignal("pressed");
+            await WaitForUiFrames(2);
+            AssertQuickRotationForSmoke(source, sourceBeforeRotate, rotationPivot, rotationDelta, rotated: true);
+            AssertQuickRotationForSmoke(independent, independentBeforeRotate, rotationPivot, rotationDelta, rotated: true);
+            UndoEdit();
+            await WaitForUiFrames(2);
+            AssertQuickRotationForSmoke(source, sourceBeforeRotate, rotationPivot, rotationDelta, rotated: false);
+            AssertQuickRotationForSmoke(independent, independentBeforeRotate, rotationPivot, rotationDelta, rotated: false);
+            RedoEdit();
+            await WaitForUiFrames(2);
+            AssertQuickRotationForSmoke(source, sourceBeforeRotate, rotationPivot, rotationDelta, rotated: true);
+            AssertQuickRotationForSmoke(independent, independentBeforeRotate, rotationPivot, rotationDelta, rotated: true);
+            UndoEdit();
+            await WaitForUiFrames(2);
+            AssertQuickRotationForSmoke(source, sourceBeforeRotate, rotationPivot, rotationDelta, rotated: false);
+            AssertQuickRotationForSmoke(independent, independentBeforeRotate, rotationPivot, rotationDelta, rotated: false);
+
             BeginCopyPlacement();
             if (!_copyPlacementActive || _copySources.Count != 3
                 || !_copySources.Contains(source) || !_copySources.Contains(independent) || !_copySources.Contains(child))
@@ -286,7 +318,7 @@ public partial class GameBuilderApp
             if (!_actors.Any(actor => LegacySaveDocument.ReadString(actor.State.Data["cloneParent"]) == sourceName))
                 throw new InvalidOperationException("Saved copy lineage was not retained in the .voos project.");
 
-            GD.Print($"ACTOR_COPY_SMOKE_OK selection=shift-toggle-marquee=true marqueeVisual=true multiCopyRoots=true multiDelete=undo-redo=true preview=true ctrlC=true snap=true descendants=true repeat=true persistence=true marqueeScreenshot={marqueeScreenshot} copyScreenshot={screenshot}");
+            GD.Print($"ACTOR_COPY_SMOKE_OK selection=shift-toggle-marquee=true marqueeVisual=true quickRotate=R+toolbar=true groupPivot=true undo-redo=true multiCopyRoots=true multiDelete=undo-redo=true preview=true ctrlC=true snap=true descendants=true repeat=true persistence=true marqueeScreenshot={marqueeScreenshot} copyScreenshot={screenshot}");
         }
         catch (Exception exception)
         {
@@ -324,6 +356,28 @@ public partial class GameBuilderApp
         if (!_selectionMarquee.Visible)
             throw new InvalidOperationException("The selection marquee was not drawn during a drag.");
         CompleteSelectionMarquee(center + new Vector2(5f, 5f));
+    }
+
+    private static void AssertQuickRotationForSmoke(
+        WorldActorNode actor,
+        ActorMotionSnapshot before,
+        Vector3 pivot,
+        Quaternion rotationDelta,
+        bool rotated)
+    {
+        Vector3 expectedPosition = rotated
+            ? pivot + rotationDelta * (before.Transform.Origin - pivot)
+            : before.Transform.Origin;
+        Quaternion expectedRotation = rotated
+            ? before.Transform.Basis.GetRotationQuaternion() * rotationDelta
+            : before.Transform.Basis.GetRotationQuaternion();
+        Vector3 expectedAngularVelocity = rotated ? Vector3.Zero : before.AngularVelocity;
+        if (actor.GlobalPosition.DistanceTo(expectedPosition) > 0.01f
+            || !actor.GlobalBasis.GetRotationQuaternion().IsEqualApprox(expectedRotation)
+            || !actor.GlobalBasis.Scale.IsEqualApprox(before.Transform.Basis.Scale)
+            || actor.LinearVelocity.DistanceTo(before.Velocity) > 0.01f
+            || actor.AngularVelocity.DistanceTo(expectedAngularVelocity) > 0.01f)
+            throw new InvalidOperationException($"Quick rotate produced the wrong transform or velocity for '{actor.State.DisplayName}'.");
     }
 
     private void AssertActorSelectionForSmoke(params WorldActorNode[] expectedActors)

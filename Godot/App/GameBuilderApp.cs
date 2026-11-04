@@ -87,6 +87,7 @@ public partial class GameBuilderApp : Node3D
     private Button _behaviorEditorButton = null!;
     private string? _behaviorRuntimeError;
     private const int MaxHistoryItems = 50;
+    private const float QuickRotateDegrees = 45f;
     private readonly List<HistoryEntry> _history = new();
     private int _historyPosition;
     private bool _applyingHistory;
@@ -322,6 +323,8 @@ public partial class GameBuilderApp : Node3D
             bool editingText = focusedControl is LineEdit or TextEdit;
             if (!_playMode && !editingText && key.Keycode == Key.Delete)
                 RemoveSelectedActor();
+            else if (!_playMode && !editingText && key.Keycode == Key.R && !key.CtrlPressed && !key.MetaPressed)
+                QuickRotateSelectedActors();
             else if (!_playMode && !editingText && (key.CtrlPressed || key.MetaPressed))
             {
                 if (key.Keycode == Key.C)
@@ -561,6 +564,15 @@ public partial class GameBuilderApp : Node3D
         var copyActors = new Button { Name = "CopyActorsButton", Text = "Copy", CustomMinimumSize = new Vector2(70f, 36f) };
         copyActors.Pressed += BeginCopyPlacement;
         toolbar.AddChild(copyActors);
+        var quickRotateActors = new Button
+        {
+            Name = "QuickRotateActorsButton",
+            Text = "Rotate 45°",
+            TooltipText = "Rotate selected actors around their average position (R)",
+            CustomMinimumSize = new Vector2(108f, 36f)
+        };
+        quickRotateActors.Pressed += QuickRotateSelectedActors;
+        toolbar.AddChild(quickRotateActors);
         AddToolbarButton(toolbar, "World", OpenWorldSettings);
         AddToolbarButton(toolbar, "Effects", OpenVisualEffects);
         AddToolbarButton(toolbar, "Terrain", OpenTerrainEditor);
@@ -2532,6 +2544,48 @@ public partial class GameBuilderApp : Node3D
         }
     }
 
+    private void QuickRotateSelectedActors()
+    {
+        if (_document is null || _playMode || _selectedActors.Count == 0)
+            return;
+
+        WorldActorNode[] selectedActors = _selectedActors
+            .Where(_actors.Contains)
+            .OrderBy(GetActorHierarchyDepth)
+            .ToArray();
+        if (selectedActors.Length == 0)
+            return;
+
+        var before = new Dictionary<string, ActorMotionSnapshot>(selectedActors.Length, StringComparer.Ordinal);
+        Vector3 pivot = Vector3.Zero;
+        foreach (WorldActorNode actor in selectedActors)
+        {
+            pivot += actor.GlobalPosition;
+            before.Add(actor.LegacyName, new ActorMotionSnapshot(actor.GlobalTransform, actor.LinearVelocity, actor.AngularVelocity));
+        }
+        pivot /= selectedActors.Length;
+
+        Quaternion rotationDelta = CoordinateSpace.ToGodot(
+            new Quaternion(Vector3.Up, Mathf.DegToRad(QuickRotateDegrees)));
+        var after = new Dictionary<string, ActorMotionSnapshot>(selectedActors.Length, StringComparer.Ordinal);
+        foreach (WorldActorNode actor in selectedActors)
+        {
+            ActorMotionSnapshot state = before[actor.LegacyName];
+            Quaternion rotation = state.Transform.Basis.GetRotationQuaternion() * rotationDelta;
+            Basis basis = new Basis(rotation).Scaled(state.Transform.Basis.Scale);
+            Vector3 position = pivot + rotationDelta * (state.Transform.Origin - pivot);
+            after.Add(actor.LegacyName, new ActorMotionSnapshot(
+                new Transform3D(basis, position),
+                state.Velocity,
+                Vector3.Zero));
+        }
+
+        ApplyActorMotionStates(after);
+        RecordHistory("Rotate",
+            () => ApplyActorMotionStates(before),
+            () => ApplyActorMotionStates(after));
+    }
+
     private void ResetActors()
     {
         Dictionary<string, ActorMotionSnapshot> before = CaptureActorMotionStates();
@@ -2572,10 +2626,9 @@ public partial class GameBuilderApp : Node3D
 
     private void ApplyActorMotionStates(IReadOnlyDictionary<string, ActorMotionSnapshot> states)
     {
-        foreach ((string actorName, ActorMotionSnapshot state) in states)
+        foreach (WorldActorNode actor in _actors.OrderBy(GetActorHierarchyDepth))
         {
-            WorldActorNode? actor = _actors.FirstOrDefault(candidate => candidate.LegacyName == actorName);
-            if (actor is null)
+            if (!states.TryGetValue(actor.LegacyName, out ActorMotionSnapshot state))
                 continue;
             actor.GlobalTransform = state.Transform;
             actor.LinearVelocity = state.Velocity;
