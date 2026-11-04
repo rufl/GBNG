@@ -32,6 +32,14 @@ public class MultiplayerMenu : ThumbnailMenu
 
   [SerializeField] MonoBehaviour[] stuffToTempDisable;
   [SerializeField] GameObject[] objectsToTempDisable;
+  public enum MultiplayerSort
+  {
+    Name,
+    PlayerCount
+  };
+
+  MultiplayerSort multiplayerSort;
+
 
 #if USE_PUN
 
@@ -45,13 +53,6 @@ public class MultiplayerMenu : ThumbnailMenu
   // HACK HACK (for debug).
   public static bool debugShortcutToMpJoin = false;
 
-  public enum MultiplayerSort
-  {
-    Name,
-    PlayerCount
-  };
-
-  MultiplayerSort multiplayerSort;
 
   void Awake()
   {
@@ -135,12 +136,6 @@ public class MultiplayerMenu : ThumbnailMenu
     StartCoroutine(OpenRoutine());
   }
 
-  protected override void ChangeSort(Direction direction)
-  {
-    multiplayerSort = (MultiplayerSort)(1 - (int)multiplayerSort);
-    sortText.text = multiplayerSort.ToString();
-    UpdateSort();
-  }
 
   bool IsRoomHidden(string roomName)
   {
@@ -251,23 +246,6 @@ public class MultiplayerMenu : ThumbnailMenu
     });
   }
 
-  protected void UpdateSort()
-  {
-    if (multiplayerSort == MultiplayerSort.Name)
-    {
-      SetSorting((t1, t2) =>
-      {
-        return t1.GetName().CompareTo(t2.GetName());
-      });
-    }
-    else
-    {
-      SetSorting((t1, t2) =>
-      {
-        return t2.GetPlayerCount().CompareTo(t1.GetPlayerCount());
-      });
-    }
-  }
 
   public override void Close()
   {
@@ -345,6 +323,8 @@ public class MultiplayerMenu : ThumbnailMenu
 
     SetOpenEvent(CreateThumbnails);
     AddCategory(null, "");
+    sortText.text = multiplayerSort.ToString();
+    UpdateSort();
   }
 
   void Refresh()
@@ -700,8 +680,23 @@ public class MultiplayerMenu : ThumbnailMenu
     joinMultiplayerPopup.Deactivate();
   }
 
+#endif
   protected override void ChangeSort(Direction direction)
   {
+    multiplayerSort = (MultiplayerSort)(1 - (int)multiplayerSort);
+    sortText.text = multiplayerSort.ToString();
+    UpdateSort();
   }
-#endif
+
+  void UpdateSort()
+  {
+    if (multiplayerSort == MultiplayerSort.Name)
+    {
+      SetSorting((t1, t2) => t1.GetName().CompareTo(t2.GetName()));
+    }
+    else
+    {
+      SetSorting((t1, t2) => t2.GetPlayerCount().CompareTo(t1.GetPlayerCount()));
+    }
+  }
 }
