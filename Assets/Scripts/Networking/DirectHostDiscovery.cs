@@ -30,6 +30,7 @@ public sealed class DirectHostDiscovery : MonoBehaviour
     public int PlayerCount;
     public int MaxPlayers;
     public string ServerCertificatePem;
+    internal bool IsWithdrawal;
     internal float LastSeen;
   }
 
@@ -43,6 +44,8 @@ public sealed class DirectHostDiscovery : MonoBehaviour
   Socket ipv6AdvertisementSocket;
   NetworkManager manager;
   bool browsing;
+  bool wasAdvertising;
+  bool wasAdvertisingIpv6;
   float nextAdvertisementTime;
   float nextDiscoverySocketAttempt;
   float nextBroadcastSocketAttempt;
@@ -91,12 +94,24 @@ public sealed class DirectHostDiscovery : MonoBehaviour
   void Update()
   {
     if (manager == null) manager = NetworkManager.Singleton;
-    if (manager != null && manager.IsListening && manager.IsServer)
+    bool shouldAdvertise = manager != null && manager.IsListening && manager.IsServer
+      && GameBuilderApplication.CurrentGameOptions.playOptions.startAsPublic;
+    if (shouldAdvertise)
     {
-      if (NetworkingController.IsDirectIpv6Host)
+      wasAdvertising = true;
+      wasAdvertisingIpv6 = NetworkingController.IsDirectIpv6Host;
+      if (wasAdvertisingIpv6)
         AdvertiseIpv6Host();
       else
         AdvertiseHost();
+    }
+    else if (wasAdvertising)
+    {
+      if (wasAdvertisingIpv6)
+        AdvertiseIpv6Host(true);
+      else
+        AdvertiseHost(true);
+      wasAdvertising = false;
     }
 
     if (browsing)
@@ -107,11 +122,11 @@ public sealed class DirectHostDiscovery : MonoBehaviour
     }
   }
 
-  void AdvertiseHost()
+  void AdvertiseHost(bool withdrawal = false)
   {
     float now = Time.realtimeSinceStartup;
-    if (now < nextAdvertisementTime) return;
-    nextAdvertisementTime = now + AdvertisementInterval;
+    if (!withdrawal && now < nextAdvertisementTime) return;
+    if (!withdrawal) nextAdvertisementTime = now + AdvertisementInterval;
     if (broadcastSocket == null)
     {
       if (now < nextBroadcastSocketAttempt) return;
@@ -129,7 +144,7 @@ public sealed class DirectHostDiscovery : MonoBehaviour
       }
     }
 
-    byte[] packet = CreateAdvertisementPacket();
+    byte[] packet = withdrawal ? CreateWithdrawalPacket() : CreateAdvertisementPacket();
 
     HashSet<string> destinations = new HashSet<string>();
     destinations.Add(IPAddress.Broadcast.ToString());
@@ -209,11 +224,28 @@ public sealed class DirectHostDiscovery : MonoBehaviour
     }
   }
 
-  void AdvertiseIpv6Host()
+  byte[] CreateWithdrawalPacket()
+  {
+    byte[] certificateBytes = Encoding.UTF8.GetBytes(DirectHostTls.GetHostCredentials().CertificatePem);
+    using (MemoryStream stream = new MemoryStream())
+    using (BinaryWriter writer = new BinaryWriter(stream))
+    {
+      writer.Write(ProtocolMagic);
+      writer.Write(NetworkingController.DefaultDirectHostPort);
+      writer.Write((byte)0);
+      writer.Write((byte)0);
+      writer.Write((byte)0);
+      writer.Write((ushort)certificateBytes.Length);
+      writer.Write(certificateBytes);
+      return stream.ToArray();
+    }
+  }
+
+  void AdvertiseIpv6Host(bool withdrawal = false)
   {
     float now = Time.realtimeSinceStartup;
-    if (now < nextAdvertisementTime) return;
-    nextAdvertisementTime = now + AdvertisementInterval;
+    if (!withdrawal && now < nextAdvertisementTime) return;
+    if (!withdrawal) nextAdvertisementTime = now + AdvertisementInterval;
     if (ipv6AdvertisementSocket == null)
     {
       if (now < nextIpv6AdvertisementSocketAttempt) return;
@@ -232,7 +264,7 @@ public sealed class DirectHostDiscovery : MonoBehaviour
       }
     }
 
-    byte[] packet = CreateAdvertisementPacket();
+    byte[] packet = withdrawal ? CreateWithdrawalPacket() : CreateAdvertisementPacket();
     try
     {
       foreach (NetworkInterface networkInterface in NetworkInterface.GetAllNetworkInterfaces())
@@ -399,14 +431,34 @@ public sealed class DirectHostDiscovery : MonoBehaviour
         int playerCount = reader.ReadByte();
         int maxPlayers = reader.ReadByte();
         int nameLength = reader.ReadByte();
-        if (port == 0 || playerCount < 1 || maxPlayers < playerCount || maxPlayers > PhotonNetwork.MaximumDirectPlayers
-          || nameLength < 1 || nameLength > MaxNameBytes || nameLength > stream.Length - stream.Position - sizeof(ushort)) return false;
+        if (port == 0) return false;
+        if (playerCount == 0)
+        {
+          if (maxPlayers != 0 || nameLength != 0 || stream.Length - stream.Position < sizeof(ushort))
+            return false;
+          int certificateLength = reader.ReadUInt16();
+          if (certificateLength < 1 || certificateLength > MaxPacketBytes
+            || certificateLength != stream.Length - stream.Position) return false;
+          string certificate = new UTF8Encoding(false, true).GetString(reader.ReadBytes(certificateLength));
+          host = new HostInfo
+          {
+            Address = address.ToString(),
+            Port = port,
+            ServerCertificatePem = certificate,
+            IsWithdrawal = true
+          };
+          return true;
+        }
+
+        if (maxPlayers < playerCount || maxPlayers > PhotonNetwork.MaximumDirectPlayers
+          || nameLength < 1 || nameLength > MaxNameBytes
+          || nameLength > stream.Length - stream.Position - sizeof(ushort)) return false;
         string name = new UTF8Encoding(false, true).GetString(reader.ReadBytes(nameLength));
         if (string.IsNullOrWhiteSpace(name)) return false;
-        int certificateLength = reader.ReadUInt16();
-        if (certificateLength < 1 || certificateLength > MaxPacketBytes
-          || certificateLength != stream.Length - stream.Position) return false;
-        string certificate = new UTF8Encoding(false, true).GetString(reader.ReadBytes(certificateLength));
+        int serverCertificateLength = reader.ReadUInt16();
+        if (serverCertificateLength < 1 || serverCertificateLength > MaxPacketBytes
+          || serverCertificateLength != stream.Length - stream.Position) return false;
+        string serverCertificate = new UTF8Encoding(false, true).GetString(reader.ReadBytes(serverCertificateLength));
         host = new HostInfo
         {
           Address = address.ToString(),
@@ -414,7 +466,7 @@ public sealed class DirectHostDiscovery : MonoBehaviour
           Name = name,
           PlayerCount = playerCount,
           MaxPlayers = maxPlayers,
-          ServerCertificatePem = certificate,
+          ServerCertificatePem = serverCertificate,
           LastSeen = Time.realtimeSinceStartup
         };
         return true;
@@ -424,6 +476,34 @@ public sealed class DirectHostDiscovery : MonoBehaviour
     {
       return false;
     }
+  }
+
+  void RecordHost(HostInfo host)
+  {
+    string key = host.Address + ":" + host.Port;
+    if (host.IsWithdrawal)
+    {
+      if (hosts.TryGetValue(key, out HostInfo previous)
+        && previous.ServerCertificatePem == host.ServerCertificatePem)
+      {
+        hosts.Remove(key);
+        revision++;
+      }
+      return;
+    }
+
+    if (hosts.TryGetValue(key, out HostInfo previousHost))
+    {
+      bool changed = previousHost.Name != host.Name || previousHost.PlayerCount != host.PlayerCount
+        || previousHost.MaxPlayers != host.MaxPlayers
+        || previousHost.ServerCertificatePem != host.ServerCertificatePem;
+      host.LastSeen = Time.realtimeSinceStartup;
+      hosts[key] = host;
+      if (changed) revision++;
+      return;
+    }
+    hosts.Add(key, host);
+    revision++;
   }
 
   static bool IsLocalAddress(IPAddress address)
@@ -441,21 +521,6 @@ public sealed class DirectHostDiscovery : MonoBehaviour
     return IPAddress.IsLoopback(address);
   }
 
-  void RecordHost(HostInfo host)
-  {
-    string key = host.Address + ":" + host.Port;
-    if (hosts.TryGetValue(key, out HostInfo previous))
-    {
-      bool changed = previous.Name != host.Name || previous.PlayerCount != host.PlayerCount
-        || previous.MaxPlayers != host.MaxPlayers || previous.ServerCertificatePem != host.ServerCertificatePem;
-      host.LastSeen = Time.realtimeSinceStartup;
-      hosts[key] = host;
-      if (changed) revision++;
-      return;
-    }
-    hosts.Add(key, host);
-    revision++;
-  }
 
   void ExpireHosts()
   {

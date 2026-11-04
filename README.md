@@ -173,11 +173,15 @@ Photon PUN nor a paid Unity service is required.
 
 - From the splash screen, open **Multiplayer** and choose **Host a game** for
   the unchanged IPv4 host mode. Choose **Host IPv6 game** for an IPv6-only host.
-- Other players on the same IPv4 LAN see IPv4 hosts in the room list
-  automatically. Use **Join by address** with an IPv4/IPv6 address or DNS
-  hostname (`:7777` optional) if discovery is blocked. Use `[IPv6]:port` to
-  specify a custom port for an IPv6 literal; DNS lookup prefers IPv4 and falls
-  back to IPv6. The multiplayer panel shows the host's share address.
+- Other players on the same IPv4 LAN see public IPv4 hosts in the room list.
+  Private hosts are omitted from IPv4 and IPv6 LAN discovery but remain joinable
+  by manually sharing their address. Switching a discovered host to private
+  sends an IPv4 broadcast or IPv6 multicast withdrawal; missed or unrecognized
+  withdrawals leave cached entries visible for up to six seconds. Use
+  **Join by address** with an IPv4/IPv6 address or DNS hostname (`:7777` optional)
+  if discovery is blocked. Use `[IPv6]:port` to specify a custom port for an
+  IPv6 literal; DNS lookup prefers IPv4 and falls back to IPv6. The multiplayer
+  panel shows the host's share address.
 - The IPv4 host listens on UDP port `7777`; LAN discovery broadcasts on UDP
   `47778`. Allow UDP `47778` through the local firewall for IPv4 broadcasts and
   IPv6 multicast discovery.
