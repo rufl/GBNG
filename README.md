@@ -36,7 +36,7 @@ This fork keeps the implementations separate:
 * `ProjectSettings/` — pinned Unity editor version and project settings.
 * `tools/codegen/` — Python generators and the `gen-all.sh` entry point.
 * `tools/integrations/` — optional Photon, Steamworks, and embedded-browser setup and patches.
-* `tools/public-session-directory/` — dependency-free service for a self-hosted public player-session list.
+* `tools/public-session-directory/` — dependency-free HTTP session directory and optional UDP relay; see its [operations and protocol guide](tools/public-session-directory/README.md).
 * `tools/licensing/`, `tools/documentation/`, and `tools/maintenance/` — license, documentation, and maintenance utilities.
 * `tools/asset-inventory/` — generated visual asset and license catalog.
 * `third_party/` and `Assets/third_party/` — vendored dependencies with their individual notices.
@@ -279,10 +279,11 @@ docker compose up -d --build
 
 Set `DIRECTORY_DOMAIN` in `.env` to that hostname. The Caddy container obtains
 and renews HTTPS certificates automatically when the domain resolves to this
-server and inbound TCP ports `80` and `443` reach it. Only Caddy publishes
-ports; the directory API stays on the private Docker network. Set
+server and inbound TCP ports `80` and `443` reach it. Caddy publishes those TCP
+ports and proxies the HTTP API; port `47800` stays on the private Docker
+network. Compose publishes the UDP relay ports directly. Set
 `GAMEBUILDER_SESSION_DIRECTORY=https://<DIRECTORY_DOMAIN>` for every host and
-browser, or pass the matching `--session-directory=` argument. Change
+client, or pass the matching `--session-directory=` argument. Change
 `DIRECTORY_SUBNET`, `DIRECTORY_PROXY_IP`, and `DIRECTORY_SERVICE_IP` in `.env`
 if the default Docker subnet conflicts with another network.
 
@@ -293,10 +294,8 @@ routes) on the server and forward them to this Docker host. Caddy/Funnel
 terminate HTTPS only; neither proxies UDP. Hosts and players need outbound UDP
 access to the relay. The default stack binds IPv4; IPv6-only clients cannot use
 it, though IPv6 game hosts can tunnel through it when they can reach its IPv4
-endpoint. The service caps relay capacity at 1,000 concurrent routes globally,
-64 per source IP, and the remaining player slots (up to 15 remote players) per
-game. Bandwidth and server costs depend on the host/provider; no paid Unity
-multiplayer plugin or Unity-hosted relay is involved.
+endpoint. For protocol, security, capacity, operations, and troubleshooting
+details, see [`tools/public-session-directory/README.md`](tools/public-session-directory/README.md).
 
 
 ##### Tailnet-only simulation
