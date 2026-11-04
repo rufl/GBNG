@@ -69,6 +69,8 @@ Behavior UI text and button labels preserve fractional legacy `textSize` values 
 The **Controls** toolbar button exposes invert-vertical mouse look, mouse-look sensitivity (0.1–3×), and mouse-wheel zoom sensitivity. These device-local preferences reset to the original platform defaults and are saved in `user://editor-settings.cfg`, not in `.voos` projects.
 The **Audio** toolbar button controls device-local sound-effects volume (0–100%, default 50%) and background music volume (0–100%, default 100%) on separate mixer buses; both save to `user://editor-settings.cfg`. Godot plays the repository's original music tracks using the Unity A–F adaptive stem progression and `AudioStreamInteractive` transitions scheduled at each clip's end.
 
+When the main window loses focus, the app caps its frame rate at 30 FPS to reduce background load; regaining focus restores unlimited foreground rendering.
+
 In play mode, legacy player tooltips for `Action1` and `Action2` render as bottom-center LMB/RMB prompts for the local player. LAN hosts forward each player's prompts to the matching client; stopping play clears them.
 
 The visual card library supports text/category filtering, card-icon previews, hidden-card filtering, and drag-and-drop deck assignment. The canvas edits panels, card uses, notes, and panel layout while preserving legacy `.voos` references. A card manager creates, copies, edits, and deletes embedded cards and imports/exports legacy card-pack folders; conflicting IDs can be overwritten, duplicated, or canceled.

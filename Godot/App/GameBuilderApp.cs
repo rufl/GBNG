@@ -83,6 +83,8 @@ public partial class GameBuilderApp : Node3D
     private bool _selectionMarqueeToggle;
     private bool _syncingActorList;
     private bool _actorListVisible = true;
+    private Window? _applicationWindow;
+    private int _maxFpsBeforeFocusHandling;
 
     private LegacyTerrainNode? _terrain;
     private MeshInstance3D? _stageGroundMesh;
@@ -151,6 +153,7 @@ public partial class GameBuilderApp : Node3D
 
     public override void _Ready()
     {
+        InitializeApplicationFocusHandling();
         _catalog = LegacyRenderableCatalog.Load();
         _lanSession = new LegacyLanSession { Name = "LanSession" };
         _lanSession.SnapshotReceived += ApplyNetworkSnapshot;
@@ -208,6 +211,8 @@ public partial class GameBuilderApp : Node3D
             RunControlsSmoke();
         if (commandLineArgs.Contains("--smoke-audio", StringComparer.Ordinal))
             RunAudioSmoke();
+        if (commandLineArgs.Contains("--smoke-window-focus", StringComparer.Ordinal))
+            RunWindowFocusSmoke();
         if (commandLineArgs.Contains("--smoke-action-prompts", StringComparer.Ordinal))
             RunActionPromptSmoke();
         if (commandLineArgs.Contains("--smoke-action-prompts-lan-host", StringComparer.Ordinal))
@@ -1571,6 +1576,7 @@ public partial class GameBuilderApp : Node3D
     }
     public override void _ExitTree()
     {
+        CleanupApplicationFocusHandling();
         _behaviorRuntime?.Dispose();
         _behaviorRuntime = null;
     }
