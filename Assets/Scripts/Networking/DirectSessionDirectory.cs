@@ -80,6 +80,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
   string migrationToken;
   int sessionGeneration;
   bool migrationPending;
+  bool migrationUnavailable;
   bool browsing;
   bool wasPublishing;
   bool sessionRequestInFlight;
@@ -254,6 +255,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
     {
       if (!wasPublishing)
       {
+        migrationUnavailable = false;
         wasPublishing = true;
         hostGeneration++;
         nextHostRequestTime = 0f;
@@ -269,7 +271,8 @@ public sealed class DirectSessionDirectory : MonoBehaviour
               options.directHostMigrationName);
         }
       }
-      if (!string.IsNullOrEmpty(GetEndpoint())
+      if (!migrationUnavailable
+        && !string.IsNullOrEmpty(GetEndpoint())
         && DirectHostPortMapper.IsMappingResolved
         && !sessionRequestInFlight
         && Time.realtimeSinceStartup >= nextHostRequestTime)
@@ -369,6 +372,14 @@ public sealed class DirectSessionDirectory : MonoBehaviour
       if (migrating && responseCode == 409)
       {
         nextHostRequestTime = Time.realtimeSinceStartup + 5f;
+      }
+      else if (migrating && responseCode == 404)
+      {
+        sessionToken = null;
+        migrationPending = false;
+        migrationUnavailable = true;
+        ClearMigrationTicket();
+        Debug.LogWarning("The previous direct session expired before host migration completed.");
       }
       else if (responseCode == 404)
       {

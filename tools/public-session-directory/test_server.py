@@ -185,13 +185,77 @@ class SessionMigrationHttpTests(unittest.TestCase):
             self.assertEqual(info["Name"], "Migrated private game")
             self.assertEqual(info["Generation"], 2)
             self.assertFalse(info["IsPublic"])
-            status, listing_after = request("/v1/sessions")
+            status, listing_after_private_migration = request("/v1/sessions")
             self.assertEqual(status, 200)
-            self.assertEqual(json.loads(listing_after.decode("utf-8"))["Sessions"], sessions)
+            self.assertEqual(
+                json.loads(listing_after_private_migration.decode("utf-8"))["Sessions"],
+                sessions)
+
+            public_id = public["SessionId"]
+            state._sessions[public_id]["Updated"] = (
+                time.monotonic() - server.MIGRATION_STALE_SECONDS - 1)
+            public_update = make_session()
+            public_update.update({
+                "Name": "Migrated public game",
+                "Port": 8889,
+                "ServerCertificatePem": UPDATED_CERTIFICATE,
+                "IsPublic": True,
+            })
+            public_migrate_path = "/v1/sessions/{}/migrate".format(public_id)
+            status, public_migrated_bytes = request(
+                public_migrate_path, "POST", public_update, public["MigrationToken"])
+            self.assertEqual(status, 200)
+            public_migrated = json.loads(public_migrated_bytes.decode("utf-8"))
+            self.assertEqual(public_migrated["Generation"], 2)
+            self.assertNotEqual(public_migrated["Token"], public["Token"])
+            status, listing_after_public_migration = request("/v1/sessions")
+            self.assertEqual(status, 200)
+            public_list = json.loads(listing_after_public_migration.decode("utf-8"))["Sessions"]
+            self.assertEqual(len(public_list), 1)
+            self.assertEqual(public_list[0]["SessionId"], public_id)
+            self.assertEqual(public_list[0]["Name"], "Migrated public game")
+            self.assertEqual(public_list[0]["Address"], "127.0.0.1")
+            self.assertEqual(public_list[0]["Port"], 8889)
+            self.assertEqual(public_list[0]["ServerCertificatePem"], UPDATED_CERTIFICATE)
+            self.assertNotIn("Token", public_list[0])
+            self.assertNotIn("MigrationToken", public_list[0])
         finally:
             directory.shutdown()
             directory.server_close()
             thread.join(timeout=3)
+
+    def test_concurrent_migration_claim_has_one_winner(self):
+        state = server.DirectoryState()
+        registration, error = state.register(make_session(), "198.51.100.2")
+        self.assertIsNone(error)
+        session_id = registration["SessionId"]
+        state._sessions[session_id]["Updated"] = (
+            time.monotonic() - server.MIGRATION_STALE_SECONDS - 1)
+        body = make_session()
+        barrier = threading.Barrier(3)
+        results = [None, None]
+
+        def claim(index):
+            barrier.wait()
+            results[index] = state.migrate(
+                session_id, registration["MigrationToken"], body, "198.51.100.3")
+
+        threads = [
+            threading.Thread(target=claim, args=(index,))
+            for index in range(len(results))
+        ]
+        for thread in threads:
+            thread.start()
+        barrier.wait()
+        for thread in threads:
+            thread.join(timeout=3)
+
+        self.assertFalse(any(thread.is_alive() for thread in threads))
+        self.assertEqual(sum(result[1] is None for result in results), 1)
+        self.assertEqual(
+            sorted(result[1] for result in results if result[1] is not None),
+            ["active"])
+        self.assertEqual(state._sessions[session_id]["Generation"], 2)
 
     def test_listing_ttl_and_record_retention(self):
         state = server.DirectoryState()

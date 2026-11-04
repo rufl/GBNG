@@ -1461,7 +1461,9 @@ public class NetworkingController : Photon.PunBehaviour
           if (directMigrationCandidate)
           {
             directMigrationReconnectPending = true;
-            scenes.RestartAndLoadLibraryBundle(autosave, hostOptions);
+            scenes.RestartAndLoadLibraryBundle(
+              autosave,
+              CreateDirectMigrationOptions(directMigrationTicket, null, true));
             return;
           }
 
@@ -1480,7 +1482,9 @@ public class NetworkingController : Photon.PunBehaviour
             {
               if (directMigrationAbandoned) return;
               directMigrationReconnectPending = true;
-              scenes.RestartAndLoadLibraryBundle(autosave, clientOptions);
+              scenes.RestartAndLoadLibraryBundle(
+                autosave,
+                CreateDirectMigrationOptions(directMigrationTicket, migrated, false));
             },
             () =>
             {
