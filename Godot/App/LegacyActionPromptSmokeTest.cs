@@ -40,15 +40,18 @@ public partial class GameBuilderApp
             behaviorEditor = null;
             await WaitForUiFrames(2);
 
-            SetPlayMode(true);
+            SetPlayMode(false);
             _behaviorRuntime?.Tick(1d / 60d);
-            await WaitForUiFrames(1);
             var action1Panel = (PanelContainer)_actionPrompt.FindChild("Action1Prompt", true, false);
             var action2Panel = (PanelContainer)_actionPrompt.FindChild("Action2Prompt", true, false);
             var action1Binding = (Label)_actionPrompt.FindChild("Action1PromptBinding", true, false);
             var action2Binding = (Label)_actionPrompt.FindChild("Action2PromptBinding", true, false);
             var action1Text = (Label)_actionPrompt.FindChild("Action1PromptText", true, false);
             var action2Text = (Label)_actionPrompt.FindChild("Action2PromptText", true, false);
+            if (_actionPrompt.Visible || action1Panel.Visible || action2Panel.Visible)
+                throw new InvalidOperationException("The action prompts appeared before play mode began.");
+            SetPlayMode(true);
+            await WaitForUiFrames(1);
             if (!_actionPrompt.Visible
                 || !action1Panel.Visible
                 || !action2Panel.Visible

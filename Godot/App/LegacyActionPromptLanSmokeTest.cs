@@ -7,6 +7,7 @@ namespace GBNG.App;
 public partial class GameBuilderApp
 {
     private const int DefaultActionPromptSmokePort = 57_321;
+    private static readonly Color ActionPromptLanSnapshotTint = new(0.75f, 0.25f, 0.5f, 1f);
 
     private async void RunActionPromptLanHostSmoke()
     {
@@ -44,8 +45,13 @@ public partial class GameBuilderApp
             editor = null;
             await WaitForUiFrames(2);
 
+            long clientPeerId = 0;
             bool clientReady = false;
-            _lanSession.ClientProjectReadyReceived += _ => clientReady = true;
+            _lanSession.ClientProjectReadyReceived += peerId =>
+            {
+                clientPeerId = peerId;
+                clientReady = true;
+            };
             int port = ReadActionPromptSmokePort();
             string hostPath = PrepareNetworkHostProjectCopy()
                 ?? throw new InvalidOperationException("The LAN action-prompt smoke project could not be prepared for hosting.");
@@ -60,7 +66,16 @@ public partial class GameBuilderApp
             if (!clientReady)
                 throw new TimeoutException("The LAN action-prompt smoke client did not finish loading the hosted project.");
             await WaitForUiFrames(180);
-            GD.Print($"ACTION_PROMPTS_LAN_HOST_OK port={port} remotePlayer={remotePlayer.LegacyName} clientReady=true");
+            remotePlayer.SetTint(ActionPromptLanSnapshotTint);
+            await WaitForUiFrames(30);
+            ulong clientDeadline = Time.GetTicksMsec() + 45_000UL;
+            while (clientPeerId > 1
+                && _lanSession.Players.Any(player => player.Id == clientPeerId)
+                && Time.GetTicksMsec() < clientDeadline)
+                await WaitForUiFrames(1);
+            if (clientPeerId <= 1 || _lanSession.Players.Any(player => player.Id == clientPeerId))
+                throw new TimeoutException("The LAN action-prompt smoke client did not complete its prompt and snapshot checks.");
+            GD.Print($"ACTION_PROMPTS_LAN_HOST_OK port={port} remotePlayer={remotePlayer.LegacyName} clientReady=true snapshotTint=true clientCompleted=true");
         }
         catch (System.Exception exception)
         {
@@ -98,21 +113,24 @@ public partial class GameBuilderApp
             ulong deadline = Time.GetTicksMsec() + 45_000UL;
             while (Time.GetTicksMsec() < deadline
                 && (!_playMode || !_actionPrompt.Visible || !action1Panel.Visible || !action2Panel.Visible
-                    || action1Text.Text != "Remote action" || action2Text.Text != "Remote secondary"))
+                    || action1Text.Text != "Remote action" || action2Text.Text != "Remote secondary"
+                    || GetPlayerActor()?.State.Tint != ActionPromptLanSnapshotTint))
                 await WaitForUiFrames(1);
             if (!_playMode || !_actionPrompt.Visible || !action1Panel.Visible || !action2Panel.Visible
-                || action1Text.Text != "Remote action" || action2Text.Text != "Remote secondary")
+                || action1Text.Text != "Remote action" || action2Text.Text != "Remote secondary"
+                || GetPlayerActor()?.State.Tint != ActionPromptLanSnapshotTint)
                 throw new TimeoutException(
-                    $"The client did not display its host-authored Action1/Action2 prompts: playMode={_playMode}, "
-                    + $"promptVisible={_actionPrompt.Visible}, action1Visible={action1Panel.Visible}, "
-                    + $"action1='{action1Text.Text}', action2Visible={action2Panel.Visible}, action2='{action2Text.Text}', "
-                    + $"localPlayer='{GetPlayerActor()?.LegacyName}', received={receivedPromptsJson ?? "<none>"}.");
+                    $"The client did not receive its host-authored prompts and live snapshot: playMode={_playMode}, "
+                    + $"isClient={_lanSession.IsClient}, status='{_lanSession.Status}', "
+                    + $"promptVisible={_actionPrompt.Visible}, action1='{action1Text.Text}', action2='{action2Text.Text}', "
+                    + $"playerTint={GetPlayerActor()?.State.Tint}, expectedTint={ActionPromptLanSnapshotTint}, "
+                    + $"received={receivedPromptsJson ?? "<none>"}.");
             await WaitForUiFrames(2);
 
             string screenshot = ProjectSettings.GlobalizePath("res://.godot/action-prompts-lan-client-smoke.png");
             if (GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
                 throw new InvalidOperationException("Could not save the LAN client action-prompt screenshot.");
-            GD.Print($"ACTION_PROMPTS_LAN_CLIENT_OK localPlayer={GetPlayerActor()?.LegacyName} action1=true action2=true screenshot={screenshot}");
+            GD.Print($"ACTION_PROMPTS_LAN_CLIENT_OK localPlayer={GetPlayerActor()?.LegacyName} action1=true action2=true snapshotTint=true screenshot={screenshot}");
         }
         catch (System.Exception exception)
         {

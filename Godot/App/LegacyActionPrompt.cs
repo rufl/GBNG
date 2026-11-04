@@ -12,6 +12,8 @@ public sealed partial class LegacyActionPrompt : Control
     private readonly Label _action2Binding = new();
     private readonly Label _action1Description = new();
     private readonly Label _action2Description = new();
+    private JsonArray _playerToolTips = new();
+    private string _playerName = string.Empty;
     private bool _playMode;
     private string _action1Text = string.Empty;
     private string _action2Text = string.Empty;
@@ -40,19 +42,31 @@ public sealed partial class LegacyActionPrompt : Control
     public void SetPlayMode(bool enabled)
     {
         _playMode = enabled;
-        SetPromptText(string.Empty, string.Empty);
+        if (!enabled)
+        {
+            _playerToolTips = new JsonArray();
+            _playerName = string.Empty;
+        }
+        RefreshPrompts();
     }
 
     public void SetPrompts(JsonArray prompts, string playerName)
     {
+        _playerToolTips = (JsonArray)prompts.DeepClone();
+        _playerName = playerName;
+        RefreshPrompts();
+    }
+
+    private void RefreshPrompts()
+    {
         string action1 = string.Empty;
         string action2 = string.Empty;
-        if (_playMode && playerName.Length > 0)
+        if (_playMode && _playerName.Length > 0)
         {
-            foreach (JsonNode? item in prompts)
+            foreach (JsonNode? item in _playerToolTips)
             {
                 if (item is not JsonObject prompt
-                    || LegacySaveDocument.ReadString(prompt["playerName"]) != playerName)
+                    || LegacySaveDocument.ReadString(prompt["playerName"]) != _playerName)
                     continue;
 
                 string text = LegacySaveDocument.ReadString(prompt["text"]);

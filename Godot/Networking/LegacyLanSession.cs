@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -14,6 +15,9 @@ public sealed partial class LegacyLanSession : Node
 {
     private const int DiscoveryPort = 47_821;
     private const int MaximumPlayers = 8;
+    private const int SnapshotChunkBytes = 1_024;
+    private const int MaximumSnapshotBytes = 16 * 1024 * 1024;
+    private const int MaximumSnapshotChunkCount = (MaximumSnapshotBytes + SnapshotChunkBytes - 1) / SnapshotChunkBytes;
     private const int PackageChunkBytes = 32 * 1024;
     private const int MaximumChunkCount = LegacyProjectPackage.MaximumPackageBytes / PackageChunkBytes + 1;
     private const int ActorStructureChunkCharacters = 4 * 1024;
@@ -47,6 +51,11 @@ public sealed partial class LegacyLanSession : Node
     private long _nextAssetBundleTransferId;
     private long _nextDocumentPatchTransferId;
     private string _playerToolTipsJson = "[]";
+    private int _nextSnapshotSequence;
+    private int _lastCompletedSnapshotSequence;
+    private bool _hasCompletedSnapshot;
+    private bool _snapshotLimitWarningIssued;
+    private IncomingSnapshotTransfer? _incomingSnapshotTransfer;
     private ENetMultiplayerPeer? _enetPeer;
     private PacketPeerUdp? _discoveryListener;
     private PacketPeerUdp? _discoveryClient;
@@ -281,6 +290,9 @@ public sealed partial class LegacyLanSession : Node
         _hostPort = 0;
         _roomId = string.Empty;
         _snapshotElapsed = 0d;
+        _nextSnapshotSequence = 0;
+        _snapshotLimitWarningIssued = false;
+        ResetSnapshotReceiver();
         _projectReadyPeers.Clear();
         _playerToolTipsJson = "[]";
         _actorStructureDirty = false;
@@ -317,7 +329,35 @@ public sealed partial class LegacyLanSession : Node
         if (_snapshotElapsed < 0.05d)
             return;
         _snapshotElapsed %= 0.05d;
-        Rpc(nameof(ReceiveSnapshot), BuildSnapshot(actors));
+        SendSnapshot(actors);
+    }
+
+    private void SendSnapshot(IReadOnlyList<GBNG.World.WorldActorNode> actors)
+    {
+        byte[] snapshotJson = BuildSnapshot(actors);
+        if (snapshotJson.Length > MaximumSnapshotBytes)
+        {
+            WarnSnapshotLimitExceeded();
+            return;
+        }
+
+        byte[] compressedSnapshot = CompressSnapshot(snapshotJson);
+        if (compressedSnapshot.Length > MaximumSnapshotBytes)
+        {
+            WarnSnapshotLimitExceeded();
+            return;
+        }
+
+        int chunkCount = (compressedSnapshot.Length + SnapshotChunkBytes - 1) / SnapshotChunkBytes;
+        int sequence = unchecked(++_nextSnapshotSequence);
+        for (int index = 0; index < chunkCount; index++)
+        {
+            int offset = index * SnapshotChunkBytes;
+            int length = Math.Min(SnapshotChunkBytes, compressedSnapshot.Length - offset);
+            byte[] chunk = new byte[length];
+            Buffer.BlockCopy(compressedSnapshot, offset, chunk, 0, length);
+            Rpc(nameof(ReceiveSnapshotChunk), sequence, index, chunkCount, chunk);
+        }
     }
 
     public void NotifyProjectLoaded()
@@ -638,6 +678,9 @@ public sealed partial class LegacyLanSession : Node
         _lastInputSequences.Clear();
         _localInputElapsed = 0d;
         _localInputSequence = 0;
+        _nextSnapshotSequence = 0;
+        _snapshotLimitWarningIssued = false;
+        ResetSnapshotReceiver();
         _incomingPackage = null;
         _receivedChunks = null;
         _incomingChunkCount = 0;
@@ -857,14 +900,72 @@ public sealed partial class LegacyLanSession : Node
     private void ReceivePlayMode(bool enabled)
     {
         _hostPlayMode = enabled;
+        if (!enabled)
+            ResetSnapshotReceiver();
         HostPlayModeChanged?.Invoke(enabled);
     }
 
     [Rpc(MultiplayerApi.RpcMode.Authority, TransferMode = MultiplayerPeer.TransferModeEnum.UnreliableOrdered, TransferChannel = 1)]
-    private void ReceiveSnapshot(string snapshotJson)
+    private void ReceiveSnapshotChunk(int sequence, int chunkIndex, int chunkCount, byte[] chunk)
     {
-        if (IsClient)
-            SnapshotReceived?.Invoke(snapshotJson);
+        if (!IsClient
+            || !_hostPlayMode
+            || chunkCount is < 1 or > MaximumSnapshotChunkCount
+            || chunkIndex < 0
+            || chunkIndex >= chunkCount
+            || chunk.Length is < 1 or > SnapshotChunkBytes
+            || (chunkIndex < chunkCount - 1 && chunk.Length != SnapshotChunkBytes))
+            return;
+
+        IncomingSnapshotTransfer? incoming = _incomingSnapshotTransfer;
+        if (incoming is null)
+        {
+            if (_hasCompletedSnapshot && !IsNewerSnapshotSequence(sequence, _lastCompletedSnapshotSequence))
+                return;
+            incoming = new IncomingSnapshotTransfer(sequence, chunkCount);
+            _incomingSnapshotTransfer = incoming;
+        }
+        else if (sequence != incoming.Sequence)
+        {
+            if (!IsNewerSnapshotSequence(sequence, incoming.Sequence))
+                return;
+            incoming = new IncomingSnapshotTransfer(sequence, chunkCount);
+            _incomingSnapshotTransfer = incoming;
+        }
+
+        if (chunkCount != incoming.Chunks.Length
+            || incoming.Chunks[chunkIndex] is not null
+            || incoming.PayloadBytes > MaximumSnapshotBytes - chunk.Length)
+            return;
+
+        incoming.Chunks[chunkIndex] = chunk;
+        incoming.PayloadBytes += chunk.Length;
+        incoming.ReceivedChunkCount++;
+        if (incoming.ReceivedChunkCount != chunkCount)
+            return;
+
+        byte[] compressedSnapshot = new byte[incoming.PayloadBytes];
+        int payloadOffset = 0;
+        foreach (byte[]? payloadChunk in incoming.Chunks)
+        {
+            if (payloadChunk is null)
+            {
+                _incomingSnapshotTransfer = null;
+                return;
+            }
+            Buffer.BlockCopy(payloadChunk, 0, compressedSnapshot, payloadOffset, payloadChunk.Length);
+            payloadOffset += payloadChunk.Length;
+        }
+        _incomingSnapshotTransfer = null;
+        if (!TryDecompressSnapshot(compressedSnapshot, out string snapshotJson))
+        {
+            GD.PushWarning("Ignored an invalid or oversized LAN gameplay snapshot.");
+            return;
+        }
+
+        _lastCompletedSnapshotSequence = sequence;
+        _hasCompletedSnapshot = true;
+        SnapshotReceived?.Invoke(snapshotJson);
     }
     [Rpc(MultiplayerApi.RpcMode.Authority, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void ReceivePlayerToolTips(string playerToolTipsJson)
@@ -1520,7 +1621,7 @@ public sealed partial class LegacyLanSession : Node
         StateChanged?.Invoke();
     }
 
-    private static string BuildSnapshot(IReadOnlyList<GBNG.World.WorldActorNode> actors)
+    private static byte[] BuildSnapshot(IReadOnlyList<GBNG.World.WorldActorNode> actors)
     {
         var states = actors.Select(actor =>
         {
@@ -1542,8 +1643,63 @@ public sealed partial class LegacyLanSession : Node
                 renderableRotation.X, renderableRotation.Y, renderableRotation.Z, renderableRotation.W,
                 actor.State.LoopingAnimation);
         }).ToArray();
-        return JsonSerializer.Serialize(states);
+        return JsonSerializer.SerializeToUtf8Bytes(states);
     }
+
+    private static byte[] CompressSnapshot(byte[] snapshotJson)
+    {
+        using var compressed = new MemoryStream();
+        using (var deflate = new DeflateStream(compressed, CompressionLevel.Fastest, leaveOpen: true))
+            deflate.Write(snapshotJson);
+        return compressed.ToArray();
+    }
+
+    private static bool TryDecompressSnapshot(byte[] compressedSnapshot, out string snapshotJson)
+    {
+        snapshotJson = string.Empty;
+        try
+        {
+            using var input = new MemoryStream(compressedSnapshot, writable: false);
+            using var deflate = new DeflateStream(input, CompressionMode.Decompress);
+            using var output = new MemoryStream();
+            Span<byte> buffer = stackalloc byte[8 * 1024];
+            int bytesRead;
+            while ((bytesRead = deflate.Read(buffer)) > 0)
+            {
+                if (output.Length > MaximumSnapshotBytes - bytesRead)
+                    return false;
+                output.Write(buffer[..bytesRead]);
+            }
+            snapshotJson = Encoding.UTF8.GetString(output.GetBuffer(), 0, (int)output.Length);
+            return true;
+        }
+        catch (InvalidDataException)
+        {
+            return false;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+    }
+
+    private void WarnSnapshotLimitExceeded()
+    {
+        if (_snapshotLimitWarningIssued)
+            return;
+        _snapshotLimitWarningIssued = true;
+        GD.PushWarning("Skipped a LAN gameplay snapshot exceeding the 16 MiB limit.");
+    }
+
+    private void ResetSnapshotReceiver()
+    {
+        _incomingSnapshotTransfer = null;
+        _lastCompletedSnapshotSequence = 0;
+        _hasCompletedSnapshot = false;
+    }
+
+    private static bool IsNewerSnapshotSequence(int candidate, int current)
+        => unchecked(candidate - current) > 0;
 
     private static string NormalizePlayerName(string playerName)
     {
@@ -1590,4 +1746,12 @@ public sealed partial class LegacyLanSession : Node
         float OffsetX, float OffsetY, float OffsetZ,
         float RenderRotationX, float RenderRotationY, float RenderRotationZ, float RenderRotationW,
         string Animation);
+
+    private sealed class IncomingSnapshotTransfer(int sequence, int chunkCount)
+    {
+        public int Sequence { get; } = sequence;
+        public byte[]?[] Chunks { get; } = new byte[chunkCount][];
+        public int ReceivedChunkCount { get; set; }
+        public int PayloadBytes { get; set; }
+    }
 }
