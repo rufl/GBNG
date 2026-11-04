@@ -246,8 +246,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				HEADER_SEARCH_PATHS = /Users/stevenan/v8/include;
-				LIBRARY_SEARCH_PATHS = /Users/stevenan/v8/out.gn/x64.release.sample/obj;
+				HEADER_SEARCH_PATHS = "$(V8_ROOT)/include";
+				LIBRARY_SEARCH_PATHS = "$(V8_OUT)/obj";
 				OTHER_LDFLAGS = "-lv8_monolith";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
@@ -257,8 +257,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				HEADER_SEARCH_PATHS = /Users/stevenan/v8/include;
-				LIBRARY_SEARCH_PATHS = /Users/stevenan/v8/out.gn/x64.release.sample/obj;
+				HEADER_SEARCH_PATHS = "$(V8_ROOT)/include";
+				LIBRARY_SEARCH_PATHS = "$(V8_OUT)/obj";
 				OTHER_LDFLAGS = "-lv8_monolith";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};

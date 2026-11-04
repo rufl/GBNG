@@ -16,12 +16,6 @@
 
 // v8_in_unity.cpp : Defines the exported functions for the DLL application.
 
-// Include dirs:
-// C:\building_v8\v8;C:\building_v8\v8\include;
-
-// Lib dirs:
-// C:\building_v8\v8\out.gn\x64.release.sample\obj
-
 #pragma comment(lib, "v8_monolith.lib")
 
 #ifdef _WIN32

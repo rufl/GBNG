@@ -13,6 +13,5 @@
 # limitations under the License.
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
-cd "$repo_root"
-stat v8_in_unity/x64/Release/v8_in_unity.dll
-cp v8_in_unity/x64/Release/v8_in_unity.dll Assets/Plugins/V8InUnity/
+: "${V8_ROOT:?Set V8_ROOT to the pinned V8 source checkout}"
+python3 "$repo_root/tools/maintenance/build_v8_in_unity.py" --v8-root "$V8_ROOT"

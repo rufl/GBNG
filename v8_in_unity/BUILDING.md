@@ -1,0 +1,57 @@
+# Rebuilding the native V8 plugin
+
+## What is in this repository
+
+The Unity wrapper source, C ABI header, Visual Studio/Xcode projects, and native regression harness are in `v8_in_unity/`. The V8 engine source and its fetched third-party dependencies are not vendored here. The historical build note pins the engine to commit `d2e0166ded485df126c765b9196f7edd1ce50f82`; that revision reports V8 `7.1.0.0` in `include/v8-version.h`.
+
+The commit is the recorded provenance of the bundled plugin, not a cryptographic proof of how the checked-in binaries were produced. V8's own `DEPS` file pins its dependency revisions, fetched by `gclient sync`. This procedure is reproducible from those pinned inputs, but it is not hermetic or offline: depot_tools, Visual Studio/Xcode, and the upstream V8/dependency sources remain external prerequisites. Compiler/toolchain differences can also change binary hashes.
+
+The wrapper's C ABI is declared in `v8_in_unity/v8_in_unity.h` and consumed from C# in `Assets/Scripts/Voos/V8InUnity/Native.cs`. Do not update the engine commit or alter GN flags without running the native harness and a standalone Unity behavior-code smoke test.
+
+## Windows x64
+
+Requirements: Windows x64, depot_tools (`fetch`, `gclient`, `gn`, `ninja`), Visual Studio 2017 C++ tools (`v141`) and Windows SDK `10.0.17134.0`. Use the Visual Studio 2017 Developer Command Prompt so `msbuild` is on `PATH`.
+
+From a directory outside this repository, fetch and sync the exact engine revision:
+
+```bat
+fetch v8
+cd v8
+git checkout d2e0166ded485df126c765b9196f7edd1ce50f82
+gclient sync
+```
+
+Then, from the Game Builder repository root, build V8, build/run the native tests, and install the DLL only after the tests pass:
+
+```bat
+python tools\maintenance\build_v8_in_unity.py --v8-root C:\src\v8
+```
+
+The script checks the exact git revision, rejects tracked source edits, checks V8's `7.1.0.0` version header, generates `out.gn/x64.release` with a static monolithic x64 build and embedded startup data, builds `v8_monolith`, builds the wrapper and `v8_in_unity_test`, runs the test executable, and only then copies the resulting DLL into `Assets/Plugins/V8InUnity/`. `V8_ROOT` can replace `--v8-root`.
+
+`v8_use_external_startup_data=false` is intentional: the shipped plugin has no separate V8 startup-data blobs under `StreamingAssets`; the native initialization/evaluation smoke succeeds with a nonexistent runtime-data directory.
+
+## macOS
+
+The Xcode projects now use `V8_ROOT` and `V8_OUT` instead of the original developer's absolute paths. Build the same pinned V8 revision and `v8_monolith` for the architecture supported by the target Unity player, then pass those settings to Xcode, for example:
+
+```sh
+xcodebuild -project v8_in_unity/xcode_projects/v8_in_unity/v8_in_unity.xcodeproj \
+  -target v8_in_unity -configuration Release \
+  V8_ROOT="$V8_ROOT" V8_OUT="$V8_ROOT/out.gn/x64.release" build
+```
+
+Run the native test target before replacing the checked-in bundle. The automated build/install script currently covers Windows x64 only; macOS bundle architecture and Unity integration still require a macOS smoke run.
+
+## ABI and artifact validation
+
+The C++ regression harness checks V8 initialization, evaluation, brain/module updates, callbacks, and the exported wrapper functions. The Unity `V8InUnity.UnitTests` add managed interop coverage, but the native DLL is disabled for the Unity Editor; run those tests in a supported standalone player after replacing a plugin.
+
+The checked-in Windows and macOS binaries are prebuilt artifacts. A successful native rebuild does not prove that every platform bundle was rebuilt; update and test each target separately. Record the SHA-256 printed by the Windows script with the build environment when producing a release artifact.
+
+Current checked-in artifact hashes:
+
+- Windows x64 DLL: `89536122a2130754aea0c80a22862126bcd1baef89bf6668f47fa31141e29ced`
+- macOS bundle executable: `9280f920c820a04afa5846790869867ed29836509f7dd196a52957303555c4e5`
+
+These hashes identify the current files; they do not prove the build provenance.

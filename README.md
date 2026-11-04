@@ -26,13 +26,14 @@ This fork keeps the implementations separate:
 * [Python 3.15.2](https://www.python.org/downloads/release/python-3152/) for code generation. `.python-version` records the selected version.
 * Unity packages: Test Framework 1.8.0, UGUI 2.6.0, and Post Processing 3.5.4. TextMesh Pro functionality is supplied by UGUI in this editor.
 * Unity 6 no longer supplies the legacy UNet serializer. `VoosBinaryWriter` and `VoosBinaryReader` now own the existing little-endian game-state format instead of depending on the unsupported HLAPI package.
-* The embedded V8 runtime remains a prebuilt native plugin. Its engine source and external build dependencies are not in this repository, so updating that binary requires those upstream inputs and native ABI validation.
+* The native V8 Unity wrapper source and regression harness are in `v8_in_unity/`; V8 engine source and fetched dependencies remain upstream. The recorded engine revision is V8 7.1.0.0 (`d2e0166ded485df126c765b9196f7edd1ce50f82`). See [`v8_in_unity/BUILDING.md`](v8_in_unity/BUILDING.md) for the pinned inputs and Windows x64 rebuild/test procedure.
 * On Windows, Git Bash (included with [Git for Windows](https://gitforwindows.org/)) to run shell tools. On macOS, use Terminal.
 
 ## Project layout
 
 * `Assets/` — Unity scenes, scripts, prefabs, art, audio, and runtime resources. Keep Unity asset paths and `.meta` GUIDs intact.
 * `Packages/` — Unity Package Manager dependencies.
+* `v8_in_unity/` — native plugin wrapper, C ABI, platform projects, and regression harness; see [`BUILDING.md`](v8_in_unity/BUILDING.md).
 * `ProjectSettings/` — pinned Unity editor version and project settings.
 * `tools/codegen/` — Python generators and the `gen-all.sh` entry point.
 * `tools/integrations/` — optional Photon, Steamworks, and embedded-browser setup and patches.
