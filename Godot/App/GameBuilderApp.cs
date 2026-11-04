@@ -35,6 +35,7 @@ public partial class GameBuilderApp : Node3D
     private LegacyControlsWindow _controlsWindow = null!;
     private LegacyAudioSettingsWindow _audioSettingsWindow = null!;
     private float _sfxVolume = LegacyAudioSettings.DefaultSfxVolume;
+    private float _musicVolume = LegacyAudioSettings.DefaultMusicVolume;
     private const string EditorSettingsPath = "user://editor-settings.cfg";
     private CheckBox _autoSetSpawnOnMoveToggle = null!;
     private CheckBox _autoSetSpawnOnRotateToggle = null!;
@@ -180,6 +181,8 @@ public partial class GameBuilderApp : Node3D
         BuildWorldServices();
         LoadEditorPreferences();
         LegacyAudioSettings.ApplySfxVolume(_sfxVolume);
+        LegacyAudioSettings.ApplyMusicVolume(_musicVolume);
+        AddChild(new LegacyMusicController());
         BuildInterface();
         PopulateSamples();
         string[] commandLineArgs = OS.GetCmdlineUserArgs();
@@ -520,8 +523,9 @@ public partial class GameBuilderApp : Node3D
         _visualEffectsWindow = new LegacyVisualEffectsWindow(_cameraEffects);
         _controlsWindow = new LegacyControlsWindow(SetControlPreferences);
         _controlsWindow.SetPreferences(_invertMouseLook, _mouseLookSensitivity, _mouseWheelSensitivity);
-        _audioSettingsWindow = new LegacyAudioSettingsWindow(SetSfxVolumePreference);
+        _audioSettingsWindow = new LegacyAudioSettingsWindow(SetSfxVolumePreference, SetMusicVolumePreference);
         _audioSettingsWindow.SetSfxVolume(_sfxVolume);
+        _audioSettingsWindow.SetMusicVolume(_musicVolume);
         _assetStoreWindow = new LegacyAssetStoreWindow(
             _catalog,
             () => _document is not null && !_playMode && !_lanSession.HasPendingAssetSync,
@@ -1160,7 +1164,7 @@ public partial class GameBuilderApp : Node3D
     }
     private void OpenAudioSettings()
     {
-        _audioSettingsWindow.PopupCentered(new Vector2I(540, 230));
+        _audioSettingsWindow.PopupCentered(new Vector2I(540, 285));
     }
 
     private void OpenTerrainEditor()
@@ -3074,6 +3078,10 @@ public partial class GameBuilderApp : Node3D
         _sfxVolume = double.IsFinite(sfxVolume)
             ? Mathf.Clamp((float)sfxVolume, 0f, 1f)
             : LegacyAudioSettings.DefaultSfxVolume;
+        double musicVolume = settings.GetValue("audio", "music_volume", LegacyAudioSettings.DefaultMusicVolume).AsDouble();
+        _musicVolume = double.IsFinite(musicVolume)
+            ? LegacyAudioSettings.ClampMusicVolume((float)musicVolume)
+            : LegacyAudioSettings.DefaultMusicVolume;
     }
 
     private void SetParentOnResetPreference(bool enabled)
@@ -3126,6 +3134,12 @@ public partial class GameBuilderApp : Node3D
         LegacyAudioSettings.ApplySfxVolume(_sfxVolume);
         SaveEditorPreferences();
     }
+    private void SetMusicVolumePreference(float volume)
+    {
+        _musicVolume = LegacyAudioSettings.ClampMusicVolume(volume);
+        LegacyAudioSettings.ApplyMusicVolume(_musicVolume);
+        SaveEditorPreferences();
+    }
 
     private static float ReadControlPreference(ConfigFile settings, string key, float fallback, float minimum, float maximum)
     {
@@ -3166,6 +3180,7 @@ public partial class GameBuilderApp : Node3D
         settings.SetValue("controls", "mouse_look_sensitivity", _mouseLookSensitivity);
         settings.SetValue("controls", "mouse_wheel_sensitivity", _mouseWheelSensitivity);
         settings.SetValue("audio", "sfx_volume", _sfxVolume);
+        settings.SetValue("audio", "music_volume", _musicVolume);
         Error error = settings.Save(EditorSettingsPath);
         if (error != Error.Ok)
         {

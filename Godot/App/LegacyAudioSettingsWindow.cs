@@ -5,21 +5,26 @@ namespace GBNG.App;
 
 public sealed partial class LegacyAudioSettingsWindow : Window
 {
-    private readonly System.Action<float> _applyPreference;
+    private readonly System.Action<float> _applySfxPreference;
+    private readonly System.Action<float> _applyMusicPreference;
     private readonly HSlider _sfxVolume = new();
     private readonly Label _sfxVolumeValue = new();
+    private readonly HSlider _musicVolume = new();
+    private readonly Label _musicVolumeValue = new();
     private bool _refreshing;
 
-    public LegacyAudioSettingsWindow(System.Action<float> applyPreference)
+    public LegacyAudioSettingsWindow(System.Action<float> applySfxPreference, System.Action<float> applyMusicPreference)
     {
-        _applyPreference = applyPreference;
+        _applySfxPreference = applySfxPreference;
+        _applyMusicPreference = applyMusicPreference;
         Name = "AudioSettingsWindow";
         Title = "Audio";
-        Size = new Vector2I(540, 230);
+        Size = new Vector2I(540, 285);
         Hide();
         CloseRequested += Hide;
         BuildInterface();
         SetSfxVolume(LegacyAudioSettings.DefaultSfxVolume);
+        SetMusicVolume(LegacyAudioSettings.DefaultMusicVolume);
     }
 
     public void SetSfxVolume(float volume)
@@ -27,7 +32,15 @@ public sealed partial class LegacyAudioSettingsWindow : Window
         _refreshing = true;
         _sfxVolume.Value = LegacyAudioSettings.ClampSfxVolume(volume);
         _refreshing = false;
-        RefreshVolumeLabel();
+        RefreshVolumeLabel(_sfxVolume, _sfxVolumeValue);
+    }
+
+    public void SetMusicVolume(float volume)
+    {
+        _refreshing = true;
+        _musicVolume.Value = LegacyAudioSettings.ClampMusicVolume(volume);
+        _refreshing = false;
+        RefreshVolumeLabel(_musicVolume, _musicVolumeValue);
     }
 
     private void BuildInterface()
@@ -44,24 +57,11 @@ public sealed partial class LegacyAudioSettingsWindow : Window
         margin.AddChild(layout);
         layout.AddChild(new Label
         {
-            Text = "Sound effects volume. This device preference applies immediately and is saved locally.",
+            Text = "Volume settings apply immediately and are saved locally on this device.",
             AutowrapMode = TextServer.AutowrapMode.Word
         });
-
-        _sfxVolume.Name = "AudioSfxVolume";
-        _sfxVolume.MinValue = 0f;
-        _sfxVolume.MaxValue = 1f;
-        _sfxVolume.Step = 0.01;
-        _sfxVolume.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        _sfxVolume.ValueChanged += _ => ApplyCurrentPreference();
-        _sfxVolumeValue.Name = "AudioSfxVolumeValue";
-        var row = new HBoxContainer();
-        row.AddChild(new Label { Text = "Sound effects", CustomMinimumSize = new Vector2(150f, 0f) });
-        row.AddChild(_sfxVolume);
-        _sfxVolumeValue.HorizontalAlignment = HorizontalAlignment.Right;
-        _sfxVolumeValue.CustomMinimumSize = new Vector2(64f, 0f);
-        row.AddChild(_sfxVolumeValue);
-        layout.AddChild(row);
+        layout.AddChild(CreateVolumeRow("AudioSfxVolume", "Sound effects", _sfxVolume, _sfxVolumeValue, _applySfxPreference));
+        layout.AddChild(CreateVolumeRow("AudioMusicVolume", "Music", _musicVolume, _musicVolumeValue, _applyMusicPreference));
 
         layout.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
         var footer = new HBoxContainer();
@@ -75,23 +75,49 @@ public sealed partial class LegacyAudioSettingsWindow : Window
         layout.AddChild(footer);
     }
 
-    private void ApplyCurrentPreference()
+    private HBoxContainer CreateVolumeRow(
+        string sliderName,
+        string labelText,
+        HSlider slider,
+        Label valueLabel,
+        System.Action<float> applyPreference)
+    {
+        slider.Name = sliderName;
+        valueLabel.Name = $"{sliderName}Value";
+        slider.MinValue = 0f;
+        slider.MaxValue = 1f;
+        slider.Step = 0.01;
+        slider.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        slider.ValueChanged += _ => ApplyPreference(slider, valueLabel, applyPreference);
+        valueLabel.HorizontalAlignment = HorizontalAlignment.Right;
+        valueLabel.CustomMinimumSize = new Vector2(64f, 0f);
+
+        var row = new HBoxContainer();
+        row.AddChild(new Label { Text = labelText, CustomMinimumSize = new Vector2(150f, 0f) });
+        row.AddChild(slider);
+        row.AddChild(valueLabel);
+        return row;
+    }
+
+    private void ApplyPreference(HSlider slider, Label valueLabel, System.Action<float> applyPreference)
     {
         if (_refreshing)
             return;
-        RefreshVolumeLabel();
-        _applyPreference((float)_sfxVolume.Value);
+        RefreshVolumeLabel(slider, valueLabel);
+        applyPreference((float)slider.Value);
     }
 
     private void ResetToDefault()
     {
         SetSfxVolume(LegacyAudioSettings.DefaultSfxVolume);
-        ApplyCurrentPreference();
+        SetMusicVolume(LegacyAudioSettings.DefaultMusicVolume);
+        ApplyPreference(_sfxVolume, _sfxVolumeValue, _applySfxPreference);
+        ApplyPreference(_musicVolume, _musicVolumeValue, _applyMusicPreference);
     }
 
-    private void RefreshVolumeLabel()
+    private static void RefreshVolumeLabel(HSlider slider, Label valueLabel)
     {
-        float volume = (float)_sfxVolume.Value;
-        _sfxVolumeValue.Text = volume == 0f ? "Muted" : $"{volume:P0}";
+        float volume = (float)slider.Value;
+        valueLabel.Text = volume == 0f ? "Muted" : $"{volume:P0}";
     }
 }
