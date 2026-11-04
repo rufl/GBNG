@@ -321,7 +321,7 @@ public class MultiplayerMenu : ThumbnailMenu
     TMPro.TMP_Text joinLabel = joinCodeButton.GetComponentInChildren<TMPro.TMP_Text>(true);
     if (joinLabel != null)
     {
-      joinLabel.text = "Join by address";
+      joinLabel.text = "Join by invite";
     }
 
     SetOpenEvent(CreateThumbnails);

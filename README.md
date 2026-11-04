@@ -180,10 +180,11 @@ Photon PUN nor a paid Unity service is required.
   by manually sharing their address. Switching a discovered host to private
   sends an IPv4 broadcast or IPv6 multicast withdrawal; missed or unrecognized
   withdrawals leave cached entries visible for up to six seconds. Use
-  **Join by address** with an IPv4/IPv6 address or DNS hostname (`:7777` optional)
-  if discovery is blocked. Use `[IPv6]:port` to specify a custom port for an
-  IPv6 literal; DNS lookup prefers IPv4 and falls back to IPv6. The multiplayer
-  panel shows the host's share address.
+  **Join by invite** and paste the full `GBDIRECT1|address|port|certificate`
+  invite copied from the host. Bare addresses are rejected because direct
+  connections pin the host certificate; hostnames in a valid invite resolve
+  IPv4-first with IPv6 fallback. Use **Copy invite** in the multiplayer panel
+  to share the generated invite.
 - The IPv4 host listens on UDP port `7777`; LAN discovery broadcasts on UDP
   `47778`. Allow UDP `47778` through the local firewall for IPv4 broadcasts and
   IPv6 multicast discovery.
