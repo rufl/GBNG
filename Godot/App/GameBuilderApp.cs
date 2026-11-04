@@ -97,6 +97,12 @@ public partial class GameBuilderApp : Node3D
     private sealed record HistoryEntry(string Label, Action Undo, Action Redo);
     private sealed record ActorDeletionSnapshot(string Name, string DisplayName, string ActorJson, int Index, string[] ChildNames);
     private readonly record struct ActorMotionSnapshot(Transform3D Transform, Vector3 Velocity, Vector3 AngularVelocity);
+    private readonly record struct ActorParentSnapshot(
+        string TransformParent,
+        string SpawnTransformParent,
+        Transform3D Transform,
+        Vector3 Velocity,
+        Vector3 AngularVelocity);
     private sealed record NetworkActorSnapshot(
         string Name,
         float X, float Y, float Z,
@@ -329,6 +335,8 @@ public partial class GameBuilderApp : Node3D
             {
                 if (key.Keycode == Key.C)
                     BeginCopyPlacement();
+                else if (key.Keycode == Key.H)
+                    SetSelectedActorParentAtCursor();
                 else if (key.Keycode == Key.Y || (key.Keycode == Key.Z && key.ShiftPressed))
                     RedoEdit();
                 else if (key.Keycode == Key.Z)
@@ -1993,6 +2001,15 @@ public partial class GameBuilderApp : Node3D
 
     private bool SelectActorAt(Vector2 screenPosition, bool addToSelection = false, bool toggleSelection = false)
     {
+        WorldActorNode? actor = GetActorAtScreenPosition(screenPosition);
+        if (actor is null)
+            return false;
+        ApplyActorSelection(actor, addToSelection, toggleSelection);
+        return true;
+    }
+
+    private WorldActorNode? GetActorAtScreenPosition(Vector2 screenPosition)
+    {
         Vector3 origin = _camera.ProjectRayOrigin(screenPosition);
         Vector3 direction = _camera.ProjectRayNormal(screenPosition);
         var query = PhysicsRayQueryParameters3D.Create(origin, origin + direction * 10000f);
@@ -2013,11 +2030,7 @@ public partial class GameBuilderApp : Node3D
             }
         }
 
-        actor ??= FindActorAtScreenPosition(screenPosition, origin, obstructionDistance);
-        if (actor is null)
-            return false;
-        ApplyActorSelection(actor, addToSelection, toggleSelection);
-        return true;
+        return actor ?? FindActorAtScreenPosition(screenPosition, origin, obstructionDistance);
     }
 
     private WorldActorNode? FindActorAtScreenPosition(Vector2 screenPosition, Vector3 rayOrigin, float obstructionDistance)
@@ -2542,6 +2555,76 @@ public partial class GameBuilderApp : Node3D
         {
             ShowError($"Could not save project:\n{exception.Message}");
         }
+    }
+
+    private void SetSelectedActorParentAtCursor()
+    {
+        if (_document is null || _playMode || _selectedActors.Count != 1)
+            return;
+
+        WorldActorNode actor = _selectedActors[0];
+        if (!_actors.Contains(actor))
+            return;
+        WorldActorNode? parent = GetActorAtScreenPosition(GetViewport().GetMousePosition());
+        if (parent is not null && (parent == actor || actor.IsAncestorOf(parent)))
+        {
+            _status.Text = "An actor cannot be parented to itself or one of its descendants.";
+            return;
+        }
+
+        string parentName = parent?.LegacyName ?? string.Empty;
+        actor.SaveTransform();
+        var before = new ActorParentSnapshot(
+            actor.State.TransformParent,
+            LegacySaveDocument.ReadString(actor.State.Data["spawnTransformParent"]),
+            actor.GlobalTransform,
+            actor.LinearVelocity,
+            actor.AngularVelocity);
+        Node targetParent = parent ?? _world;
+        if (before.TransformParent == parentName
+            && before.SpawnTransformParent == parentName
+            && actor.GetParent() == targetParent)
+            return;
+
+        var after = new ActorParentSnapshot(
+            parentName,
+            parentName,
+            before.Transform,
+            before.Velocity,
+            before.AngularVelocity);
+        string actorName = actor.LegacyName;
+        ApplyActorParentSnapshot(actorName, after);
+        RecordHistory("Set actor parent",
+            () => ApplyActorParentSnapshot(actorName, before),
+            () => ApplyActorParentSnapshot(actorName, after));
+        _status.Text = parent is null
+            ? $"Unparented {actor.State.DisplayName}."
+            : $"Parented {actor.State.DisplayName} to {parent.State.DisplayName}.";
+    }
+
+    private void ApplyActorParentSnapshot(string actorName, ActorParentSnapshot snapshot)
+    {
+        WorldActorNode? actor = FindActor(actorName);
+        if (actor is null)
+            return;
+
+        WorldActorNode? parent = snapshot.TransformParent.Length == 0
+            ? null
+            : FindActor(snapshot.TransformParent);
+        if (parent is not null && (parent == actor || actor.IsAncestorOf(parent)))
+            return;
+
+        actor.State.SetTransformParent(snapshot.TransformParent);
+        actor.State.WriteString("spawnTransformParent", snapshot.SpawnTransformParent);
+        Node targetParent = parent ?? _world;
+        if (actor.GetParent() != targetParent)
+            actor.Reparent(targetParent, keepGlobalTransform: false);
+        actor.GlobalTransform = snapshot.Transform;
+        actor.LinearVelocity = snapshot.Velocity;
+        actor.AngularVelocity = snapshot.AngularVelocity;
+        actor.SaveTransform();
+        if (_selectedActor == actor)
+            SelectActor(actor);
     }
 
     private void QuickRotateSelectedActors()

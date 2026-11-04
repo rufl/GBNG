@@ -158,6 +158,99 @@ public partial class GameBuilderApp
             await WaitForUiFrames(2);
             AssertQuickRotationForSmoke(source, sourceBeforeRotate, rotationPivot, rotationDelta, rotated: false);
             AssertQuickRotationForSmoke(independent, independentBeforeRotate, rotationPivot, rotationDelta, rotated: false);
+            SetActorSelection(new[] { source }, source);
+            string originalTransformParent = source.State.TransformParent;
+            string originalSpawnTransformParent = LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]);
+            Node originalSceneParent = source.GetParent();
+            Vector2 parentTargetPosition = _camera.UnprojectPosition(independent.GetWorldRenderBounds().GetCenter());
+            Input.WarpMouse(parentTargetPosition);
+            await WaitForUiFrames(1);
+            if (GetActorAtScreenPosition(GetViewport().GetMousePosition()) != independent)
+                throw new InvalidOperationException("The parent shortcut could not resolve the actor under the cursor.");
+            var sourceBeforeParent = new ActorMotionSnapshot(source.GlobalTransform, source.LinearVelocity, source.AngularVelocity);
+            _UnhandledInput(new InputEventKey { Keycode = Key.H, CtrlPressed = true, Pressed = true });
+            if (source.State.TransformParent != independentName
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != independentName
+                || source.GetParent() != independent
+                || !source.GlobalTransform.IsEqualApprox(sourceBeforeParent.Transform)
+                || !source.LinearVelocity.IsEqualApprox(sourceBeforeParent.Velocity)
+                || !source.AngularVelocity.IsEqualApprox(sourceBeforeParent.AngularVelocity))
+                throw new InvalidOperationException($"Ctrl+H did not parent the selected actor while preserving its world motion state: selection={_selectedActors.Count}/{_selectedActor?.LegacyName}, transformParent='{source.State.TransformParent}', spawnParent='{LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"])}', sceneParent='{source.GetParent()?.Name}', transformPreserved={source.GlobalTransform.IsEqualApprox(sourceBeforeParent.Transform)}, velocityPreserved={source.LinearVelocity.IsEqualApprox(sourceBeforeParent.Velocity)}, angularVelocityPreserved={source.AngularVelocity.IsEqualApprox(sourceBeforeParent.AngularVelocity)}.");
+            UndoEdit();
+            if (source.State.TransformParent != originalTransformParent
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != originalSpawnTransformParent
+                || source.GetParent() != originalSceneParent
+                || !source.GlobalTransform.IsEqualApprox(sourceBeforeParent.Transform))
+                throw new InvalidOperationException("Undo did not restore the actor's original parent and world transform.");
+            RedoEdit();
+            if (source.State.TransformParent != independentName || source.GetParent() != independent)
+                throw new InvalidOperationException("Redo did not restore the actor parent.");
+
+            SetActorSelection(new[] { independent }, independent);
+            string independentOriginalParent = independent.State.TransformParent;
+            string independentOriginalSpawnParent = LegacySaveDocument.ReadString(independent.State.Data["spawnTransformParent"]);
+            Node independentOriginalSceneParent = independent.GetParent();
+            Vector2 cycleTargetPosition = _camera.UnprojectPosition(source.GetWorldRenderBounds().GetCenter());
+            Input.WarpMouse(cycleTargetPosition);
+            await WaitForUiFrames(1);
+            if (GetActorAtScreenPosition(GetViewport().GetMousePosition()) != source)
+                throw new InvalidOperationException("The cycle-rejection smoke test could not resolve the descendant actor.");
+            _UnhandledInput(new InputEventKey { Keycode = Key.H, CtrlPressed = true, Pressed = true });
+            if (independent.State.TransformParent != independentOriginalParent
+                || LegacySaveDocument.ReadString(independent.State.Data["spawnTransformParent"]) != independentOriginalSpawnParent
+                || independent.GetParent() != independentOriginalSceneParent)
+                throw new InvalidOperationException("Parenting an actor to its descendant created an invalid hierarchy.");
+
+            SetActorSelection(new[] { source }, source);
+            Vector2 viewportSize = GetViewport().GetVisibleRect().Size;
+            Vector2 emptyPosition = default;
+            bool foundEmptyPosition = false;
+            for (int row = 0; row < 8 && !foundEmptyPosition; row++)
+            {
+                for (int column = 0; column < 8; column++)
+                {
+                    Vector2 candidate = new(
+                        viewportSize.X * (column + 0.5f) / 8f,
+                        viewportSize.Y * (row + 0.5f) / 8f);
+                    if (GetActorAtScreenPosition(candidate) is not null)
+                        continue;
+                    emptyPosition = candidate;
+                    foundEmptyPosition = true;
+                    break;
+                }
+            }
+            if (!foundEmptyPosition)
+                throw new InvalidOperationException("The parent smoke test could not find empty world space.");
+            Input.WarpMouse(emptyPosition);
+            await WaitForUiFrames(1);
+            if (GetActorAtScreenPosition(GetViewport().GetMousePosition()) is not null)
+                throw new InvalidOperationException("The mouse did not remain over empty world space for unparenting.");
+            var sourceBeforeUnparent = new ActorMotionSnapshot(source.GlobalTransform, source.LinearVelocity, source.AngularVelocity);
+            _UnhandledInput(new InputEventKey { Keycode = Key.H, CtrlPressed = true, Pressed = true });
+            if (source.State.TransformParent.Length != 0
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]).Length != 0
+                || source.GetParent() != _world
+                || !source.GlobalTransform.IsEqualApprox(sourceBeforeUnparent.Transform))
+                throw new InvalidOperationException("Ctrl+H over empty world space did not unparent the selected actor.");
+            UndoEdit();
+            if (source.State.TransformParent != independentName
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != independentName
+                || source.GetParent() != independent
+                || !source.GlobalTransform.IsEqualApprox(sourceBeforeUnparent.Transform))
+                throw new InvalidOperationException("Undo did not restore the actor parent after unparenting.");
+            RedoEdit();
+            if (source.State.TransformParent.Length != 0 || source.GetParent() != _world)
+                throw new InvalidOperationException("Redo did not restore the unparented actor state.");
+            UndoEdit();
+            UndoEdit();
+            if (source.State.TransformParent != originalTransformParent
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != originalSpawnTransformParent
+                || source.GetParent() != originalSceneParent)
+                throw new InvalidOperationException("Undo did not return the actor to its original hierarchy.");
+
+            SetActorSelection(new[] { source, independent }, source);
+            await WaitForUiFrames(1);
+
 
             BeginCopyPlacement();
             if (!_copyPlacementActive || _copySources.Count != 3
@@ -310,6 +403,17 @@ public partial class GameBuilderApp
                 throw new InvalidOperationException("Redo did not restore the latest actor-copy group.");
 
             _UnhandledInput(new InputEventKey { Keycode = Key.Escape, Pressed = true });
+            WorldActorNode persistenceSource = _actors.Single(actor => actor.LegacyName == sourceName);
+            WorldActorNode persistenceParent = _actors.Single(actor => actor.LegacyName == independentName);
+            SetActorSelection(new[] { persistenceSource }, persistenceSource);
+            Input.WarpMouse(_camera.UnprojectPosition(persistenceParent.GetWorldRenderBounds().GetCenter()));
+            await WaitForUiFrames(1);
+            if (GetActorAtScreenPosition(GetViewport().GetMousePosition()) != persistenceParent)
+                throw new InvalidOperationException("The parent persistence smoke test could not resolve its target actor.");
+            _UnhandledInput(new InputEventKey { Keycode = Key.H, CtrlPressed = true, Pressed = true });
+            if (persistenceSource.State.TransformParent != independentName
+                || LegacySaveDocument.ReadString(persistenceSource.State.Data["spawnTransformParent"]) != independentName)
+                throw new InvalidOperationException("The parent shortcut did not update the project state before save.");
             _document.SaveTo(projectPath);
             LoadProject(projectPath);
             await WaitForUiFrames(2);
@@ -317,8 +421,15 @@ public partial class GameBuilderApp
                 throw new InvalidOperationException("Copied actor hierarchies did not persist after saving and reloading the project.");
             if (!_actors.Any(actor => LegacySaveDocument.ReadString(actor.State.Data["cloneParent"]) == sourceName))
                 throw new InvalidOperationException("Saved copy lineage was not retained in the .voos project.");
+            WorldActorNode persistedSource = _actors.Single(actor => actor.LegacyName == sourceName);
+            WorldActorNode persistedParent = _actors.Single(actor => actor.LegacyName == independentName);
+            if (persistedSource.State.TransformParent != independentName
+                || LegacySaveDocument.ReadString(persistedSource.State.Data["spawnTransformParent"]) != independentName
+                || persistedSource.GetParent() != persistedParent)
+                throw new InvalidOperationException("The actor parent and reset parent did not persist through save and reload.");
 
-            GD.Print($"ACTOR_COPY_SMOKE_OK selection=shift-toggle-marquee=true marqueeVisual=true quickRotate=R+toolbar=true groupPivot=true undo-redo=true multiCopyRoots=true multiDelete=undo-redo=true preview=true ctrlC=true snap=true descendants=true repeat=true persistence=true marqueeScreenshot={marqueeScreenshot} copyScreenshot={screenshot}");
+            GD.Print($"ACTOR_COPY_SMOKE_OK selection=shift-toggle-marquee=true marqueeVisual=true quickRotate=R+toolbar=true groupPivot=true undo-redo=true parenting=CtrlH=true transformPreserved=true cycleRejected=true unparent=emptySpace=true undo-redo=true parentPersistence=true multiCopyRoots=true multiDelete=undo-redo=true preview=true ctrlC=true snap=true descendants=true repeat=true persistence=true marqueeScreenshot={marqueeScreenshot} copyScreenshot={screenshot}");
+
         }
         catch (Exception exception)
         {
