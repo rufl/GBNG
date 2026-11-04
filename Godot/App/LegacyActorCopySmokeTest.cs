@@ -94,12 +94,43 @@ public partial class GameBuilderApp
             child.SaveTransform();
             RefreshActorList();
             ClearHistory();
-            SelectActor(source);
+            SetActorSelection(new[] { source }, source);
             await WaitForUiFrames(2);
             _cameraTarget = (source.GlobalPosition + independent.GlobalPosition) * 0.5f;
             _cameraDistance = 18f;
             UpdateOrbitCamera();
             await WaitForUiFrames(2);
+            Button cameraFollowButton = FindChild("CameraFollowButton", true, false) as Button
+                ?? throw new InvalidOperationException("The camera-follow button was not found.");
+            Vector3 cameraTargetBeforeFollow = _cameraTarget;
+            _actorList.GrabFocus();
+            _UnhandledInput(new InputEventKey { Keycode = Key.F, Pressed = true });
+            await WaitForUiFrames(2);
+            if (!_cameraFollowingActor
+                || cameraFollowButton.Text != "Following"
+                || !_cameraTarget.IsEqualApprox(source.GetWorldRenderBounds().GetCenter()))
+                throw new InvalidOperationException("F did not focus and follow the selected actor.");
+            string cameraFollowScreenshot = ProjectSettings.GlobalizePath("res://.godot/camera-follow-smoke.png");
+            if (GetViewport().GetTexture().GetImage().SavePng(cameraFollowScreenshot) != Error.Ok)
+                throw new InvalidOperationException("The camera-follow surface screenshot could not be saved.");
+            Transform3D sourceTransformBeforeFollow = source.GlobalTransform;
+            Transform3D childTransformBeforeFollow = child.GlobalTransform;
+            source.GlobalPosition += Vector3.Right * 2f;
+            _Process(1d);
+            if (_cameraTarget.DistanceTo(source.GetWorldRenderBounds().GetCenter()) > 0.02f)
+                throw new InvalidOperationException("The editor camera did not track the selected actor's movement.");
+            cameraFollowButton.EmitSignal("pressed");
+            Vector3 cameraTargetAfterStop = _cameraTarget;
+            if (_cameraFollowingActor || cameraFollowButton.Text != "Follow")
+                throw new InvalidOperationException("The Follow button did not stop camera tracking.");
+            source.GlobalPosition += Vector3.Right * 2f;
+            _Process(1d);
+            if (!_cameraTarget.IsEqualApprox(cameraTargetAfterStop))
+                throw new InvalidOperationException("The camera continued following after the toggle was disabled.");
+            source.GlobalTransform = sourceTransformBeforeFollow;
+            child.GlobalTransform = childTransformBeforeFollow;
+            _cameraTarget = cameraTargetBeforeFollow;
+            UpdateOrbitCamera();
 
             ClickActorForSmoke(source);
             AssertActorSelectionForSmoke(source);
@@ -451,7 +482,7 @@ public partial class GameBuilderApp
                 || persistedSource.GetParent() != persistedParent)
                 throw new InvalidOperationException("The actor parent and reset parent did not persist through save and reload.");
 
-            GD.Print($"ACTOR_COPY_SMOKE_OK selection=shift-toggle-marquee=true marqueeVisual=true quickRotate=R+toolbar=true groupPivot=true undo-redo=true parenting=CtrlH=true transformPreserved=true cycleRejected=true unparent=emptySpace=true undo-redo=true parentPersistence=true actorListToggle=true actorListScreenshot={actorListScreenshot} multiCopyRoots=true multiDelete=undo-redo=true preview=true ctrlC=true snap=true descendants=true repeat=true persistence=true marqueeScreenshot={marqueeScreenshot} copyScreenshot={screenshot}");
+            GD.Print($"ACTOR_COPY_SMOKE_OK selection=shift-toggle-marquee=true marqueeVisual=true quickRotate=R+toolbar=true groupPivot=true undo-redo=true parenting=CtrlH=true transformPreserved=true cycleRejected=true unparent=emptySpace=true undo-redo=true parentPersistence=true actorListToggle=true actorListScreenshot={actorListScreenshot} cameraFollow=F+button=true actorTracking=true cameraFollowScreenshot={cameraFollowScreenshot} multiCopyRoots=true multiDelete=undo-redo=true preview=true ctrlC=true snap=true descendants=true repeat=true persistence=true marqueeScreenshot={marqueeScreenshot} copyScreenshot={screenshot}");
 
         }
         catch (Exception exception)

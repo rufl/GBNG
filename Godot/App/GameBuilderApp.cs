@@ -39,6 +39,7 @@ public partial class GameBuilderApp : Node3D
     private Label _status = null!;
     private Label _selectionTitle = null!;
     private Button _playButton = null!;
+    private Button _cameraFollowButton = null!;
     private FileDialog _openDialog = null!;
     private FileDialog _saveDialog = null!;
     private FileDialog _importModelDialog = null!;
@@ -67,6 +68,7 @@ public partial class GameBuilderApp : Node3D
     private readonly record struct TerrainCellSnapshot(int Shape, int Style, int Direction);
     private bool _updatingInspector;
     private bool _playMode;
+    private bool _cameraFollowingActor;
     private float _cameraYaw = Mathf.DegToRad(35f);
     private float _cameraPitch = Mathf.DegToRad(-28f);
     private float _cameraDistance = 26f;
@@ -184,7 +186,23 @@ public partial class GameBuilderApp : Node3D
 
     public override void _Process(double delta)
     {
-        if (!_playMode || GetPlayerActor() is not WorldActorNode player)
+        if (!_playMode)
+        {
+            if (_cameraFollowingActor)
+            {
+                if (_selectedActor is null || !_actors.Contains(_selectedActor))
+                {
+                    SetCameraFollowingActor(false);
+                    return;
+                }
+
+                Vector3 followTarget = _selectedActor.GetWorldRenderBounds().GetCenter();
+                _cameraTarget = _cameraTarget.Lerp(followTarget, 1f - Mathf.Exp(-5f * (float)delta));
+                UpdateOrbitCamera();
+            }
+            return;
+        }
+        if (GetPlayerActor() is not WorldActorNode player)
             return;
 
         WorldActorNode? cameraActor = GetCameraActor(player);
@@ -333,6 +351,8 @@ public partial class GameBuilderApp : Node3D
                 RemoveSelectedActor();
             else if (!_playMode && !editingText && key.Keycode == Key.R && !key.CtrlPressed && !key.MetaPressed)
                 QuickRotateSelectedActors();
+            else if (!_playMode && !editingText && key.Keycode == Key.F && !key.CtrlPressed && !key.MetaPressed)
+                ToggleCameraFollowingActor();
             else if (!_playMode && !editingText && (key.CtrlPressed || key.MetaPressed))
             {
                 if (key.Keycode == Key.C)
@@ -585,6 +605,16 @@ public partial class GameBuilderApp : Node3D
         };
         quickRotateActors.Pressed += QuickRotateSelectedActors;
         toolbar.AddChild(quickRotateActors);
+        _cameraFollowButton = new Button
+        {
+            Name = "CameraFollowButton",
+            Text = "Follow",
+            TooltipText = "Follow the selected actor (F)",
+            CustomMinimumSize = new Vector2(84f, 36f),
+            Disabled = true
+        };
+        _cameraFollowButton.Pressed += ToggleCameraFollowingActor;
+        toolbar.AddChild(_cameraFollowButton);
         AddToolbarButton(toolbar, "World", OpenWorldSettings);
         AddToolbarButton(toolbar, "Effects", OpenVisualEffects);
         AddToolbarButton(toolbar, "Terrain", OpenTerrainEditor);
@@ -2231,6 +2261,9 @@ public partial class GameBuilderApp : Node3D
                 _selectedActors.Add(actor);
         }
         _selectedActor = focus is not null && _selectedActors.Contains(focus) ? focus : _selectedActors.LastOrDefault();
+        if (_selectedActor is null && _cameraFollowingActor)
+            SetCameraFollowingActor(false);
+        UpdateCameraFollowButton();
         SyncActorListSelection();
 
         _updatingInspector = true;
@@ -2307,6 +2340,31 @@ public partial class GameBuilderApp : Node3D
             : "Show the actor list (Ctrl/Cmd+L)";
     }
 
+    private void ToggleCameraFollowingActor()
+    {
+        SetCameraFollowingActor(!_cameraFollowingActor);
+    }
+
+    private void SetCameraFollowingActor(bool following)
+    {
+        _cameraFollowingActor = following
+            && !_playMode
+            && _selectedActor is not null
+            && _actors.Contains(_selectedActor);
+        if (_cameraFollowingActor && _selectedActor is not null)
+            _cameraTarget = _selectedActor.GetWorldRenderBounds().GetCenter();
+        UpdateCameraFollowButton();
+        UpdateOrbitCamera();
+    }
+
+    private void UpdateCameraFollowButton()
+    {
+        if (_cameraFollowButton is null)
+            return;
+        _cameraFollowButton.Disabled = _playMode || _selectedActor is null;
+        _cameraFollowButton.Text = _cameraFollowingActor ? "Following" : "Follow";
+    }
+
     private void SetPlayMode(bool enabled, bool fromHost = false)
     {
         if (_document is null)
@@ -2329,6 +2387,7 @@ public partial class GameBuilderApp : Node3D
             EndTerrainStroke();
         }
         _playMode = enabled;
+        UpdateCameraFollowButton();
         Input.MouseMode = Input.MouseModeEnum.Visible;
         foreach (WorldActorNode actor in _actors)
             actor.SetPlayMode(enabled);
