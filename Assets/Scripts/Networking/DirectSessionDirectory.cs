@@ -15,7 +15,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
   const int RequestTimeoutSeconds = 10;
   const int MaxSessionNameBytes = 96;
 
-  [Serializable]
+[Serializable]
   public sealed class SessionInfo
   {
     public string SessionId;
@@ -25,6 +25,17 @@ public sealed class DirectSessionDirectory : MonoBehaviour
     public int PlayerCount;
     public int MaxPlayers;
     public string ServerCertificatePem;
+    public int Generation;
+    public bool IsPublic;
+    public int AddressFamily;
+  }
+
+  public struct MigrationTicket
+  {
+    public string SessionId;
+    public string Token;
+    public int Generation;
+    public bool IsPublic;
   }
 
   [Serializable]
@@ -42,6 +53,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
     public int Port;
     public int AddressFamily;
     public string ServerCertificatePem;
+    public bool IsPublic;
   }
 
   [Serializable]
@@ -49,6 +61,8 @@ public sealed class DirectSessionDirectory : MonoBehaviour
   {
     public string SessionId;
     public string Token;
+    public string MigrationToken;
+    public int Generation;
   }
 
   static DirectSessionDirectory instance;
@@ -62,6 +76,9 @@ public sealed class DirectSessionDirectory : MonoBehaviour
   string statusMessage;
   string sessionId;
   string sessionToken;
+  string migrationToken;
+  int sessionGeneration;
+  bool migrationPending;
   bool browsing;
   bool wasPublishing;
   bool sessionRequestInFlight;
@@ -71,6 +88,10 @@ public sealed class DirectSessionDirectory : MonoBehaviour
   float nextListRequestTime;
   int hostGeneration;
 
+  static string clientMigrationSessionId;
+  static string clientMigrationToken;
+  static int clientMigrationGeneration;
+  static bool clientMigrationIsPublic;
   public static int Revision { get { return revision; } }
 
   public static bool IsConfigured
@@ -114,6 +135,46 @@ public sealed class DirectSessionDirectory : MonoBehaviour
     SessionInfo[] copy = new SessionInfo[current.Length];
     Array.Copy(current, copy, current.Length);
     return copy;
+  }
+  public static bool TryGetMigrationTicket(out MigrationTicket ticket)
+  {
+    ticket = new MigrationTicket
+    {
+      SessionId = clientMigrationSessionId,
+      Token = clientMigrationToken,
+      Generation = clientMigrationGeneration,
+      IsPublic = clientMigrationIsPublic
+    };
+    return !string.IsNullOrEmpty(ticket.SessionId)
+      && !string.IsNullOrEmpty(ticket.Token)
+      && ticket.Generation > 0;
+  }
+
+  internal static void SetMigrationTicket(string id, string token, int generation, bool isPublic)
+  {
+    if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(token) || generation < 1)
+      throw new ArgumentException("A direct-session migration ticket is incomplete.");
+    clientMigrationSessionId = id;
+    clientMigrationToken = token;
+    clientMigrationGeneration = generation;
+    clientMigrationIsPublic = isPublic;
+  }
+
+  internal static void ClearMigrationTicket()
+  {
+    clientMigrationSessionId = null;
+    clientMigrationToken = null;
+    clientMigrationGeneration = 0;
+    clientMigrationIsPublic = false;
+  }
+
+  public static void BeginMigrationWatch(
+    MigrationTicket ticket,
+    Action<SessionInfo> onMigrated,
+    Action onFailed)
+  {
+    DirectSessionDirectory service = EnsureInstance();
+    service.StartCoroutine(service.WatchForMigrationRoutine(ticket, onMigrated, onFailed));
   }
 
   static DirectSessionDirectory EnsureInstance()
@@ -173,7 +234,8 @@ public sealed class DirectSessionDirectory : MonoBehaviour
   void Update()
   {
     if (manager == null) manager = NetworkManager.Singleton;
-    GameBuilderApplication.PlayOptions playOptions = GameBuilderApplication.CurrentGameOptions.playOptions;
+    GameBuilderApplication.GameOptions options = GameBuilderApplication.CurrentGameOptions;
+    GameBuilderApplication.PlayOptions playOptions = options.playOptions;
     bool shouldPublish = ShouldPublishHost(
       manager != null && manager.IsListening,
       manager != null && manager.IsServer,
@@ -185,6 +247,15 @@ public sealed class DirectSessionDirectory : MonoBehaviour
         wasPublishing = true;
         hostGeneration++;
         nextHostRequestTime = 0f;
+        if (!string.IsNullOrEmpty(options.directHostMigrationSessionId))
+        {
+          sessionId = options.directHostMigrationSessionId;
+          migrationToken = options.directHostMigrationToken;
+          sessionGeneration = options.directHostMigrationGeneration;
+          migrationPending = !string.IsNullOrEmpty(migrationToken);
+          if (migrationPending)
+            SetMigrationTicket(sessionId, migrationToken, sessionGeneration, playOptions.startAsPublic);
+        }
       }
       if (!string.IsNullOrEmpty(GetEndpoint())
         && DirectHostPortMapper.IsMappingResolved
@@ -204,6 +275,8 @@ public sealed class DirectSessionDirectory : MonoBehaviour
         StartCoroutine(UnregisterRoutine(sessionId, sessionToken));
         sessionId = null;
         sessionToken = null;
+        migrationToken = null;
+        migrationPending = false;
       }
     }
 
@@ -219,7 +292,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
     bool isServer,
     GameBuilderApplication.PlayOptions playOptions)
   {
-    return isListening && isServer && playOptions.isMultiplayer && playOptions.startAsPublic;
+    return isListening && isServer && playOptions.isMultiplayer;
   }
 
 
@@ -230,65 +303,90 @@ public sealed class DirectSessionDirectory : MonoBehaviour
     string baseUrl = GetEndpoint();
     SessionRequest data = GetCurrentSessionRequest();
     bool creating = string.IsNullOrEmpty(sessionId) || string.IsNullOrEmpty(sessionToken);
-    string url = creating
-      ? baseUrl + "/v1/sessions"
-      : baseUrl + "/v1/sessions/" + Uri.EscapeDataString(sessionId);
-    UnityWebRequest request = CreateJsonRequest(creating ? "POST" : "PUT", url, JsonUtility.ToJson(data));
-    if (!creating) request.SetRequestHeader("Authorization", "Bearer " + sessionToken);
+    bool migrating = migrationPending;
+    string url = migrating
+      ? baseUrl + "/v1/sessions/" + Uri.EscapeDataString(sessionId) + "/migrate"
+      : creating
+        ? baseUrl + "/v1/sessions"
+        : baseUrl + "/v1/sessions/" + Uri.EscapeDataString(sessionId);
+    UnityWebRequest request = CreateJsonRequest(
+      migrating || creating ? "POST" : "PUT", url, JsonUtility.ToJson(data));
+    string requestToken = migrating ? migrationToken : sessionToken;
+    if (!string.IsNullOrEmpty(requestToken))
+      request.SetRequestHeader("Authorization", "Bearer " + requestToken);
     yield return request.SendWebRequest();
 
     bool successful = request.result == UnityWebRequest.Result.Success
-      && (creating ? request.responseCode == 201 : request.responseCode == 204);
+      && (migrating ? request.responseCode == 200
+        : creating ? request.responseCode == 201 : request.responseCode == 204);
     string responseBody = request.downloadHandler == null ? string.Empty : request.downloadHandler.text;
     long responseCode = request.responseCode;
     string requestError = request.error;
     request.Dispose();
 
-    if (successful && creating)
+    if (successful && (creating || migrating))
     {
       RegistrationResponse response = null;
       try { response = JsonUtility.FromJson<RegistrationResponse>(responseBody); }
-      catch (Exception e) { Debug.LogWarning("Could not parse public session registration response: " + e.Message); }
-      if (response == null || string.IsNullOrEmpty(response.SessionId) || string.IsNullOrEmpty(response.Token))
+      catch (Exception e) { Debug.LogWarning("Could not parse direct session registration response: " + e.Message); }
+      if (response == null || string.IsNullOrEmpty(response.SessionId)
+        || string.IsNullOrEmpty(response.Token) || string.IsNullOrEmpty(response.MigrationToken)
+        || response.Generation < 1)
       {
-        Debug.LogWarning("Public session directory returned an invalid registration response.");
+        Debug.LogWarning("Session directory returned an invalid registration or migration response.");
         nextHostRequestTime = Time.realtimeSinceStartup + HeartbeatInterval;
       }
       else
       {
         sessionId = response.SessionId;
         sessionToken = response.Token;
-        Debug.Log("Registered direct-host session in the public directory.");
+        migrationToken = response.MigrationToken;
+        sessionGeneration = response.Generation;
+        migrationPending = false;
+        SetMigrationTicket(
+          sessionId, migrationToken, sessionGeneration,
+          GameBuilderApplication.CurrentGameOptions.playOptions.startAsPublic);
+        Debug.Log(migrating
+          ? "Migrated direct-host session through the directory."
+          : "Registered direct-host session in the directory.");
       }
     }
     else if (!successful)
     {
-      if (!creating && responseCode == 404)
+      if (migrating && responseCode == 409)
+      {
+        nextHostRequestTime = Time.realtimeSinceStartup + 5f;
+      }
+      else if (responseCode == 404)
       {
         sessionId = null;
         sessionToken = null;
+        migrationToken = null;
+        migrationPending = false;
+        nextHostRequestTime = Time.realtimeSinceStartup + 5f;
       }
       if (requestError != "" || responseCode != 0)
       {
         string failureMessage = !string.IsNullOrEmpty(responseBody)
           ? responseBody
           : requestError ?? "HTTP " + responseCode;
-        Debug.LogWarning("Could not update public session directory entry: " + failureMessage);
+        Debug.LogWarning("Could not update direct session directory entry: " + failureMessage);
       }
     }
 
-    GameBuilderApplication.PlayOptions playOptions = GameBuilderApplication.CurrentGameOptions.playOptions;
-    bool hostStillPublic = generation == hostGeneration
+    bool hostStillPublishing = generation == hostGeneration
       && ShouldPublishHost(
         manager != null && manager.IsListening,
         manager != null && manager.IsServer,
-        playOptions);
-    if (!hostStillPublic && !string.IsNullOrEmpty(sessionId) && !string.IsNullOrEmpty(sessionToken))
+        GameBuilderApplication.CurrentGameOptions.playOptions);
+    if (!hostStillPublishing && !string.IsNullOrEmpty(sessionId) && !string.IsNullOrEmpty(sessionToken))
     {
       string endedSessionId = sessionId;
       string endedToken = sessionToken;
       sessionId = null;
       sessionToken = null;
+      migrationToken = null;
+      migrationPending = false;
       yield return UnregisterRoutine(endedSessionId, endedToken);
     }
     sessionRequestInFlight = false;
@@ -308,6 +406,64 @@ public sealed class DirectSessionDirectory : MonoBehaviour
     if (request.result != UnityWebRequest.Result.Success && request.responseCode != 404)
       Debug.LogWarning("Could not remove direct-host session from the public directory: " + request.error);
     request.Dispose();
+  }
+  IEnumerator WatchForMigrationRoutine(
+    MigrationTicket ticket,
+    Action<SessionInfo> onMigrated,
+    Action onFailed)
+  {
+    string baseUrl = GetEndpoint();
+    if (string.IsNullOrEmpty(baseUrl) || string.IsNullOrEmpty(ticket.SessionId)
+      || string.IsNullOrEmpty(ticket.Token) || ticket.Generation < 1)
+    {
+      onFailed?.Invoke();
+      yield break;
+    }
+
+    float deadline = Time.realtimeSinceStartup + 240f;
+    string url = baseUrl + "/v1/sessions/" + Uri.EscapeDataString(ticket.SessionId) + "/migration";
+    while (Time.realtimeSinceStartup < deadline)
+    {
+      UnityWebRequest request = UnityWebRequest.Get(url);
+      request.downloadHandler = new DownloadHandlerBuffer();
+      request.timeout = RequestTimeoutSeconds;
+      request.redirectLimit = 0;
+      request.SetRequestHeader("Authorization", "Bearer " + ticket.Token);
+      yield return request.SendWebRequest();
+
+      bool successful = request.result == UnityWebRequest.Result.Success && request.responseCode == 200;
+      string responseBody = request.downloadHandler == null ? string.Empty : request.downloadHandler.text;
+      long responseCode = request.responseCode;
+      request.Dispose();
+      if (successful)
+      {
+        SessionInfo migrated = null;
+        try { migrated = JsonUtility.FromJson<SessionInfo>(responseBody); }
+        catch (Exception e) { Debug.LogWarning("Could not parse migrated session details: " + e.Message); }
+        IPAddress address;
+        bool valid = migrated != null
+          && migrated.SessionId == ticket.SessionId
+          && migrated.Generation > ticket.Generation
+          && IPAddress.TryParse(migrated.Address, out address)
+          && migrated.Port > 0 && migrated.Port <= 65535
+          && migrated.PlayerCount >= 1 && migrated.MaxPlayers >= migrated.PlayerCount
+          && migrated.MaxPlayers <= PhotonNetwork.MaximumDirectPlayers
+          && migrated.AddressFamily == (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? 6 : 4)
+          && DirectHostTls.IsUsablePinnedCertificate(migrated.ServerCertificatePem);
+        if (valid)
+        {
+          onMigrated?.Invoke(migrated);
+          yield break;
+        }
+      }
+      else if (responseCode == 404)
+      {
+        onFailed?.Invoke();
+        yield break;
+      }
+      yield return new WaitForSecondsRealtime(3f);
+    }
+    onFailed?.Invoke();
   }
 
   IEnumerator RefreshPublicSessionsRoutine()
@@ -350,6 +506,8 @@ public sealed class DirectSessionDirectory : MonoBehaviour
             || item.MaxPlayers < item.PlayerCount || item.MaxPlayers > PhotonNetwork.MaximumDirectPlayers
             || !DirectHostTls.IsUsablePinnedCertificate(item.ServerCertificatePem))
             continue;
+          item.AddressFamily = address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? 6 : 4;
+          item.IsPublic = true;
           validSessions.Add(item);
         }
         validSessions.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
@@ -371,6 +529,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
     }
     listRequestInFlight = false;
   }
+
   void ClearPublicSessions()
   {
     if (publicSessions.Length == 0) return;
@@ -421,6 +580,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
       AddressFamily = GameBuilderApplication.CurrentGameOptions.directHostUsesIpv6 ? 6 : 4,
       Port = DirectHostPortMapper.PublicPort,
       ServerCertificatePem = DirectHostTls.GetHostCredentials().CertificatePem,
+      IsPublic = GameBuilderApplication.CurrentGameOptions.playOptions.startAsPublic,
     };
   }
 

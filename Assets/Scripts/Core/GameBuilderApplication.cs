@@ -141,6 +141,12 @@ public class GameBuilderApplication
     public bool directHostUsesIpv6;
     // Public host certificate pin distributed to joining clients; never a private key.
     public string trustedHostCertificatePem;
+    // Authenticated self-hosted directory state used to migrate direct sessions.
+    public string directHostMigrationSessionId;
+    public string directHostMigrationToken;
+    public int directHostMigrationGeneration;
+    // Previous local player slot; migration hosts reclaim their actors as player 1.
+    public int directHostMigrationPreviousPlayerId;
 
 
     public PlayOptions playOptions;

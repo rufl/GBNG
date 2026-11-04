@@ -26,8 +26,9 @@ MAX_CERTIFICATE_PEM_BYTES = 2048
 MAX_CERTIFICATE_DER_BYTES = 1536
 MAX_PLAYERS = 16
 MAX_SESSIONS = 1000
-SESSION_TTL_SECONDS = 60
-REGISTER_WINDOW_SECONDS = 300
+SESSION_TTL_SECONDS = 300
+PUBLIC_SESSION_TTL_SECONDS = 60
+MIGRATION_STALE_SECONDS = 30
 REGISTER_LIMIT = 8
 MAX_REGISTER_SOURCES = 4096
 
@@ -50,7 +51,7 @@ class DirectoryState:
             del self._registers[key]
 
     def register(self, body, address):
-        name, count, capacity, port, address_family, certificate = validate_session(body)
+        name, count, capacity, port, address_family, certificate, is_public = validate_session(body)
         require_address_family(address, address_family)
         now = time.monotonic()
         with self._lock:
@@ -67,6 +68,7 @@ class DirectoryState:
                 return None, "full"
             session_id = secrets.token_urlsafe(18)
             token = secrets.token_urlsafe(32)
+            migration_token = secrets.token_urlsafe(32)
             self._sessions[session_id] = {
                 "SessionId": session_id,
                 "Name": name,
@@ -76,13 +78,17 @@ class DirectoryState:
                 "MaxPlayers": capacity,
                 "ServerCertificatePem": certificate,
                 "AddressFamily": address_family,
+                "IsPublic": is_public,
+                "Generation": 1,
                 "TokenHash": hashlib.sha256(token.encode("ascii")).digest(),
+                "MigrationTokenHash": hashlib.sha256(migration_token.encode("ascii")).digest(),
                 "Updated": now,
             }
-            return {"SessionId": session_id, "Token": token}, None
+            return {"SessionId": session_id, "Token": token,
+                    "MigrationToken": migration_token, "Generation": 1}, None
 
     def heartbeat(self, session_id, token, body, address):
-        name, count, capacity, port, address_family, certificate = validate_session(body)
+        name, count, capacity, port, address_family, certificate, is_public = validate_session(body)
         require_address_family(address, address_family)
         token_hash = hashlib.sha256(token.encode("utf-8")).digest()
         now = time.monotonic()
@@ -100,9 +106,50 @@ class DirectoryState:
                 "PlayerCount": count,
                 "MaxPlayers": capacity,
                 "ServerCertificatePem": certificate,
+                "IsPublic": is_public,
                 "Updated": now,
             })
             return True
+
+    def migration_info(self, session_id, token):
+        token_hash = hashlib.sha256(token.encode("utf-8")).digest()
+        with self._lock:
+            self._purge_locked(time.monotonic())
+            session = self._sessions.get(session_id)
+            if session is None or not hmac.compare_digest(session["MigrationTokenHash"], token_hash):
+                return None
+            return {key: session[key] for key in (
+                "SessionId", "Address", "Port", "ServerCertificatePem", "Name",
+                "PlayerCount", "MaxPlayers", "Generation", "IsPublic", "AddressFamily")}
+
+    def migrate(self, session_id, token, body, address):
+        name, count, capacity, port, address_family, certificate, is_public = validate_session(body)
+        require_address_family(address, address_family)
+        token_hash = hashlib.sha256(token.encode("utf-8")).digest()
+        now = time.monotonic()
+        with self._lock:
+            self._purge_locked(now)
+            session = self._sessions.get(session_id)
+            if session is None or not hmac.compare_digest(session["MigrationTokenHash"], token_hash):
+                return None, "not-found"
+            if now - session["Updated"] < MIGRATION_STALE_SECONDS:
+                return None, "active"
+            new_token = secrets.token_urlsafe(32)
+            session.update({
+                "Name": name,
+                "Address": address,
+                "Port": port,
+                "PlayerCount": count,
+                "MaxPlayers": capacity,
+                "ServerCertificatePem": certificate,
+                "AddressFamily": address_family,
+                "IsPublic": is_public,
+                "Generation": session["Generation"] + 1,
+                "TokenHash": hashlib.sha256(new_token.encode("ascii")).digest(),
+                "Updated": now,
+            })
+            return {"SessionId": session_id, "Token": new_token,
+                    "MigrationToken": token, "Generation": session["Generation"]}, None
 
     def unregister(self, session_id, token):
         token_hash = hashlib.sha256(token.encode("utf-8")).digest()
@@ -119,8 +166,9 @@ class DirectoryState:
             self._purge_locked(now)
             values = [
                 {key: value for key, value in session.items()
-                 if key not in ("TokenHash", "Updated", "AddressFamily")}
+                 if key not in ("TokenHash", "MigrationTokenHash", "Updated", "AddressFamily")}
                 for session in self._sessions.values()
+                if session["IsPublic"] and now - session["Updated"] <= PUBLIC_SESSION_TTL_SECONDS
             ]
         values.sort(key=lambda value: (value["Name"].casefold(), value["SessionId"]))
         return {"Sessions": values}
@@ -184,6 +232,9 @@ def validate_session(body):
     address_family = body.get("AddressFamily", 4)
     if isinstance(address_family, bool) or not isinstance(address_family, int) or address_family not in (4, 6):
         raise ValueError("AddressFamily must be 4 or 6.")
+    is_public = body.get("IsPublic", True)
+    if not isinstance(is_public, bool):
+        raise ValueError("IsPublic must be a boolean.")
     certificate = body.get("ServerCertificatePem")
     if not isinstance(certificate, str):
         raise ValueError("ServerCertificatePem must be PEM text.")
@@ -204,7 +255,7 @@ def validate_session(body):
         raise ValueError("ServerCertificatePem contains invalid base64.") from error
     if not der or len(der) > MAX_CERTIFICATE_DER_BYTES:
         raise ValueError("ServerCertificatePem contains an empty or oversized certificate.")
-    return name, count, capacity, port, address_family, certificate_bytes.decode("ascii")
+    return name, count, capacity, port, address_family, certificate_bytes.decode("ascii"), is_public
 
 
 class DirectoryHandler(BaseHTTPRequestHandler):
@@ -217,26 +268,55 @@ class DirectoryHandler(BaseHTTPRequestHandler):
             self.send_json(200, {"Status": "ok"})
         elif path == "/v1/sessions":
             self.send_json(200, self.state.list_sessions())
+        elif path.endswith("/migration"):
+            session_id = self.session_id_from_path("/migration")
+            token = self.bearer_token()
+            result = self.state.migration_info(session_id, token) if session_id and token else None
+            if result is None:
+                self.send_json(404, {"Error": "session not found"})
+            else:
+                self.send_json(200, result)
         else:
             self.send_json(404, {"Error": "not found"})
 
     def do_POST(self):
-        if urlsplit(self.path).path != "/v1/sessions":
+        path = urlsplit(self.path).path
+        if path == "/v1/sessions":
+            try:
+                body = self.read_json()
+                address = self.state.request_address(self)
+                result, error = self.state.register(body, address)
+            except ValueError as error:
+                self.send_json(400, {"Error": str(error)})
+                return
+            if error == "rate-limit":
+                self.send_json(429, {"Error": "registration rate limit exceeded"})
+            elif error == "full":
+                self.send_json(503, {"Error": "directory is full"})
+            else:
+                self.send_json(201, result)
+            return
+        session_id = self.session_id_from_path("/migrate")
+        if session_id is None:
             self.send_json(404, {"Error": "not found"})
+            return
+        token = self.bearer_token()
+        if not token:
+            self.send_json(404, {"Error": "session not found"})
             return
         try:
             body = self.read_json()
             address = self.state.request_address(self)
-            result, error = self.state.register(body, address)
+            result, error = self.state.migrate(session_id, token, body, address)
         except ValueError as error:
             self.send_json(400, {"Error": str(error)})
             return
-        if error == "rate-limit":
-            self.send_json(429, {"Error": "registration rate limit exceeded"})
-        elif error == "full":
-            self.send_json(503, {"Error": "directory is full"})
+        if error == "not-found":
+            self.send_json(404, {"Error": "session not found"})
+        elif error == "active":
+            self.send_json(409, {"Error": "session host heartbeat is too recent"})
         else:
-            self.send_json(201, result)
+            self.send_json(200, result)
 
     def do_PUT(self):
         session_id = self.session_id_from_path()
@@ -257,6 +337,7 @@ class DirectoryHandler(BaseHTTPRequestHandler):
         self.send_response(204)
         self.send_header("Content-Length", "0")
         self.end_headers()
+
     def do_DELETE(self):
         session_id = self.session_id_from_path()
         if session_id is None:
@@ -270,9 +351,12 @@ class DirectoryHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
-    def session_id_from_path(self):
+    def session_id_from_path(self, suffix=None):
         parts = urlsplit(self.path).path.split("/")
-        if len(parts) != 4 or parts[:3] != ["", "v1", "sessions"]:
+        expected = 5 if suffix else 4
+        if len(parts) != expected or parts[:3] != ["", "v1", "sessions"]:
+            return None
+        if suffix and parts[4] != suffix[1:]:
             return None
         session_id = unquote(parts[3])
         if not session_id or "/" in session_id or "\\" in session_id:

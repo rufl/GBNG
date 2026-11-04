@@ -1,6 +1,7 @@
 import json
 import threading
 import unittest
+import time
 import urllib.error
 import urllib.request
 
@@ -100,6 +101,109 @@ class RequestAddressTests(unittest.TestCase):
         result, error = server.DirectoryState().register(body, "192.0.2.9")
         self.assertIsNone(error)
         self.assertTrue(result["SessionId"])
+
+
+class SessionMigrationHttpTests(unittest.TestCase):
+    def test_migration_auth_visibility_timing_and_rotation(self):
+        state = server.DirectoryState()
+        handler = type("TestDirectoryHandler", (server.DirectoryHandler,), {"state": state})
+        directory = server.DirectoryServer(("127.0.0.1", 0), handler)
+        thread = threading.Thread(target=directory.serve_forever, daemon=True)
+        thread.start()
+        base_url = "http://127.0.0.1:{}".format(directory.server_address[1])
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+        def request(path, method="GET", body=None, token=None):
+            data = None if body is None else json.dumps(body).encode("utf-8")
+            message = urllib.request.Request(base_url + path, data=data, method=method)
+            if data is not None:
+                message.add_header("Content-Type", "application/json")
+            if token is not None:
+                message.add_header("Authorization", "Bearer " + token)
+            try:
+                with opener.open(message, timeout=3) as response:
+                    return response.status, response.read()
+            except urllib.error.HTTPError as error:
+                return error.code, error.read()
+
+        try:
+            public_status, public_bytes = request("/v1/sessions", "POST", make_session())
+            private = make_session()
+            private["IsPublic"] = False
+            private_status, private_bytes = request("/v1/sessions", "POST", private)
+            self.assertEqual((public_status, private_status), (201, 201))
+            public = json.loads(public_bytes.decode("utf-8"))
+            private_registration = json.loads(private_bytes.decode("utf-8"))
+            self.assertEqual(public["Generation"], 1)
+            self.assertTrue(public["MigrationToken"])
+            private_id = private_registration["SessionId"]
+
+            status, listing = request("/v1/sessions")
+            self.assertEqual(status, 200)
+            sessions = json.loads(listing.decode("utf-8"))["Sessions"]
+            self.assertEqual([item["SessionId"] for item in sessions], [public["SessionId"]])
+            self.assertNotIn("Token", sessions[0])
+            self.assertNotIn("MigrationToken", sessions[0])
+
+            migration_path = "/v1/sessions/{}/migration".format(private_id)
+            self.assertEqual(request(migration_path, token="wrong")[0], 404)
+            status, private_info = request(migration_path, token=private_registration["MigrationToken"])
+            self.assertEqual(status, 200)
+            private_info = json.loads(private_info.decode("utf-8"))
+            self.assertFalse(private_info["IsPublic"])
+            self.assertEqual(private_info["AddressFamily"], 4)
+
+            migrate_path = "/v1/sessions/{}/migrate".format(private_id)
+            self.assertEqual(request(migrate_path, "POST", make_session(), "wrong")[0], 404)
+            self.assertEqual(request(migrate_path, "POST", make_session(),
+                                     private_registration["MigrationToken"])[0], 409)
+
+            state._sessions[private_id]["Updated"] = time.monotonic() - 30
+            update = make_session()
+            update.update({
+                "Name": "Migrated private game",
+                "Port": 8888,
+                "ServerCertificatePem": UPDATED_CERTIFICATE,
+                "IsPublic": False,
+            })
+            status, migrated_bytes = request(
+                migrate_path, "POST", update, private_registration["MigrationToken"])
+            self.assertEqual(status, 200)
+            migrated = json.loads(migrated_bytes.decode("utf-8"))
+            self.assertEqual(migrated["Generation"], 2)
+            self.assertEqual(migrated["SessionId"], private_id)
+            self.assertNotEqual(migrated["Token"], private_registration["Token"])
+            self.assertEqual(migrated["MigrationToken"], private_registration["MigrationToken"])
+            self.assertEqual(request("/v1/sessions/" + private_id, "PUT", update,
+                                     private_registration["Token"])[0], 404)
+            self.assertEqual(request(migrate_path, "POST", update, migrated["MigrationToken"])[0], 409)
+            status, info_bytes = request(migration_path, token=migrated["MigrationToken"])
+            self.assertEqual(status, 200)
+            info = json.loads(info_bytes.decode("utf-8"))
+            self.assertEqual(info["Port"], 8888)
+            self.assertEqual(info["ServerCertificatePem"], UPDATED_CERTIFICATE)
+            self.assertEqual(info["Name"], "Migrated private game")
+            self.assertEqual(info["Generation"], 2)
+            self.assertFalse(info["IsPublic"])
+            status, listing_after = request("/v1/sessions")
+            self.assertEqual(status, 200)
+            self.assertEqual(json.loads(listing_after.decode("utf-8"))["Sessions"], sessions)
+        finally:
+            directory.shutdown()
+            directory.server_close()
+            thread.join(timeout=3)
+
+    def test_listing_ttl_and_record_retention(self):
+        state = server.DirectoryState()
+        registration, error = state.register(make_session(), "127.0.0.1")
+        self.assertIsNone(error)
+        session_id = registration["SessionId"]
+        state._sessions[session_id]["Updated"] = time.monotonic() - 61
+        self.assertEqual(state.list_sessions()["Sessions"], [])
+        self.assertIn(session_id, state._sessions)
+        state._sessions[session_id]["Updated"] = time.monotonic() - 301
+        self.assertEqual(state.list_sessions()["Sessions"], [])
+        self.assertNotIn(session_id, state._sessions)
 
 
 class IPv4DirectoryHttpTests(unittest.TestCase):

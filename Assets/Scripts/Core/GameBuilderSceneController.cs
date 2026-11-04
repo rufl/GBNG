@@ -161,19 +161,24 @@ public class GameBuilderSceneController : MonoBehaviour
 
   public void RestartAndLoadLibraryBundle(GameBundleLibrary.Entry entry, GameBuilderApplication.PlayOptions playOptions)
   {
+    RestartAndLoadLibraryBundle(entry, new GameBuilderApplication.GameOptions
+    {
+      playOptions = playOptions,
+    });
+  }
+
+  public void RestartAndLoadLibraryBundle(GameBundleLibrary.Entry entry, GameBuilderApplication.GameOptions gameOptions)
+  {
     if (!entry.IsAutosave())
     {
       resuming.SetBundleForResuming(entry.id);
     }
     var bundle = entry.bundle;
-    var gameOptions = new GameBuilderApplication.GameOptions
-    {
-      bundleIdToLoad = entry.id,
-      displayName = bundle.GetMetadata().name,
-      playOptions = playOptions,
-      thumbnailZippedJpegBytes = MaybeGetThumbnailBytes(bundle.GetThumbnail()),
-    };
-
+    gameOptions.bundleIdToLoad = entry.id;
+    if (string.IsNullOrWhiteSpace(gameOptions.displayName))
+      gameOptions.displayName = bundle.GetMetadata().name;
+    if (gameOptions.thumbnailZippedJpegBytes == null)
+      gameOptions.thumbnailZippedJpegBytes = MaybeGetThumbnailBytes(bundle.GetThumbnail());
     this.LoadMainSceneAsync(gameOptions);
   }
 
