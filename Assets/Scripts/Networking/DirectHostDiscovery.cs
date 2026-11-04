@@ -11,13 +11,13 @@ using UnityEngine;
 
 public sealed class DirectHostDiscovery : MonoBehaviour
 {
-  const uint ProtocolMagic = 0x47424431;
+  const uint ProtocolMagic = 0x47424432;
   const ushort DiscoveryPort = 47778;
   const string Ipv6DiscoveryGroupAddress = "ff02::4742";
   static readonly IPAddress Ipv6DiscoveryGroup = IPAddress.Parse(Ipv6DiscoveryGroupAddress);
   static readonly byte[] Ipv6DiscoveryGroupBytes = Ipv6DiscoveryGroup.GetAddressBytes();
   const int MaxNameBytes = 96;
-  const int MaxPacketBytes = 128;
+  const int MaxPacketBytes = 2048;
   const float AdvertisementInterval = 1f;
   const float HostExpirationSeconds = 6f;
   const float SocketRetryInterval = 5f;
@@ -29,6 +29,7 @@ public sealed class DirectHostDiscovery : MonoBehaviour
     public string Name;
     public int PlayerCount;
     public int MaxPlayers;
+    public string ServerCertificatePem;
     internal float LastSeen;
   }
 
@@ -192,6 +193,7 @@ public sealed class DirectHostDiscovery : MonoBehaviour
     }
 
     int playerCount = Mathf.Clamp(PhotonNetwork.playerList == null ? 1 : PhotonNetwork.playerList.Length, 1, PhotonNetwork.MaximumDirectPlayers);
+    byte[] certificateBytes = Encoding.UTF8.GetBytes(DirectHostTls.GetHostCredentials().CertificatePem);
     using (MemoryStream stream = new MemoryStream())
     using (BinaryWriter writer = new BinaryWriter(stream))
     {
@@ -201,6 +203,8 @@ public sealed class DirectHostDiscovery : MonoBehaviour
       writer.Write((byte)PhotonNetwork.MaximumDirectPlayers);
       writer.Write((byte)nameBytes.Length);
       writer.Write(nameBytes);
+      writer.Write((ushort)certificateBytes.Length);
+      writer.Write(certificateBytes);
       return stream.ToArray();
     }
   }
@@ -396,9 +400,13 @@ public sealed class DirectHostDiscovery : MonoBehaviour
         int maxPlayers = reader.ReadByte();
         int nameLength = reader.ReadByte();
         if (port == 0 || playerCount < 1 || maxPlayers < playerCount || maxPlayers > PhotonNetwork.MaximumDirectPlayers
-          || nameLength < 1 || nameLength > MaxNameBytes || nameLength != stream.Length - stream.Position) return false;
+          || nameLength < 1 || nameLength > MaxNameBytes || nameLength > stream.Length - stream.Position - sizeof(ushort)) return false;
         string name = new UTF8Encoding(false, true).GetString(reader.ReadBytes(nameLength));
         if (string.IsNullOrWhiteSpace(name)) return false;
+        int certificateLength = reader.ReadUInt16();
+        if (certificateLength < 1 || certificateLength > MaxPacketBytes
+          || certificateLength != stream.Length - stream.Position) return false;
+        string certificate = new UTF8Encoding(false, true).GetString(reader.ReadBytes(certificateLength));
         host = new HostInfo
         {
           Address = address.ToString(),
@@ -406,6 +414,7 @@ public sealed class DirectHostDiscovery : MonoBehaviour
           Name = name,
           PlayerCount = playerCount,
           MaxPlayers = maxPlayers,
+          ServerCertificatePem = certificate,
           LastSeen = Time.realtimeSinceStartup
         };
         return true;
@@ -437,7 +446,8 @@ public sealed class DirectHostDiscovery : MonoBehaviour
     string key = host.Address + ":" + host.Port;
     if (hosts.TryGetValue(key, out HostInfo previous))
     {
-      bool changed = previous.Name != host.Name || previous.PlayerCount != host.PlayerCount || previous.MaxPlayers != host.MaxPlayers;
+      bool changed = previous.Name != host.Name || previous.PlayerCount != host.PlayerCount
+        || previous.MaxPlayers != host.MaxPlayers || previous.ServerCertificatePem != host.ServerCertificatePem;
       host.LastSeen = Time.realtimeSinceStartup;
       hosts[key] = host;
       if (changed) revision++;

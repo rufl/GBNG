@@ -47,8 +47,13 @@ public class MultiplayerGameMenu : MonoBehaviour
 
     multiplayerMenuUI.copyCodeButton.onClick.AddListener(OnCopyClicked);
     multiplayerMenuUI.closeButton.onClick.AddListener(Close);
+#if USE_PUN
     multiplayerMenuUI.joinCodeField.text = networkingController.GetJoinedRoomName();
     multiplayerMenuUI.copyButtonTextField.text = "Copy address";
+#else
+    multiplayerMenuUI.joinCodeField.text = "Encrypted invite";
+    multiplayerMenuUI.copyButtonTextField.text = "Copy invite";
+#endif
 
     multiplayerMenuUI.hideCodeButton.onClick.AddListener(() => showingJoinCode = false);
     multiplayerMenuUI.showCodeButton.onClick.AddListener(() => showingJoinCode = true);
@@ -143,7 +148,11 @@ public class MultiplayerGameMenu : MonoBehaviour
       return;
     }
 
+#if USE_PUN
     multiplayerMenuUI.joinCodeField.text = networkingController.GetJoinedRoomName();
+#else
+    multiplayerMenuUI.joinCodeField.text = "Encrypted invite";
+#endif
 
     RefreshUserList();
 

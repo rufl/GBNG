@@ -6,6 +6,9 @@ import urllib.request
 
 import server
 
+CERTIFICATE = "-----BEGIN CERTIFICATE-----\nYWJj\n-----END CERTIFICATE-----"
+UPDATED_CERTIFICATE = "-----BEGIN CERTIFICATE-----\nZGVm\n-----END CERTIFICATE-----"
+
 
 def make_session(address_family=4):
     return {
@@ -14,7 +17,30 @@ def make_session(address_family=4):
         "MaxPlayers": 16,
         "Port": 7777,
         "AddressFamily": address_family,
+        "ServerCertificatePem": CERTIFICATE,
     }
+
+
+class ServerCertificateValidationTests(unittest.TestCase):
+    def test_requires_a_pem_server_certificate(self):
+        session = make_session()
+        del session["ServerCertificatePem"]
+        with self.assertRaisesRegex(ValueError, "must be PEM text"):
+            server.validate_session(session)
+
+    def test_rejects_malformed_or_oversized_certificates(self):
+        session = make_session()
+        session["ServerCertificatePem"] = "-----BEGIN CERTIFICATE-----\nnot base64\n-----END CERTIFICATE-----"
+        with self.assertRaisesRegex(ValueError, "invalid base64"):
+            server.validate_session(session)
+
+        session["ServerCertificatePem"] = (
+            "-----BEGIN CERTIFICATE-----"
+            + ("A" * server.MAX_CERTIFICATE_PEM_BYTES)
+            + "-----END CERTIFICATE-----"
+        )
+        with self.assertRaisesRegex(ValueError, "supported size"):
+            server.validate_session(session)
 
 
 class RequestAddressTests(unittest.TestCase):
@@ -102,6 +128,7 @@ class IPv4DirectoryHttpTests(unittest.TestCase):
                 sessions = json.loads(response.read().decode("utf-8"))["Sessions"]
             self.assertEqual(len(sessions), 1)
             self.assertEqual(sessions[0]["Address"], "127.0.0.1")
+            self.assertEqual(sessions[0]["ServerCertificatePem"], CERTIFICATE)
         finally:
             directory.shutdown()
             directory.server_close()
@@ -146,9 +173,13 @@ class IPv6DirectoryHttpTests(unittest.TestCase):
 
             update = make_session(6)
             update["Name"] = "Updated IPv6 game"
+            update["ServerCertificatePem"] = UPDATED_CERTIFICATE
             with request("/v1/sessions/" + session_id, "PUT", update, token) as response:
                 self.assertEqual(response.status, 204)
-
+            with request("/v1/sessions") as response:
+                sessions = json.loads(response.read().decode("utf-8"))["Sessions"]
+            self.assertEqual(sessions[0]["Name"], "Updated IPv6 game")
+            self.assertEqual(sessions[0]["ServerCertificatePem"], UPDATED_CERTIFICATE)
             with request("/v1/sessions/" + session_id, "DELETE", token=token) as response:
                 self.assertEqual(response.status, 204)
             with request("/v1/sessions") as response:

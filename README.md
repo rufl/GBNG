@@ -279,8 +279,9 @@ software does not include hosting, a public hostname, or a reliable always-on
 Internet endpoint. The Compose setup automates TLS certificate provisioning,
 but requires a reachable domain and open ports. The directory limits each
 source IP to eight new registrations per five minutes and supports up to 1,000
-simultaneous sessions. It does not authenticate players or encrypt the game
-transport.
+simultaneous sessions. The directory does not authenticate players. Direct UDP
+game traffic is encrypted with Unity Transport's built-in DTLS and pinned server
+certificates; the directory itself still requires HTTPS.
 
 The host sends an initial project snapshot (maximum 400 KiB), split into 48 KiB
 reliable chunks to stay below NGO's 64,000-byte per-message limit. The direct
@@ -305,10 +306,14 @@ players (host plus 15 clients); the host assigns reusable player IDs so
 disconnect/rejoin cycles do not exhaust player slots. IPv4 and IPv6-only hosting
 are available as separate choices. IPv6 hosts are discovered by IPv6 multicast
 on the same LAN and may appear in the public session directory when configured
-and reachable over IPv6; manual address sharing remains available.
-Direct connections have no application-level authentication or encryption;
-share the host address only with trusted players. Manual address joins work
-without the directory.
+and reachable over IPv6. Each direct host keeps an ephemeral 2048-bit RSA
+private key in memory and advertises only its public certificate. LAN discovery
+and the public directory carry that certificate; manual sharing uses a complete
+`GBDIRECT1|address|port|certificate` invite and does not require the directory.
+Clients reject raw `IP:port` joins instead of falling back to plaintext. The pin
+authenticates the host and encrypts transport, but does not authenticate players:
+anyone with a public listing or invite may attempt to join. Player authentication
+remains unavailable.
 
 
 * [Crosstales File Browser](https://assetstore.unity.com/packages/tools/utilities/file-browser-standalone-98716) - Enables the system file browser UI for local disk import/export features

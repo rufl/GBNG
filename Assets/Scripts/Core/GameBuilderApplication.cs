@@ -139,6 +139,8 @@ public class GameBuilderApplication
     public ushort joinPort;
     // Host on IPv6 only; IPv4 hosting remains the default.
     public bool directHostUsesIpv6;
+    // Public host certificate pin distributed to joining clients; never a private key.
+    public string trustedHostCertificatePem;
 
 
     public PlayOptions playOptions;

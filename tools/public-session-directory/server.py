@@ -8,6 +8,7 @@ X-Forwarded-For; pass --trusted-proxy with the proxy's peer IP to use it.
 import argparse
 import hashlib
 import hmac
+import base64
 import ipaddress
 import json
 import os
@@ -21,6 +22,8 @@ from urllib.parse import unquote, urlsplit
 
 MAX_BODY_BYTES = 4096
 MAX_NAME_BYTES = 96
+MAX_CERTIFICATE_PEM_BYTES = 2048
+MAX_CERTIFICATE_DER_BYTES = 1536
 MAX_PLAYERS = 16
 MAX_SESSIONS = 1000
 SESSION_TTL_SECONDS = 60
@@ -47,7 +50,7 @@ class DirectoryState:
             del self._registers[key]
 
     def register(self, body, address):
-        name, count, capacity, port, address_family = validate_session(body)
+        name, count, capacity, port, address_family, certificate = validate_session(body)
         require_address_family(address, address_family)
         now = time.monotonic()
         with self._lock:
@@ -71,6 +74,7 @@ class DirectoryState:
                 "Port": port,
                 "PlayerCount": count,
                 "MaxPlayers": capacity,
+                "ServerCertificatePem": certificate,
                 "AddressFamily": address_family,
                 "TokenHash": hashlib.sha256(token.encode("ascii")).digest(),
                 "Updated": now,
@@ -78,7 +82,7 @@ class DirectoryState:
             return {"SessionId": session_id, "Token": token}, None
 
     def heartbeat(self, session_id, token, body, address):
-        name, count, capacity, port, address_family = validate_session(body)
+        name, count, capacity, port, address_family, certificate = validate_session(body)
         require_address_family(address, address_family)
         token_hash = hashlib.sha256(token.encode("utf-8")).digest()
         now = time.monotonic()
@@ -95,6 +99,7 @@ class DirectoryState:
                 "Port": port,
                 "PlayerCount": count,
                 "MaxPlayers": capacity,
+                "ServerCertificatePem": certificate,
                 "Updated": now,
             })
             return True
@@ -179,7 +184,27 @@ def validate_session(body):
     address_family = body.get("AddressFamily", 4)
     if isinstance(address_family, bool) or not isinstance(address_family, int) or address_family not in (4, 6):
         raise ValueError("AddressFamily must be 4 or 6.")
-    return name, count, capacity, port, address_family
+    certificate = body.get("ServerCertificatePem")
+    if not isinstance(certificate, str):
+        raise ValueError("ServerCertificatePem must be PEM text.")
+    try:
+        certificate_bytes = certificate.strip().encode("ascii")
+    except UnicodeEncodeError as error:
+        raise ValueError("ServerCertificatePem must contain ASCII PEM text.") from error
+    begin = b"-----BEGIN CERTIFICATE-----"
+    end = b"-----END CERTIFICATE-----"
+    if len(certificate_bytes) > MAX_CERTIFICATE_PEM_BYTES:
+        raise ValueError("ServerCertificatePem exceeds the supported size.")
+    if not certificate_bytes.startswith(begin) or not certificate_bytes.endswith(end):
+        raise ValueError("ServerCertificatePem must contain one certificate PEM block.")
+    encoded_der = certificate_bytes[len(begin):-len(end)]
+    try:
+        der = base64.b64decode(b"".join(encoded_der.split()), validate=True)
+    except ValueError as error:
+        raise ValueError("ServerCertificatePem contains invalid base64.") from error
+    if not der or len(der) > MAX_CERTIFICATE_DER_BYTES:
+        raise ValueError("ServerCertificatePem contains an empty or oversized certificate.")
+    return name, count, capacity, port, address_family, certificate_bytes.decode("ascii")
 
 
 class DirectoryHandler(BaseHTTPRequestHandler):

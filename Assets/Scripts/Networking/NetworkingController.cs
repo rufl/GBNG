@@ -187,9 +187,16 @@ public class NetworkingController : Photon.PunBehaviour
 #else
     GameBuilderApplication.GameOptions options = GameBuilderApplication.CurrentGameOptions;
     ushort port = options.joinPort == 0 ? DefaultDirectHostPort : options.joinPort;
+    if (!options.playOptions.isMultiplayer || directNetworkManager == null || !directNetworkManager.IsListening)
+      return string.Empty;
     if (!IsDirectHost())
     {
-      return FormatDirectHostAddress(options.joinAddress, port);
+      if (directHostShareAddress.IsNullOrEmpty())
+        directHostShareAddress = DirectHostTls.CreateInvite(
+          options.joinAddress,
+          port,
+          options.trustedHostCertificatePem);
+      return directHostShareAddress;
     }
 
     if (!directHostShareAddress.IsNullOrEmpty())
@@ -212,7 +219,7 @@ public class NetworkingController : Photon.PunBehaviour
         IPAddress localAddress = ((IPEndPoint)routeSocket.LocalEndPoint).Address;
         if (localAddress.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(localAddress))
         {
-          directHostShareAddress = FormatDirectHostAddress(localAddress.ToString(), port);
+          directHostShareAddress = CreateDirectHostInvite(localAddress.ToString(), port);
           return directHostShareAddress;
         }
       }
@@ -250,28 +257,22 @@ public class NetworkingController : Photon.PunBehaviour
 
         if (hasGateway)
         {
-          directHostShareAddress = FormatDirectHostAddress(address.ToString(), port);
+          directHostShareAddress = CreateDirectHostInvite(address.ToString(), port);
           return directHostShareAddress;
         }
         fallback = address.ToString();
       }
     }
 
-    directHostShareAddress = FormatDirectHostAddress(fallback, port);
+    directHostShareAddress = CreateDirectHostInvite(fallback, port);
     return directHostShareAddress;
 #endif
   }
-
-  static string FormatDirectHostAddress(string address, ushort port)
+  string CreateDirectHostInvite(string address, ushort port)
   {
-    IPAddress parsedAddress;
-    if (IPAddress.TryParse(address, out parsedAddress)
-      && parsedAddress.AddressFamily == AddressFamily.InterNetworkV6)
-    {
-      return $"[{parsedAddress}]:{port}";
-    }
-    return $"{address}:{port}";
+    return DirectHostTls.CreateInvite(address, port, DirectHostTls.GetHostCredentials().CertificatePem);
   }
+
 
   string GetDirectIpv6HostShareAddress(ushort port)
   {
@@ -284,7 +285,7 @@ public class NetworkingController : Photon.PunBehaviour
         IPAddress localAddress = ((IPEndPoint)routeSocket.LocalEndPoint).Address;
         if (IsUsableDirectIpv6Address(localAddress))
         {
-          directHostShareAddress = FormatDirectHostAddress(localAddress.ToString(), port);
+          directHostShareAddress = CreateDirectHostInvite(localAddress.ToString(), port);
           return directHostShareAddress;
         }
       }
@@ -325,7 +326,7 @@ public class NetworkingController : Photon.PunBehaviour
     }
 
     IPAddress shareAddress = globalAddress ?? uniqueLocalAddress ?? IPAddress.IPv6Loopback;
-    directHostShareAddress = FormatDirectHostAddress(shareAddress.ToString(), port);
+    directHostShareAddress = CreateDirectHostInvite(shareAddress.ToString(), port);
     return directHostShareAddress;
   }
 
@@ -611,6 +612,33 @@ public class NetworkingController : Photon.PunBehaviour
         PhotonNetwork.SetDirectSession(directNetworkManager, GetLocalDirectPlayerName());
         StartCoroutine(RequestDirectHostInitRoutine());
       }
+      return;
+    }
+    try
+    {
+      directTransport.UseEncryption = true;
+      if (options.joinAddress.IsNullOrEmpty())
+      {
+        DirectHostTls.HostCredentials credentials = DirectHostTls.GetHostCredentials();
+        directTransport.SetServerSecrets(credentials.CertificatePem, credentials.PrivateKeyPem);
+        directHostShareAddress = null;
+      }
+      else
+      {
+        if (!DirectHostTls.IsUsablePinnedCertificate(options.trustedHostCertificatePem))
+        {
+          OnFatalError("This direct-host join requires a valid GBDIRECT1 invite with the host certificate pin.");
+          return;
+        }
+        directHostShareAddress = null;
+        directTransport.SetClientSecrets(
+          DirectHostTls.ServerCommonName,
+          options.trustedHostCertificatePem);
+      }
+    }
+    catch (Exception e)
+    {
+      OnFatalError("Could not configure encrypted direct-host networking: " + e.Message);
       return;
     }
 
@@ -2018,7 +2046,7 @@ public class NetworkingController : Photon.PunBehaviour
       joinAddress = currentOptions.joinAddress,
       joinPort = currentOptions.joinPort,
       directHostUsesIpv6 = currentOptions.directHostUsesIpv6,
-      playOptions = new GameBuilderApplication.PlayOptions { isMultiplayer = true }
+      trustedHostCertificatePem = currentOptions.trustedHostCertificatePem,
     };
     state = State.SwitchingScene;
     PhotonNetwork.ResetDirectPeers();

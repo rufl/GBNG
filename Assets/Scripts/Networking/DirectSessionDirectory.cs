@@ -24,6 +24,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
     public int Port;
     public int PlayerCount;
     public int MaxPlayers;
+    public string ServerCertificatePem;
   }
 
   [Serializable]
@@ -40,6 +41,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
     public int MaxPlayers;
     public int Port;
     public int AddressFamily;
+    public string ServerCertificatePem;
   }
 
   [Serializable]
@@ -345,7 +347,8 @@ public sealed class DirectSessionDirectory : MonoBehaviour
               && address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetworkV6)
             || item.Port < 1 || item.Port > 65535
             || item.PlayerCount < 1 || item.PlayerCount >= item.MaxPlayers
-            || item.MaxPlayers < item.PlayerCount || item.MaxPlayers > PhotonNetwork.MaximumDirectPlayers)
+            || item.MaxPlayers < item.PlayerCount || item.MaxPlayers > PhotonNetwork.MaximumDirectPlayers
+            || !DirectHostTls.IsUsablePinnedCertificate(item.ServerCertificatePem))
             continue;
           validSessions.Add(item);
         }
@@ -391,7 +394,8 @@ public sealed class DirectSessionDirectory : MonoBehaviour
       SessionInfo a = left[i];
       SessionInfo b = right[i];
       if (a.SessionId != b.SessionId || a.Name != b.Name || a.Address != b.Address
-        || a.Port != b.Port || a.PlayerCount != b.PlayerCount || a.MaxPlayers != b.MaxPlayers)
+        || a.Port != b.Port || a.PlayerCount != b.PlayerCount || a.MaxPlayers != b.MaxPlayers
+        || a.ServerCertificatePem != b.ServerCertificatePem)
         return false;
     }
     return true;
@@ -415,7 +419,8 @@ public sealed class DirectSessionDirectory : MonoBehaviour
       PlayerCount = playerCount,
       MaxPlayers = PhotonNetwork.MaximumDirectPlayers,
       AddressFamily = GameBuilderApplication.CurrentGameOptions.directHostUsesIpv6 ? 6 : 4,
-      Port = DirectHostPortMapper.PublicPort
+      Port = DirectHostPortMapper.PublicPort,
+      ServerCertificatePem = DirectHostTls.GetHostCredentials().CertificatePem,
     };
   }
 

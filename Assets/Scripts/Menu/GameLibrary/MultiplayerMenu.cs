@@ -428,7 +428,8 @@ public class MultiplayerMenu : ThumbnailMenu
           Port = (ushort)session.Port,
           Name = session.Name,
           PlayerCount = session.PlayerCount,
-          MaxPlayers = session.MaxPlayers
+          MaxPlayers = session.MaxPlayers,
+          ServerCertificatePem = session.ServerCertificatePem
         };
         GameThumbnail publicThumbnail = Instantiate(gameThumbnailPrefab).GetComponent<GameThumbnail>();
         publicThumbnail.SetThumbnail(spoofGameTexture);
@@ -469,8 +470,13 @@ public class MultiplayerMenu : ThumbnailMenu
 
   void JoinDiscoveredHost(DirectHostDiscovery.HostInfo host)
   {
-    string addressAndPort = FormatAddressAndPort(host.Address, host.Port);
-    PlayerPrefs.SetString(LastJoinedRoomPrefsKey, addressAndPort);
+    if (!DirectHostTls.IsUsablePinnedCertificate(host.ServerCertificatePem))
+    {
+      Util.LogError("This discovered host has no valid TLS certificate pin and cannot be joined securely.");
+      return;
+    }
+    string invite = DirectHostTls.CreateInvite(host.Address, host.Port, host.ServerCertificatePem);
+    PlayerPrefs.SetString(LastJoinedRoomPrefsKey, invite);
     PlayerPrefs.Save();
     var options = new GameBuilderApplication.GameOptions
     {
@@ -478,6 +484,7 @@ public class MultiplayerMenu : ThumbnailMenu
       joinPort = host.Port,
       directHostUsesIpv6 = System.Net.IPAddress.TryParse(host.Address, out System.Net.IPAddress parsedPublicAddress)
         && parsedPublicAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6,
+      trustedHostCertificatePem = host.ServerCertificatePem,
       playOptions = new GameBuilderApplication.PlayOptions { isMultiplayer = true }
     };
     loadingScreen.ShowAndDo(() => scenes.LoadMainSceneAsync(options));
@@ -507,9 +514,7 @@ public class MultiplayerMenu : ThumbnailMenu
   {
     joinMultiplayerPopup.Activate();
     joinMultiplayerPopupBackground.SetActive(true);
-    joinMultiplayerPopup.SetInputFieldText(PlayerPrefs.GetString(
-      LastJoinedRoomPrefsKey,
-      $"127.0.0.1:{NetworkingController.DefaultDirectHostPort}"));
+    joinMultiplayerPopup.SetInputFieldText(PlayerPrefs.GetString(LastJoinedRoomPrefsKey, string.Empty));
   }
 
   static bool TryParseDirectHostAddress(string input, out string address, out ushort port)
@@ -565,6 +570,30 @@ public class MultiplayerMenu : ThumbnailMenu
 
     return !string.IsNullOrWhiteSpace(address);
   }
+  static bool TryParseDirectHostInvite(
+    string input,
+    out string address,
+    out ushort port,
+    out string certificatePem)
+  {
+    address = null;
+    port = NetworkingController.DefaultDirectHostPort;
+    certificatePem = null;
+    if (string.IsNullOrWhiteSpace(input)) return false;
+    string[] parts = input.Trim().Split('|');
+    if (parts.Length != 4 || parts[0] != DirectHostTls.InvitePrefix
+      || !ushort.TryParse(
+        parts[2],
+        System.Globalization.NumberStyles.None,
+        System.Globalization.CultureInfo.InvariantCulture,
+        out port)
+      || port == 0)
+      return false;
+    if (!TryParseDirectHostAddress(parts[1], out address, out ushort embeddedPort)
+      || embeddedPort != NetworkingController.DefaultDirectHostPort)
+      return false;
+    return DirectHostTls.TryDecodeCertificateFromInvite(parts[3], out certificatePem);
+  }
 
   static System.Net.IPAddress SelectDirectHostAddress(System.Net.IPAddress[] candidates)
   {
@@ -580,26 +609,28 @@ public class MultiplayerMenu : ThumbnailMenu
     return firstIpv6;
   }
 
-  void JoinMultiplayer(string addressAndPort)
+  void JoinMultiplayer(string inviteText)
   {
-    if (!TryParseDirectHostAddress(addressAndPort, out string address, out ushort port))
+    if (!TryParseDirectHostInvite(inviteText, out string address, out ushort port, out string certificatePem))
     {
-      Util.LogError(
-        $"Enter an IPv4 address, IPv6 address, or hostname with an optional port. "
-        + $"Use [IPv6]:port for a custom port, for example [2001:db8::1]:{NetworkingController.DefaultDirectHostPort}.");
+      if (TryParseDirectHostAddress(inviteText, out _, out _))
+        Util.LogError("Direct-host connections require encryption. Paste the complete GBDIRECT1 invite copied from the host; raw addresses are not accepted.");
+      else
+        Util.LogError("Paste the complete GBDIRECT1 invite copied from the host.");
       return;
     }
 
+    string invite = inviteText.Trim();
     if (System.Net.IPAddress.TryParse(address, out System.Net.IPAddress parsedAddress))
     {
-      JoinMultiplayerByAddress(parsedAddress.ToString(), port, addressAndPort.Trim());
+      JoinMultiplayerByAddress(parsedAddress.ToString(), port, certificatePem, invite);
       return;
     }
 
-    StartCoroutine(ResolveAndJoinHost(address, port, addressAndPort.Trim()));
+    StartCoroutine(ResolveAndJoinHost(address, port, certificatePem, invite));
   }
 
-  System.Collections.IEnumerator ResolveAndJoinHost(string hostName, ushort port, string originalAddress)
+  System.Collections.IEnumerator ResolveAndJoinHost(string hostName, ushort port, string certificatePem, string originalInvite)
   {
     System.Threading.Tasks.Task<System.Net.IPAddress[]> resolution;
     try
@@ -626,13 +657,13 @@ public class MultiplayerMenu : ThumbnailMenu
       Util.LogError($"Host '{hostName}' has no IPv4 or IPv6 address.");
       yield break;
     }
-    JoinMultiplayerByAddress(resolvedAddress.ToString(), port, originalAddress);
+    JoinMultiplayerByAddress(resolvedAddress.ToString(), port, certificatePem, originalInvite);
   }
 
 
-  void JoinMultiplayerByAddress(string address, ushort port, string savedAddress)
+  void JoinMultiplayerByAddress(string address, ushort port, string certificatePem, string savedInvite)
   {
-    PlayerPrefs.SetString(LastJoinedRoomPrefsKey, savedAddress);
+    PlayerPrefs.SetString(LastJoinedRoomPrefsKey, savedInvite);
     PlayerPrefs.Save();
     CancelMultiplayerPopup();
     var options = new GameBuilderApplication.GameOptions
@@ -641,6 +672,7 @@ public class MultiplayerMenu : ThumbnailMenu
       joinPort = port,
       directHostUsesIpv6 = System.Net.IPAddress.TryParse(address, out System.Net.IPAddress parsedDirectAddress)
         && parsedDirectAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6,
+      trustedHostCertificatePem = certificatePem,
       playOptions = new GameBuilderApplication.PlayOptions { isMultiplayer = true }
     };
     loadingScreen.ShowAndDo(() => scenes.LoadMainSceneAsync(options));
