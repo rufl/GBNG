@@ -56,13 +56,120 @@ public partial class GameBuilderApp
             WorldActorNode child = CreateActorNode(childState, childIndex);
             child.GlobalPosition = source.GlobalPosition + new Vector3(0f, 1.5f, 0f);
             child.SaveTransform();
+            JsonObject independentData = (JsonObject)source.State.Data.DeepClone();
+            string independentName = $"multi-select-smoke-{Guid.NewGuid():N}";
+            independentData["name"] = independentName;
+            independentData["displayName"] = "Multi-select smoke root";
+            independentData["transformParent"] = "";
+            independentData["cloneParent"] = "";
+            int independentIndex = _document.Actors.Count;
+            LegacyActorData independentState = _document.InsertActor(independentData, independentIndex);
+            WorldActorNode independent = CreateActorNode(independentState, independentIndex);
+            independent.GlobalPosition = source.GlobalPosition + Vector3.Right * 5f;
+            independent.SaveTransform();
+            child.GlobalPosition = source.GlobalPosition + Vector3.Up * 5f;
+            child.SaveTransform();
+            RefreshActorList();
             ClearHistory();
             SelectActor(source);
             await WaitForUiFrames(2);
-            _cameraTarget = source.GlobalPosition;
-            _cameraDistance = 12f;
+            _cameraTarget = (source.GlobalPosition + independent.GlobalPosition) * 0.5f;
+            _cameraDistance = 18f;
             UpdateOrbitCamera();
             await WaitForUiFrames(2);
+
+            ClickActorForSmoke(source);
+            AssertActorSelectionForSmoke(source);
+            ClickActorForSmoke(independent, addToSelection: true);
+            AssertActorSelectionForSmoke(source, independent);
+            if (_selectedActor != independent || _actorList.GetSelectedItems().Length != 2)
+                throw new InvalidOperationException("Shift-click did not add and focus the second actor in the world and actor list.");
+            ClickActorForSmoke(independent, toggleSelection: true);
+            AssertActorSelectionForSmoke(source);
+            ClickActorForSmoke(independent, toggleSelection: true);
+            AssertActorSelectionForSmoke(source, independent);
+            Vector2 marqueeCenter = _camera.UnprojectPosition(source.GetWorldRenderBounds().GetCenter());
+            Vector2 marqueeStart = marqueeCenter - new Vector2(40f, 40f);
+            Vector2 marqueeEnd = marqueeCenter + new Vector2(40f, 40f);
+            BeginSelectionMarquee(marqueeStart, addToSelection: false, toggleSelection: false);
+            UpdateSelectionMarquee(marqueeEnd);
+            await WaitForUiFrames(2);
+            Image marqueeCapture = GetViewport().GetTexture().GetImage();
+            int marqueeAccentPixels = 0;
+            for (int y = Mathf.Max(0, Mathf.FloorToInt(marqueeStart.Y));
+                y <= Mathf.Min(marqueeCapture.GetHeight() - 1, Mathf.CeilToInt(marqueeEnd.Y));
+                y++)
+            {
+                for (int x = Mathf.Max(0, Mathf.FloorToInt(marqueeStart.X));
+                    x <= Mathf.Min(marqueeCapture.GetWidth() - 1, Mathf.CeilToInt(marqueeEnd.X));
+                    x++)
+                {
+                    Color pixel = marqueeCapture.GetPixel(x, y);
+                    if (pixel.B > pixel.R + 0.3f && pixel.G > pixel.R + 0.2f)
+                        marqueeAccentPixels++;
+                }
+            }
+            string marqueeScreenshot = ProjectSettings.GlobalizePath("res://.godot/actor-selection-marquee-smoke.png");
+            if (marqueeAccentPixels < 20 || marqueeCapture.SavePng(marqueeScreenshot) != Error.Ok)
+                throw new InvalidOperationException("The drag marquee did not produce a visible selection overlay.");
+            CompleteSelectionMarquee(marqueeEnd);
+            if (!_selectedActors.Contains(source))
+                throw new InvalidOperationException("The rendered marquee did not select the actor inside its bounds.");
+
+            SelectActorInMarqueeForSmoke(source);
+            AssertActorSelectionForSmoke(source);
+
+
+            SelectActorInMarqueeForSmoke(independent, addToSelection: true);
+            AssertActorSelectionForSmoke(source, independent);
+            SelectActorInMarqueeForSmoke(source, toggleSelection: true);
+            AssertActorSelectionForSmoke(independent);
+
+            ClickActorForSmoke(source, addToSelection: true);
+            AssertActorSelectionForSmoke(independent, source);
+            BeginCopyPlacement();
+            if (!_copyPlacementActive || _copySources.Count != 3
+                || !_copySources.Contains(source) || !_copySources.Contains(independent) || !_copySources.Contains(child))
+                throw new InvalidOperationException("Copy placement did not include both selected roots and the source descendant.");
+            CancelCopyPlacement(showStatus: false);
+
+            int beforeMultiDelete = _document.Actors.Count;
+            _actorList.GrabFocus();
+            _UnhandledInput(new InputEventKey { Keycode = Key.Delete, Pressed = true });
+            await WaitForUiFrames(2);
+            if (_document.Actors.Count != beforeMultiDelete - 2
+                || _actors.Any(actor => actor.LegacyName == sourceName || actor.LegacyName == independentName)
+                || child.State.TransformParent.Length != 0)
+                throw new InvalidOperationException("Delete did not remove both selected roots while preserving and detaching their unselected child.");
+            UndoEdit();
+            await WaitForUiFrames(2);
+            WorldActorNode restoredSource = _actors.FirstOrDefault(actor => actor.LegacyName == sourceName)
+                ?? throw new InvalidOperationException("Undo did not restore the selected source actor.");
+            WorldActorNode restoredIndependent = _actors.FirstOrDefault(actor => actor.LegacyName == independentName)
+                ?? throw new InvalidOperationException("Undo did not restore the selected independent actor.");
+            if (_document.Actors.Count != beforeMultiDelete
+                || child.State.TransformParent != sourceName
+                || child.GetParent() != restoredSource)
+                throw new InvalidOperationException("Undo did not restore the selected roots and their child hierarchy.");
+            source = restoredSource;
+            independent = restoredIndependent;
+            AssertActorSelectionForSmoke(independent, source);
+            RedoEdit();
+            await WaitForUiFrames(2);
+            if (_document.Actors.Count != beforeMultiDelete - 2
+                || _actors.Any(actor => actor.LegacyName == sourceName || actor.LegacyName == independentName))
+                throw new InvalidOperationException("Redo did not remove the complete multi-actor deletion.");
+            UndoEdit();
+            await WaitForUiFrames(2);
+            source = _actors.FirstOrDefault(actor => actor.LegacyName == sourceName)
+                ?? throw new InvalidOperationException("Undo after redo did not restore the source actor.");
+            independent = _actors.FirstOrDefault(actor => actor.LegacyName == independentName)
+                ?? throw new InvalidOperationException("Undo after redo did not restore the independent actor.");
+            if (_document.Actors.Count != beforeMultiDelete)
+                throw new InvalidOperationException("Undo after redo did not restore the deleted actors.");
+            ClickActorForSmoke(source);
+            AssertActorSelectionForSmoke(source);
+            ClearHistory();
 
             int originalCount = _document.Actors.Count;
             var originalActorNames = _actors.Select(actor => actor.LegacyName).ToHashSet(StringComparer.Ordinal);
@@ -179,7 +286,7 @@ public partial class GameBuilderApp
             if (!_actors.Any(actor => LegacySaveDocument.ReadString(actor.State.Data["cloneParent"]) == sourceName))
                 throw new InvalidOperationException("Saved copy lineage was not retained in the .voos project.");
 
-            GD.Print($"ACTOR_COPY_SMOKE_OK preview=true ctrlC=true snap=true descendants=true repeat=true undo=redo=persistence=true screenshot={screenshot}");
+            GD.Print($"ACTOR_COPY_SMOKE_OK selection=shift-toggle-marquee=true marqueeVisual=true multiCopyRoots=true multiDelete=undo-redo=true preview=true ctrlC=true snap=true descendants=true repeat=true persistence=true marqueeScreenshot={marqueeScreenshot} copyScreenshot={screenshot}");
         }
         catch (Exception exception)
         {
@@ -199,6 +306,32 @@ public partial class GameBuilderApp
         }
 
         GetTree().Quit(exitCode);
+    }
+
+    private void ClickActorForSmoke(WorldActorNode actor, bool addToSelection = false, bool toggleSelection = false)
+    {
+        Vector2 screenPosition = _camera.UnprojectPosition(actor.GetWorldRenderBounds().GetCenter());
+        if (!GetViewport().GetVisibleRect().HasPoint(screenPosition)
+            || !SelectActorAt(screenPosition, addToSelection, toggleSelection))
+            throw new InvalidOperationException($"World click did not select actor '{actor.State.DisplayName}'.");
+    }
+
+    private void SelectActorInMarqueeForSmoke(WorldActorNode actor, bool addToSelection = false, bool toggleSelection = false)
+    {
+        Vector2 center = _camera.UnprojectPosition(actor.GetWorldRenderBounds().GetCenter());
+        BeginSelectionMarquee(center - new Vector2(5f, 5f), addToSelection, toggleSelection);
+        UpdateSelectionMarquee(center + new Vector2(5f, 5f));
+        if (!_selectionMarquee.Visible)
+            throw new InvalidOperationException("The selection marquee was not drawn during a drag.");
+        CompleteSelectionMarquee(center + new Vector2(5f, 5f));
+    }
+
+    private void AssertActorSelectionForSmoke(params WorldActorNode[] expectedActors)
+    {
+        if (_selectedActors.Count != expectedActors.Length
+            || expectedActors.Any(actor => !_selectedActors.Contains(actor))
+            || _actorList.GetSelectedItems().Length != expectedActors.Length)
+            throw new InvalidOperationException("The actor world selection and actor-list multi-selection diverged.");
     }
 
     private List<WorldActorNode> FindCopiesSince(HashSet<string> originalActorNames)

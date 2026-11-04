@@ -46,6 +46,14 @@ public partial class GameBuilderApp : Node3D
     private LegacyLanSession _lanSession = null!;
     private LegacyLanNetworkWindow _networkWindow = null!;
     private WorldActorNode? _selectedActor;
+    private readonly List<WorldActorNode> _selectedActors = new();
+    private readonly List<WorldActorNode> _selectionBeforeMarquee = new();
+    private Control _selectionMarquee = null!;
+    private Vector2 _selectionMarqueeStart;
+    private bool _selectionMarqueeActive;
+    private bool _selectionMarqueeAdd;
+    private bool _selectionMarqueeToggle;
+    private bool _syncingActorList;
 
     private LegacyTerrainNode? _terrain;
     private MeshInstance3D? _stageGroundMesh;
@@ -231,6 +239,14 @@ public partial class GameBuilderApp : Node3D
         Control? hovered = GetViewport().GuiGetHoveredControl();
         return (hovered is not null && hovered != _behaviorUi) || _behaviorUi.IsInteractivePoint(viewportPosition);
     }
+    public override void _Input(InputEvent @event)
+    {
+        if (_selectionMarqueeActive
+            && @event is InputEventMouseButton mouseButton
+            && mouseButton.ButtonIndex == MouseButton.Left
+            && !mouseButton.Pressed)
+            CompleteSelectionMarquee(mouseButton.Position);
+    }
 
     public override void _UnhandledInput(InputEvent @event)
     {
@@ -250,13 +266,23 @@ public partial class GameBuilderApp : Node3D
                     BeginTerrainStroke();
                     ApplyTerrainBrush(mouseButton.Position);
                 }
-                else
+                else if (!IsPointerOverUi(mouseButton.Position)
+                    && !SelectActorAt(
+                        mouseButton.Position,
+                        mouseButton.ShiftPressed,
+                        mouseButton.CtrlPressed || mouseButton.MetaPressed))
                 {
-                    SelectActorAt(mouseButton.Position);
+                    BeginSelectionMarquee(
+                        mouseButton.Position,
+                        mouseButton.ShiftPressed,
+                        mouseButton.CtrlPressed || mouseButton.MetaPressed);
                 }
             }
             if (mouseButton.ButtonIndex == MouseButton.Left && !mouseButton.Pressed)
+            {
+                CompleteSelectionMarquee(mouseButton.Position);
                 EndTerrainStroke();
+            }
             if (mouseButton.Pressed && mouseButton.ButtonIndex is MouseButton.WheelUp or MouseButton.WheelDown)
             {
                 float wheelDelta = 0.1f * mouseButton.Factor;
@@ -277,6 +303,8 @@ public partial class GameBuilderApp : Node3D
             }
             else
             {
+                if (_selectionMarqueeActive)
+                    UpdateSelectionMarquee(motion.Position);
                 if (IsTerrainBrushActive && Input.IsMouseButtonPressed(MouseButton.Left))
                     ApplyTerrainBrush(motion.Position);
                 if (Input.MouseMode == Input.MouseModeEnum.Captured)
@@ -292,7 +320,9 @@ public partial class GameBuilderApp : Node3D
         {
             Control? focusedControl = GetViewport().GuiGetFocusOwner();
             bool editingText = focusedControl is LineEdit or TextEdit;
-            if (!_playMode && !editingText && (key.CtrlPressed || key.MetaPressed))
+            if (!_playMode && !editingText && key.Keycode == Key.Delete)
+                RemoveSelectedActor();
+            else if (!_playMode && !editingText && (key.CtrlPressed || key.MetaPressed))
             {
                 if (key.Keycode == Key.C)
                     BeginCopyPlacement();
@@ -305,6 +335,8 @@ public partial class GameBuilderApp : Node3D
             {
                 if (_playMode)
                     SetPlayMode(false);
+                else if (_selectionMarqueeActive)
+                    CancelSelectionMarquee();
                 else if (_copyPlacementActive)
                     CancelCopyPlacement();
                 else
@@ -384,6 +416,23 @@ public partial class GameBuilderApp : Node3D
         _behaviorUi.SetMessageHandler((actorName, messageName, argumentJson) =>
             _behaviorRuntime?.SendUiMessage(actorName, messageName, argumentJson));
         root.AddChild(_behaviorUi);
+        var marqueeStyle = new StyleBoxFlat
+        {
+            BgColor = new Color(0.18f, 0.58f, 1f, 0.14f),
+            BorderColor = new Color(0.36f, 0.76f, 1f, 0.95f),
+            BorderWidthLeft = 1,
+            BorderWidthTop = 1,
+            BorderWidthRight = 1,
+            BorderWidthBottom = 1
+        };
+        _selectionMarquee = new Panel
+        {
+            Name = "SelectionMarquee",
+            Visible = false,
+            MouseFilter = Control.MouseFilterEnum.Ignore
+        };
+        _selectionMarquee.AddThemeStyleboxOverride("panel", marqueeStyle);
+        root.AddChild(_selectionMarquee);
 
         _openDialog = new FileDialog
         {
@@ -536,8 +585,8 @@ public partial class GameBuilderApp : Node3D
         var left = new VBoxContainer();
         leftPanel.AddChild(left);
         left.AddChild(CreateLabel("Actors", 18));
-        _actorList = new ItemList { SizeFlagsVertical = Control.SizeFlags.ExpandFill, SelectMode = ItemList.SelectModeEnum.Single };
-        _actorList.ItemSelected += SelectActorByIndex;
+        _actorList = new ItemList { SizeFlagsVertical = Control.SizeFlags.ExpandFill, SelectMode = ItemList.SelectModeEnum.Multi };
+        _actorList.MultiSelected += SelectActorByIndex;
         left.AddChild(_actorList);
         left.AddChild(CreateLabel("Asset Store · offline", 14));
         var browseAssetStore = new Button { Text = "Browse catalog…" };
@@ -560,7 +609,7 @@ public partial class GameBuilderApp : Node3D
         var addActor = new Button { Text = "Add actor" };
         addActor.Pressed += () => AddActor();
         left.AddChild(addActor);
-        var removeActor = new Button { Text = "Delete selected actor" };
+        var removeActor = new Button { Text = "Delete selected" };
         removeActor.Pressed += RemoveSelectedActor;
         left.AddChild(removeActor);
 
@@ -929,7 +978,7 @@ public partial class GameBuilderApp : Node3D
                 }
             }
             if (_selectedActor == actor)
-                _selectionTitle.Text = label;
+                _selectionTitle.Text = _selectedActors.Count > 1 ? $"{_selectedActors.Count} actors selected" : label;
         }
         if (_selectedActor != actor)
             return;
@@ -1717,18 +1766,76 @@ public partial class GameBuilderApp : Node3D
     {
         if (_document is null || _selectedActor is null || _playMode)
             return;
-        if (_selectedActor.LegacyName.StartsWith("builtin:", StringComparison.Ordinal))
+        WorldActorNode[] selectedActors = _selectedActors.Where(_actors.Contains).ToArray();
+        if (selectedActors.Length == 0)
+            return;
+        WorldActorNode? builtInActor = selectedActors.FirstOrDefault(actor =>
+            actor.LegacyName.StartsWith("builtin:", StringComparison.Ordinal));
+        if (builtInActor is not null)
         {
-            ShowError($"Built-in actors such as {_selectedActor.State.DisplayName} cannot be deleted.");
+            ShowError($"Built-in actors such as {builtInActor.State.DisplayName} cannot be deleted.");
             return;
         }
-        ActorDeletionSnapshot snapshot = CaptureActorDeletion(_selectedActor);
-        if (!RemoveActorFromWorld(snapshot.Name))
-            return;
-        RecordHistory($"Delete {snapshot.DisplayName}",
-            () => RestoreDeletedActor(snapshot),
-            () => RemoveActorFromWorld(snapshot.Name));
+
+        ActorDeletionSnapshot[] snapshots = selectedActors
+            .OrderBy(GetActorHierarchyDepth)
+            .ThenBy(_actors.IndexOf)
+            .Select(CaptureActorDeletion)
+            .ToArray();
+        string[] previousSelectionNames = _selectedActors.Select(actor => actor.LegacyName).ToArray();
+        string? previousFocusName = _selectedActor?.LegacyName;
+        var deletedNames = snapshots.Select(snapshot => snapshot.Name).ToHashSet(StringComparer.Ordinal);
+        string[] remainingSelectionNames = _selectedActors
+            .Where(actor => !deletedNames.Contains(actor.LegacyName))
+            .Select(actor => actor.LegacyName)
+            .ToArray();
+        string? remainingFocusName = remainingSelectionNames.Contains(previousFocusName, StringComparer.Ordinal)
+            ? previousFocusName
+            : remainingSelectionNames.LastOrDefault() ?? _actors
+                .Where(actor => !deletedNames.Contains(actor.LegacyName))
+                .Select(actor => actor.LegacyName)
+                .FirstOrDefault();
+
+        foreach (ActorDeletionSnapshot snapshot in snapshots)
+        {
+            if (!RemoveActorFromWorld(snapshot.Name, updateSelection: false))
+                throw new InvalidOperationException($"Could not delete selected actor '{snapshot.Name}'.");
+        }
+        SetActorSelection(
+            remainingSelectionNames.Select(name => _actors.FirstOrDefault(actor => actor.LegacyName == name)).OfType<WorldActorNode>(),
+            _actors.FirstOrDefault(actor => actor.LegacyName == remainingFocusName));
+
+        string label = snapshots.Length == 1 ? $"Delete {snapshots[0].DisplayName}" : $"Delete {snapshots.Length} actors";
+        RecordHistory(label,
+            () =>
+            {
+                foreach (ActorDeletionSnapshot snapshot in snapshots)
+                    RestoreDeletedActor(snapshot);
+                SetActorSelection(
+                    previousSelectionNames.Select(name => _actors.FirstOrDefault(actor => actor.LegacyName == name)).OfType<WorldActorNode>(),
+                    _actors.FirstOrDefault(actor => actor.LegacyName == previousFocusName));
+            },
+            () =>
+            {
+                foreach (ActorDeletionSnapshot snapshot in snapshots)
+                    RemoveActorFromWorld(snapshot.Name, updateSelection: false);
+                SetActorSelection(
+                    remainingSelectionNames.Select(name => _actors.FirstOrDefault(actor => actor.LegacyName == name)).OfType<WorldActorNode>(),
+                    _actors.FirstOrDefault(actor => actor.LegacyName == remainingFocusName));
+            });
     }
+    private int GetActorHierarchyDepth(WorldActorNode actor)
+    {
+        int depth = 0;
+        Node? parent = actor.GetParent();
+        while (parent is WorldActorNode)
+        {
+            depth++;
+            parent = parent.GetParent();
+        }
+        return depth;
+    }
+
     private ActorDeletionSnapshot CaptureActorDeletion(WorldActorNode actor)
     {
         actor.SaveTransform();
@@ -1740,7 +1847,7 @@ public partial class GameBuilderApp : Node3D
             actor.GetChildren().OfType<WorldActorNode>().Select(child => child.LegacyName).ToArray());
     }
 
-    private bool RemoveActorFromWorld(string actorName)
+    private bool RemoveActorFromWorld(string actorName, bool updateSelection = true)
     {
         if (_document is null)
             return false;
@@ -1749,7 +1856,7 @@ public partial class GameBuilderApp : Node3D
             CancelCopyPlacement(showStatus: false);
         if (actor is null || actor.LegacyName.StartsWith("builtin:", StringComparison.Ordinal))
             return false;
-        bool wasSelected = _selectedActor == actor;
+        bool wasSelected = _selectedActors.Contains(actor);
         if (!_document.RemoveActor(actorName))
             return false;
         foreach (WorldActorNode child in actor.GetChildren().OfType<WorldActorNode>().ToArray())
@@ -1761,8 +1868,14 @@ public partial class GameBuilderApp : Node3D
         _actors.Remove(actor);
         actor.QueueFree();
         RefreshActorList();
-        if (wasSelected)
-            SelectActor(_actors.FirstOrDefault());
+        if (updateSelection && wasSelected)
+        {
+            WorldActorNode[] remainingSelection = _selectedActors.Where(candidate => candidate != actor && _actors.Contains(candidate)).ToArray();
+            WorldActorNode? focus = _selectedActor == actor
+                ? remainingSelection.LastOrDefault() ?? _actors.FirstOrDefault()
+                : _selectedActor;
+            SetActorSelection(remainingSelection, focus);
+        }
         return true;
     }
 
@@ -1834,16 +1947,39 @@ public partial class GameBuilderApp : Node3D
             _actorList.AddItem(label);
             _actorList.SetItemMetadata(_actorList.ItemCount - 1, actor.LegacyName);
         }
+        SyncActorListSelection();
     }
 
-    private void SelectActorByIndex(long index)
+    private void SyncActorListSelection()
     {
-        if ((ulong)index >= (ulong)_actorList.ItemCount)
-            return;
-        string name = (string)_actorList.GetItemMetadata((int)index);
-        SelectActor(_actors.FirstOrDefault(actor => actor.LegacyName == name));
+        _syncingActorList = true;
+        _actorList.DeselectAll();
+        for (int index = 0; index < Math.Min(_actors.Count, _actorList.ItemCount); index++)
+        {
+            if (_selectedActors.Contains(_actors[index]))
+                _actorList.Select(index, false);
+        }
+        _syncingActorList = false;
     }
-    private void SelectActorAt(Vector2 screenPosition)
+
+    private void SelectActorByIndex(long index, bool selected)
+    {
+        if (_syncingActorList || (ulong)index >= (ulong)_actorList.ItemCount)
+            return;
+        WorldActorNode[] selectedActors = _actorList.GetSelectedItems()
+            .Select(itemIndex => (string)_actorList.GetItemMetadata(itemIndex))
+            .Select(name => _actors.FirstOrDefault(actor => actor.LegacyName == name))
+            .OfType<WorldActorNode>()
+            .ToArray();
+        WorldActorNode? actor = selected
+            ? _actors.FirstOrDefault(candidate => candidate.LegacyName == (string)_actorList.GetItemMetadata((int)index))
+            : null;
+        WorldActorNode? focus = actor
+            ?? (selectedActors.Contains(_selectedActor) ? _selectedActor : selectedActors.LastOrDefault());
+        SetActorSelection(selectedActors, focus);
+    }
+
+    private bool SelectActorAt(Vector2 screenPosition, bool addToSelection = false, bool toggleSelection = false)
     {
         Vector3 origin = _camera.ProjectRayOrigin(screenPosition);
         Vector3 direction = _camera.ProjectRayNormal(screenPosition);
@@ -1851,41 +1987,241 @@ public partial class GameBuilderApp : Node3D
         query.CollisionMask = 1u;
         query.CollideWithBodies = true;
         Godot.Collections.Dictionary hit = _world.GetWorld3D().DirectSpaceState.IntersectRay(query);
-        if (hit.Count == 0 || hit["collider"].AsGodotObject() is not Node node)
-            return;
-        WorldActorNode? actor = _actors.FirstOrDefault(candidate => candidate == node || candidate.IsAncestorOf(node));
-        if (actor is not null)
-            SelectActor(actor);
+        WorldActorNode? actor = null;
+        float obstructionDistance = float.PositiveInfinity;
+        if (hit.Count > 0)
+        {
+            obstructionDistance = origin.DistanceTo(hit["position"].AsVector3());
+            if (hit["collider"].AsGodotObject() is Node node)
+            {
+                while (node is not null && node is not WorldActorNode)
+                    node = node.GetParent();
+                if (node is WorldActorNode hitActor && _actors.Contains(hitActor))
+                    actor = hitActor;
+            }
+        }
+
+        actor ??= FindActorAtScreenPosition(screenPosition, origin, obstructionDistance);
+        if (actor is null)
+            return false;
+        ApplyActorSelection(actor, addToSelection, toggleSelection);
+        return true;
     }
 
+    private WorldActorNode? FindActorAtScreenPosition(Vector2 screenPosition, Vector3 rayOrigin, float obstructionDistance)
+    {
+        WorldActorNode? bestActor = null;
+        float bestScreenDistance = float.PositiveInfinity;
+        float bestDepth = float.PositiveInfinity;
+        foreach (WorldActorNode candidate in _actors)
+        {
+            Aabb bounds = candidate.GetWorldRenderBounds();
+            Vector3 center = bounds.GetCenter();
+            if (_camera.ToLocal(center).Z >= 0f)
+                continue;
+            float depth = rayOrigin.DistanceTo(center);
+            if (depth > obstructionDistance + 0.1f)
+                continue;
+
+            Vector2 projectedCenter = _camera.UnprojectPosition(center);
+            Vector2 minimum = new(float.PositiveInfinity, float.PositiveInfinity);
+            Vector2 maximum = new(float.NegativeInfinity, float.NegativeInfinity);
+            bool hasProjectedCorner = false;
+            for (int corner = 0; corner < 8; corner++)
+            {
+                Vector3 worldPoint = bounds.Position + new Vector3(
+                    (corner & 1) == 0 ? 0f : bounds.Size.X,
+                    (corner & 2) == 0 ? 0f : bounds.Size.Y,
+                    (corner & 4) == 0 ? 0f : bounds.Size.Z);
+                if (_camera.ToLocal(worldPoint).Z >= 0f)
+                    continue;
+                Vector2 projectedPoint = _camera.UnprojectPosition(worldPoint);
+                minimum.X = Mathf.Min(minimum.X, projectedPoint.X);
+                minimum.Y = Mathf.Min(minimum.Y, projectedPoint.Y);
+                maximum.X = Mathf.Max(maximum.X, projectedPoint.X);
+                maximum.Y = Mathf.Max(maximum.Y, projectedPoint.Y);
+                hasProjectedCorner = true;
+            }
+            if (!hasProjectedCorner
+                || screenPosition.X < minimum.X || screenPosition.X > maximum.X
+                || screenPosition.Y < minimum.Y || screenPosition.Y > maximum.Y)
+                continue;
+
+            float screenDistance = projectedCenter.DistanceSquaredTo(screenPosition);
+            if (screenDistance > bestScreenDistance || (Mathf.IsEqualApprox(screenDistance, bestScreenDistance) && depth >= bestDepth))
+                continue;
+            bestActor = candidate;
+            bestScreenDistance = screenDistance;
+            bestDepth = depth;
+        }
+        return bestActor;
+    }
+
+    private void ApplyActorSelection(WorldActorNode actor, bool addToSelection, bool toggleSelection)
+    {
+        var selection = _selectedActors.ToList();
+        WorldActorNode? focus = actor;
+        if (toggleSelection)
+        {
+            if (selection.Remove(actor))
+                focus = _selectedActor == actor ? selection.LastOrDefault() : _selectedActor;
+            else
+                selection.Add(actor);
+        }
+        else if (addToSelection)
+        {
+            if (!selection.Contains(actor))
+                selection.Add(actor);
+        }
+        else
+        {
+            selection.Clear();
+            selection.Add(actor);
+        }
+        SetActorSelection(selection, focus);
+    }
+
+    private void BeginSelectionMarquee(Vector2 position, bool addToSelection, bool toggleSelection)
+    {
+        _selectionMarqueeActive = true;
+        _selectionMarqueeStart = position;
+        _selectionMarqueeAdd = addToSelection && !toggleSelection;
+        _selectionMarqueeToggle = toggleSelection;
+        _selectionBeforeMarquee.Clear();
+        _selectionBeforeMarquee.AddRange(_selectedActors);
+        _selectionMarquee.Visible = false;
+    }
+
+    private void UpdateSelectionMarquee(Vector2 position)
+    {
+        if (!_selectionMarqueeActive)
+            return;
+        Rect2 rectangle = GetSelectionMarqueeRect(position);
+        _selectionMarquee.Position = rectangle.Position;
+        _selectionMarquee.Size = rectangle.Size;
+        _selectionMarquee.Visible = rectangle.Size.LengthSquared() >= 16f;
+    }
+
+    private Rect2 GetSelectionMarqueeRect(Vector2 position)
+    {
+        Vector2 size = new(
+            Mathf.Abs(position.X - _selectionMarqueeStart.X),
+            Mathf.Abs(position.Y - _selectionMarqueeStart.Y));
+        return new Rect2(
+            new Vector2(Mathf.Min(position.X, _selectionMarqueeStart.X), Mathf.Min(position.Y, _selectionMarqueeStart.Y)),
+            size);
+    }
+
+    private void CompleteSelectionMarquee(Vector2 position)
+    {
+        if (!_selectionMarqueeActive)
+            return;
+        Rect2 rectangle = GetSelectionMarqueeRect(position);
+        var hits = new List<WorldActorNode>();
+        foreach (WorldActorNode actor in _actors)
+        {
+            Vector3 center = actor.GetWorldRenderBounds().GetCenter();
+            if (_camera.ToLocal(center).Z >= 0f)
+                continue;
+            Vector2 projectedCenter = _camera.UnprojectPosition(center);
+            if (projectedCenter.X >= rectangle.Position.X
+                && projectedCenter.X <= rectangle.End.X
+                && projectedCenter.Y >= rectangle.Position.Y
+                && projectedCenter.Y <= rectangle.End.Y)
+                hits.Add(actor);
+        }
+
+        List<WorldActorNode> selection;
+        if (_selectionMarqueeToggle)
+        {
+            selection = _selectionBeforeMarquee.ToList();
+            foreach (WorldActorNode actor in hits)
+            {
+                if (!selection.Remove(actor))
+                    selection.Add(actor);
+            }
+        }
+        else if (_selectionMarqueeAdd)
+        {
+            selection = _selectionBeforeMarquee.ToList();
+            foreach (WorldActorNode actor in hits)
+            {
+                if (!selection.Contains(actor))
+                    selection.Add(actor);
+            }
+        }
+        else
+        {
+            selection = hits;
+        }
+
+        WorldActorNode? focus = hits.LastOrDefault()
+            ?? (_selectedActor is not null && _selectedActors.Contains(_selectedActor)
+                ? _selectedActor
+                : selection.LastOrDefault());
+        SetActorSelection(selection, focus);
+        CancelSelectionMarquee();
+    }
+
+    private void CancelSelectionMarquee()
+    {
+        _selectionMarqueeActive = false;
+        _selectionMarquee.Visible = false;
+        _selectionBeforeMarquee.Clear();
+    }
 
     private void SelectActor(WorldActorNode? actor)
     {
-        _selectedActor = actor;
+        if (actor is null)
+        {
+            SetActorSelection(Array.Empty<WorldActorNode>(), null);
+            return;
+        }
+        IEnumerable<WorldActorNode> selection = _selectedActors.Contains(actor) ? _selectedActors : new[] { actor };
+        SetActorSelection(selection, actor);
+    }
+
+    private void SetActorSelection(IEnumerable<WorldActorNode> actors, WorldActorNode? focus)
+    {
+        WorldActorNode[] requestedSelection = actors.ToArray();
+        _selectedActors.Clear();
+        foreach (WorldActorNode actor in requestedSelection)
+        {
+            if (_actors.Contains(actor) && !_selectedActors.Contains(actor))
+                _selectedActors.Add(actor);
+        }
+        _selectedActor = focus is not null && _selectedActors.Contains(focus) ? focus : _selectedActors.LastOrDefault();
+        SyncActorListSelection();
+
         _updatingInspector = true;
-        bool hasActor = actor is not null;
-        _displayNameField.Text = hasActor ? actor!.State.DisplayName : "";
-        _descriptionField.Text = hasActor ? actor!.State.Description : "";
+        bool hasActor = _selectedActor is not null;
+        _selectionTitle.Text = _selectedActors.Count > 1
+            ? $"{_selectedActors.Count} actors selected"
+            : hasActor
+                ? (_selectedActor!.State.DisplayName.Length > 0 ? _selectedActor.State.DisplayName : _selectedActor.LegacyName)
+                : "Select an actor";
+        _displayNameField.Text = hasActor ? _selectedActor!.State.DisplayName : "";
+        _descriptionField.Text = hasActor ? _selectedActor!.State.Description : "";
         for (int axis = 0; axis < 3; axis++)
         {
             _positionFields[axis].Editable = hasActor && !_playMode;
-            _positionFields[axis].Value = hasActor ? actor!.GlobalPosition[axis] : 0d;
-            _scaleFields[axis].Value = hasActor ? actor!.Scale[axis] : 1d;
+            _positionFields[axis].Value = hasActor ? _selectedActor!.GlobalPosition[axis] : 0d;
+            _scaleFields[axis].Value = hasActor ? _selectedActor!.Scale[axis] : 1d;
         }
         for (int axis = 0; axis < 3; axis++)
         {
             _rotationFields[axis].Editable = hasActor && !_playMode;
-            _rotationFields[axis].Value = hasActor ? actor!.GlobalRotationDegrees[axis] : 0d;
+            _rotationFields[axis].Value = hasActor ? _selectedActor!.GlobalRotationDegrees[axis] : 0d;
         }
-        Color tint = hasActor ? actor!.State.Tint : Colors.White;
+        Color tint = hasActor ? _selectedActor!.State.Tint : Colors.White;
         _tintFields[0].Value = tint.R;
         _tintFields[1].Value = tint.G;
         _tintFields[2].Value = tint.B;
         _tintFields[3].Value = tint.A;
-        _solidField.ButtonPressed = hasActor && actor!.State.IsSolid;
-        _physicsField.ButtonPressed = hasActor && actor!.State.EnablePhysics;
-        _gravityField.ButtonPressed = hasActor && actor!.State.EnableGravity;
-        _playerField.ButtonPressed = hasActor && actor!.State.IsPlayerControllable;
+        _solidField.ButtonPressed = hasActor && _selectedActor!.State.IsSolid;
+        _physicsField.ButtonPressed = hasActor && _selectedActor!.State.EnablePhysics;
+        _gravityField.ButtonPressed = hasActor && _selectedActor!.State.EnableGravity;
+        _playerField.ButtonPressed = hasActor && _selectedActor!.State.IsPlayerControllable;
         SetInspectorInputsEnabled(hasActor && !_playMode);
         _behaviorEditorButton.Disabled = !hasActor || _playMode;
         _updatingInspector = false;

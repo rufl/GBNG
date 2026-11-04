@@ -35,8 +35,19 @@ public partial class GameBuilderApp
         }
 
         _copySources.Clear();
-        var includedNames = new HashSet<string>(StringComparer.Ordinal) { _selectedActor.LegacyName };
-        _copySources.Add(_selectedActor);
+        var selectedRoots = new List<WorldActorNode> { _selectedActor };
+        foreach (WorldActorNode selectedActor in _selectedActors)
+        {
+            if (selectedActor != _selectedActor)
+                selectedRoots.Add(selectedActor);
+        }
+
+        var includedNames = new HashSet<string>(StringComparer.Ordinal);
+        foreach (WorldActorNode selectedRoot in selectedRoots)
+        {
+            if (includedNames.Add(selectedRoot.LegacyName))
+                _copySources.Add(selectedRoot);
+        }
         for (int index = 0; index < _copySources.Count; index++)
         {
             string parentName = _copySources[index].LegacyName;
