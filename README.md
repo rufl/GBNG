@@ -284,6 +284,31 @@ browser, or pass the matching `--session-directory=` argument. Change
 `DIRECTORY_SUBNET`, `DIRECTORY_PROXY_IP`, and `DIRECTORY_SERVICE_IP` in `.env`
 if the default Docker subnet conflicts with another network.
 
+
+##### Tailnet-only simulation
+
+For a Linux staging host with Caddy and Tailscale but no public domain, use
+`Caddyfile.tailnet` and the user services in `tools/public-session-directory`.
+Copy `server.py` and `Caddyfile.tailnet` to
+`~/.local/share/gamebuilder-session-directory/`, copy both `.service` files to
+`~/.config/systemd/user/`, then run:
+
+```text
+systemctl --user daemon-reload
+systemctl --user enable --now gamebuilder-session-directory.service gamebuilder-session-directory-caddy.service
+tailscale serve --https=443 --set-path=/session-directory/ --bg --yes http://127.0.0.1:47801
+```
+
+The directory listens only on loopback. Tailscale terminates HTTPS and mounts
+the Caddy proxy under `/session-directory/`; the command preserves other Serve
+routes. Adjust the Caddy service `ExecStart` if Caddy is installed somewhere
+other than `~/.local/bin/caddy`. Set
+`GAMEBUILDER_SESSION_DIRECTORY=https://<node>.<tailnet>.ts.net/session-directory`
+for hosts and clients, or pass the same value as `--session-directory=`.
+This endpoint is accessible only to devices in the tailnet, not the public
+Internet. Do not enable Funnel on a port whose other Serve routes proxy unrelated
+applications.
+
 The service stores session records in memory and refreshes host data every 15
 seconds. Public listings hide entries after 60 seconds without a heartbeat;
 records remain migration-accessible for five minutes before purge. The free
