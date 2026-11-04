@@ -294,6 +294,32 @@ public partial class GameBuilderApp
                 || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != sourceSpawnParentBeforeCycle
                 || source.GetParent() != sourceSceneParentBeforeCycle)
                 throw new InvalidOperationException("Parenting an actor to its descendant created an invalid hierarchy.");
+            Button setSpawnParentButton = FindChild("SetSpawnParentButton", true, false) as Button
+                ?? throw new InvalidOperationException("The reset-parent picker button was not found.");
+            Label spawnParentLabel = FindChild("SpawnParentLabel", true, false) as Label
+                ?? throw new InvalidOperationException("The reset-parent label was not found.");
+            if (spawnParentLabel.Text != independent.State.DisplayName)
+                throw new InvalidOperationException("The inspector did not show the selected actor's reset parent.");
+            string parentBeforeRejectedResetPick = source.State.TransformParent;
+            string spawnParentBeforeRejectedResetPick = LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]);
+            Node sceneParentBeforeRejectedResetPick = source.GetParent();
+            setSpawnParentButton.EmitSignal("pressed");
+            if (!_settingSpawnParent)
+                throw new InvalidOperationException("The reset-parent button did not enter scene-picking mode.");
+            _UnhandledInput(new InputEventMouseButton
+            {
+                ButtonIndex = MouseButton.Left,
+                Pressed = true,
+                Position = cycleTargetPosition
+            });
+            if (!_settingSpawnParent
+                || source.State.TransformParent != parentBeforeRejectedResetPick
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != spawnParentBeforeRejectedResetPick
+                || source.GetParent() != sceneParentBeforeRejectedResetPick)
+                throw new InvalidOperationException("The reset-parent picker accepted a descendant as its target.");
+            _UnhandledInput(new InputEventKey { Keycode = Key.Escape, Pressed = true });
+            if (_settingSpawnParent || setSpawnParentButton.Text != "Choose in scene…")
+                throw new InvalidOperationException("Escape did not cancel reset-parent scene-picking mode.");
 
             SetActorSelection(new[] { source }, source);
             Vector2 viewportSize = GetViewport().GetVisibleRect().Size;
@@ -306,6 +332,8 @@ public partial class GameBuilderApp
                     Vector2 candidate = new(
                         viewportSize.X * (column + 0.5f) / 8f,
                         viewportSize.Y * (row + 0.5f) / 8f);
+                    if (candidate.X < 280f || candidate.X > viewportSize.X - 300f || candidate.Y < 55f)
+                        continue;
                     if (GetActorAtScreenPosition(candidate) is not null)
                         continue;
                     emptyPosition = candidate;
@@ -317,7 +345,8 @@ public partial class GameBuilderApp
                 throw new InvalidOperationException("The parent smoke test could not find empty world space.");
             Input.WarpMouse(emptyPosition);
             await WaitForUiFrames(1);
-            if (GetActorAtScreenPosition(GetViewport().GetMousePosition()) is not null)
+            if (GetActorAtScreenPosition(GetViewport().GetMousePosition()) is not null
+                || IsPointerOverUi(emptyPosition))
                 throw new InvalidOperationException("The mouse did not remain over empty world space for unparenting.");
             parentOnResetToggle.ButtonPressed = false;
             if (_parentOnReset)
@@ -344,6 +373,73 @@ public partial class GameBuilderApp
                 || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != independentName
                 || source.GetParent() != _world)
                 throw new InvalidOperationException("Redo did not restore the unparented actor while preserving its reset parent.");
+
+            var beforeResetParentPick = new ActorMotionSnapshot(source.GlobalTransform, source.LinearVelocity, source.AngularVelocity);
+            setSpawnParentButton.EmitSignal("pressed");
+            if (!_settingSpawnParent)
+                throw new InvalidOperationException("The reset-parent button did not enter scene-picking mode to clear the parent.");
+            _UnhandledInput(new InputEventMouseButton
+            {
+                ButtonIndex = MouseButton.Left,
+                Pressed = true,
+                Position = emptyPosition
+            });
+            if (_settingSpawnParent
+                || source.State.TransformParent.Length != 0
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]).Length != 0
+                || source.GetParent() != _world
+                || !source.GlobalTransform.IsEqualApprox(beforeResetParentPick.Transform)
+                || spawnParentLabel.Text != "<none>")
+                throw new InvalidOperationException("Picking empty world space did not clear only the actor's reset parent.");
+            UndoEdit();
+            if (source.State.TransformParent.Length != 0
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != independentName
+                || source.GetParent() != _world
+                || spawnParentLabel.Text != independent.State.DisplayName)
+                throw new InvalidOperationException("Undo did not restore only the reset parent.");
+            RedoEdit();
+            if (source.State.TransformParent.Length != 0
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]).Length != 0
+                || source.GetParent() != _world)
+                throw new InvalidOperationException("Redo did not clear only the reset parent.");
+
+            Input.WarpMouse(parentTargetPosition);
+            await WaitForUiFrames(1);
+            if (GetActorAtScreenPosition(GetViewport().GetMousePosition()) != independent
+                || IsPointerOverUi(parentTargetPosition))
+                throw new InvalidOperationException("The reset-parent picker could not target the independent actor.");
+            setSpawnParentButton.EmitSignal("pressed");
+            if (!_settingSpawnParent)
+                throw new InvalidOperationException("The reset-parent button did not restart scene-picking mode.");
+            _UnhandledInput(new InputEventMouseButton
+            {
+                ButtonIndex = MouseButton.Left,
+                Pressed = true,
+                Position = parentTargetPosition
+            });
+            if (_settingSpawnParent
+                || source.State.TransformParent.Length != 0
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != independentName
+                || source.GetParent() != _world
+                || !source.GlobalTransform.IsEqualApprox(beforeResetParentPick.Transform))
+                throw new InvalidOperationException("Picking an actor did not set only the reset parent.");
+            UndoEdit();
+            if (source.State.TransformParent.Length != 0
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]).Length != 0
+                || source.GetParent() != _world)
+                throw new InvalidOperationException("Undo did not clear only the chosen reset parent.");
+            RedoEdit();
+            if (source.State.TransformParent.Length != 0
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != independentName
+                || source.GetParent() != _world)
+                throw new InvalidOperationException("Redo did not restore only the chosen reset parent.");
+            UndoEdit();
+            UndoEdit();
+            if (source.State.TransformParent.Length != 0
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != independentName
+                || source.GetParent() != _world)
+                throw new InvalidOperationException("Undo did not restore the state before reset-parent picking.");
+
             UndoEdit();
             UndoEdit();
             if (source.State.TransformParent != originalTransformParent

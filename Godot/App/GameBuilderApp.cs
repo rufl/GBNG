@@ -26,6 +26,9 @@ public partial class GameBuilderApp : Node3D
     private CheckBox _parentOnResetToggle = null!;
     private bool _parentOnReset = true;
     private const string ParentOnResetSettingsPath = "user://editor-settings.cfg";
+    private Label _spawnParentLabel = null!;
+    private Button _spawnParentButton = null!;
+    private bool _settingSpawnParent;
     private OptionButton _assetPicker = null!;
     private LineEdit _assetSearch = null!;
     private Label _assetCount = null!;
@@ -287,7 +290,12 @@ public partial class GameBuilderApp : Node3D
                 Input.MouseMode = mouseButton.Pressed ? Input.MouseModeEnum.Captured : Input.MouseModeEnum.Visible;
             if (mouseButton.ButtonIndex == MouseButton.Left && mouseButton.Pressed && !_playMode)
             {
-                if (_copyPlacementActive)
+                if (_settingSpawnParent)
+                {
+                    if (!IsPointerOverUi(mouseButton.Position))
+                        SetSelectedActorSpawnParentAtScreenPosition(mouseButton.Position);
+                }
+                else if (_copyPlacementActive)
                 {
                     if (!IsPointerOverUi(mouseButton.Position))
                         PasteCopyAtCursor(mouseButton.Position, mouseButton.CtrlPressed || mouseButton.MetaPressed);
@@ -349,6 +357,8 @@ public partial class GameBuilderApp : Node3D
         }
         else if (@event is InputEventKey key && key.Pressed && !key.Echo)
         {
+            if (_settingSpawnParent && key.Keycode != Key.Escape)
+                return;
             Control? focusedControl = GetViewport().GuiGetFocusOwner();
             bool editingText = focusedControl is LineEdit or TextEdit;
             if (!_playMode && !editingText && (key.Keycode == Key.Delete || key.Keycode == Key.Backspace))
@@ -378,6 +388,8 @@ public partial class GameBuilderApp : Node3D
             {
                 if (_playMode)
                     SetPlayMode(false);
+                else if (_settingSpawnParent)
+                    CancelSpawnParentSelection();
                 else if (_selectionMarqueeActive)
                     CancelSelectionMarquee();
                 else if (_copyPlacementActive)
@@ -716,6 +728,19 @@ public partial class GameBuilderApp : Node3D
         scroll.AddChild(inspector);
         _selectionTitle = CreateLabel("Select an actor", 18);
         inspector.AddChild(_selectionTitle);
+        inspector.AddChild(CreateLabel("Reset parent", 14));
+        _spawnParentLabel = CreateLabel("<none>", 13);
+        _spawnParentLabel.Name = "SpawnParentLabel";
+        inspector.AddChild(_spawnParentLabel);
+        _spawnParentButton = new Button
+        {
+            Name = "SetSpawnParentButton",
+            Text = "Choose in scene…",
+            TooltipText = "Choose an actor in the scene, or empty space, to set the parent used when this actor resets.",
+            Disabled = true
+        };
+        _spawnParentButton.Pressed += BeginSpawnParentSelection;
+        inspector.AddChild(_spawnParentButton);
         inspector.AddChild(CreateLabel("Brain", 14));
         _brainField = new OptionButton { CustomMinimumSize = new Vector2(0f, 34f) };
         _brainField.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
@@ -1172,6 +1197,7 @@ public partial class GameBuilderApp : Node3D
         }
         _terrainEditorWindow?.SetBrushActive(false);
         CancelCopyPlacement(showStatus: false);
+        CancelSpawnParentSelection(showStatus: false);
         EndTerrainStroke();
         try
         {
@@ -2270,6 +2296,8 @@ public partial class GameBuilderApp : Node3D
 
     private void SetActorSelection(IEnumerable<WorldActorNode> actors, WorldActorNode? focus)
     {
+        if (_settingSpawnParent)
+            CancelSpawnParentSelection(showStatus: false);
         WorldActorNode[] requestedSelection = actors.ToArray();
         _selectedActors.Clear();
         foreach (WorldActorNode actor in requestedSelection)
@@ -2312,6 +2340,17 @@ public partial class GameBuilderApp : Node3D
         _physicsField.ButtonPressed = hasActor && _selectedActor!.State.EnablePhysics;
         _gravityField.ButtonPressed = hasActor && _selectedActor!.State.EnableGravity;
         _playerField.ButtonPressed = hasActor && _selectedActor!.State.IsPlayerControllable;
+        string spawnParentName = hasActor
+            ? LegacySaveDocument.ReadString(_selectedActor!.State.Data["spawnTransformParent"])
+            : string.Empty;
+        WorldActorNode? spawnParent = spawnParentName.Length == 0 ? null : FindActor(spawnParentName);
+        if (spawnParent is not null)
+            _spawnParentLabel.Text = spawnParent.State.DisplayName.Length > 0
+                ? spawnParent.State.DisplayName
+                : spawnParent.LegacyName;
+        else
+            _spawnParentLabel.Text = spawnParentName.Length == 0 ? "<none>" : spawnParentName;
+        _spawnParentButton.Disabled = !hasActor || _selectedActors.Count != 1 || _playMode;
         SetInspectorInputsEnabled(hasActor && !_playMode);
         _behaviorEditorButton.Disabled = !hasActor || _playMode;
         _updatingInspector = false;
@@ -2402,8 +2441,10 @@ public partial class GameBuilderApp : Node3D
             _terrainEditorWindow?.SetBrushActive(false);
             _worldSettingsWindow.Hide();
             EndTerrainStroke();
+            CancelSpawnParentSelection(showStatus: false);
         }
         _playMode = enabled;
+        _spawnParentButton.Disabled = enabled || _selectedActors.Count != 1;
         UpdateCameraFollowButton();
         Input.MouseMode = Input.MouseModeEnum.Visible;
         foreach (WorldActorNode actor in _actors)
@@ -2684,6 +2725,84 @@ public partial class GameBuilderApp : Node3D
             if (_status is not null && IsInstanceValid(_status))
                 _status.Text = message;
         }
+    }
+
+    private void BeginSpawnParentSelection()
+    {
+        if (_settingSpawnParent)
+        {
+            CancelSpawnParentSelection();
+            return;
+        }
+        if (_document is null || _playMode || _selectedActors.Count != 1)
+            return;
+        CancelCopyPlacement(showStatus: false);
+        Input.MouseMode = Input.MouseModeEnum.Visible;
+
+        _settingSpawnParent = true;
+        _spawnParentButton.Text = "Cancel pick";
+        _status.Text = "Click an actor to set its reset parent, or empty world space to clear it. Press Esc to cancel.";
+    }
+
+    private void CancelSpawnParentSelection(bool showStatus = true)
+    {
+        if (!_settingSpawnParent)
+            return;
+        _settingSpawnParent = false;
+        _spawnParentButton.Text = "Choose in scene…";
+        if (showStatus)
+            _status.Text = "Reset parent selection canceled.";
+    }
+
+    private void SetSelectedActorSpawnParentAtScreenPosition(Vector2 screenPosition)
+    {
+        if (_document is null || _playMode || _selectedActors.Count != 1)
+        {
+            CancelSpawnParentSelection(showStatus: false);
+            return;
+        }
+
+        WorldActorNode actor = _selectedActors[0];
+        if (!_actors.Contains(actor))
+        {
+            CancelSpawnParentSelection(showStatus: false);
+            return;
+        }
+
+        WorldActorNode? parent = GetActorAtScreenPosition(screenPosition);
+        if (parent is not null && (parent == actor || actor.IsAncestorOf(parent)))
+        {
+            _status.Text = "An actor cannot use itself or one of its descendants as its reset parent.";
+            return;
+        }
+
+        string parentName = parent?.LegacyName ?? string.Empty;
+        string previousParentName = LegacySaveDocument.ReadString(actor.State.Data["spawnTransformParent"]);
+        CancelSpawnParentSelection(showStatus: false);
+        if (previousParentName == parentName)
+        {
+            _status.Text = "Reset parent unchanged.";
+            return;
+        }
+
+        string actorName = actor.LegacyName;
+        SetActorSpawnParent(actorName, parentName);
+        RecordHistory("Set actor parent on reset",
+            () => SetActorSpawnParent(actorName, previousParentName),
+            () => SetActorSpawnParent(actorName, parentName));
+        _status.Text = parent is null
+            ? $"Cleared the reset parent for {actor.State.DisplayName}."
+            : $"Set {parent.State.DisplayName} as the reset parent for {actor.State.DisplayName}.";
+    }
+
+    private void SetActorSpawnParent(string actorName, string spawnParentName)
+    {
+        WorldActorNode? actor = FindActor(actorName);
+        if (actor is null)
+            return;
+        actor.State.WriteString("spawnTransformParent", spawnParentName);
+        if (_selectedActor == actor)
+            SelectActor(actor);
     }
 
     private void SetSelectedActorParentAtCursor()
