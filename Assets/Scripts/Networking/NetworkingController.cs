@@ -1074,12 +1074,18 @@ public class NetworkingController : Photon.PunBehaviour
           || playerId != PhotonNetwork.GetDirectPlayerId(senderClientId)
           || sourceClientId != senderClientId)
           throw new InvalidDataException("Direct player identity did not match its assigned transport client.");
+        bool isNewPlayer = !PhotonNetwork.HasDirectPlayerIdentity(playerId);
         PhotonNetwork.SetDirectPeerName(playerId, nickname);
         if (kickedPlayerNickNames.Contains(nickname))
         {
           PhotonNetwork.ForgetDirectPeerName(playerId);
           KickPlayer(PhotonNetwork.FindPlayer(playerId));
           return;
+        }
+        if (isNewPlayer)
+        {
+          HudNotifications cms = FindObjectOfType<HudNotifications>();
+          if (cms != null) cms.AddMessage($"'{nickname}' joined!");
         }
         directRpcRouter.NotifyServerPlayerConnected(PhotonNetwork.FindPlayer(playerId));
         foreach (ulong clientId in directNetworkManager.ConnectedClientsIds)
@@ -1093,10 +1099,16 @@ public class NetworkingController : Photon.PunBehaviour
           || sourceClientId == directNetworkManager.LocalClientId
           || (playerId == 1) != (sourceClientId == NetworkManager.ServerClientId))
           throw new InvalidDataException("Host sent an invalid direct player identity.");
+        bool isNewPlayer = !PhotonNetwork.HasDirectPlayerIdentity(playerId);
         PhotonNetwork.SetDirectPeerName(playerId, nickname);
         if (!PhotonNetwork.RegisterDirectPeer(playerId, sourceClientId)
           && PhotonNetwork.GetDirectPlayerId(sourceClientId) != playerId)
           throw new InvalidDataException("Host reused a direct player ID for a different transport client.");
+        if (isNewPlayer && receivedPlayerInitPayload)
+        {
+          HudNotifications cms = FindObjectOfType<HudNotifications>();
+          if (cms != null) cms.AddMessage($"'{nickname}' joined!");
+        }
       }
     }
     catch (Exception e)
@@ -1342,9 +1354,24 @@ public class NetworkingController : Photon.PunBehaviour
   {
     if (directNetworkManager == null || directNetworkManager.IsServer || senderClientId != NetworkManager.ServerClientId) return;
     reader.ReadValueSafe(out int playerId);
-    if (playerId == PhotonNetwork.player.ID) return;
+    if (playerId <= 1 || playerId > PhotonNetwork.MaximumDirectPlayers) return;
+
+    PhotonPlayer disconnectedPlayer = PhotonNetwork.FindPlayer(playerId);
+    bool hadIdentity = PhotonNetwork.HasDirectPlayerIdentity(playerId);
     RemoveDirectRemotePlayer(playerId);
-    PhotonNetwork.RemoveDirectPeer(playerId);
+    if (!hadIdentity) return;
+    if (!PhotonNetwork.RemoveDirectPeer(playerId))
+      PhotonNetwork.ForgetDirectPeerName(playerId);
+    PhotonNetwork.SetDirectSession(directNetworkManager, GetLocalDirectPlayerName());
+
+    HudNotifications cms = FindObjectOfType<HudNotifications>();
+    if (cms != null) cms.AddMessage($"'{disconnectedPlayer.NickName}' left");
+    if (voosEngine != null)
+      voosEngine.BroadcastMessage("PlayerLeft", new PlayerLeftMessage
+      {
+        id = disconnectedPlayer.ID,
+        nickName = disconnectedPlayer.NickName
+      });
   }
 
   void RemoveDirectRemotePlayer(int playerId)
@@ -1393,6 +1420,8 @@ public class NetworkingController : Photon.PunBehaviour
       ReclaimDirectPlayerActors(playerId);
       PlayerLeftMessage message = new PlayerLeftMessage { id = playerId, nickName = disconnectedPlayer.NickName };
       voosEngine.BroadcastMessage("PlayerLeft", message);
+      HudNotifications cms = FindObjectOfType<HudNotifications>();
+      if (cms != null) cms.AddMessage($"'{disconnectedPlayer.NickName}' left");
       Util.Log($"Direct player {playerId} disconnected.");
       PhotonNetwork.ForgetDirectPeerName(playerId);
       PhotonNetwork.ReleaseDirectPlayerId(clientId);

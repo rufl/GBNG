@@ -318,6 +318,9 @@ over IPv6. Each direct host keeps an ephemeral 2048-bit RSA private key in
 memory and advertises only its public certificate. LAN discovery and the public
 directory carry that certificate; manual sharing uses a complete
 `GBDIRECT1|address|port|certificate` invite and does not require the directory.
+Direct-host sessions show join/leave notices to the host and existing clients.
+When a peer leaves, every surviving participant also receives the `PlayerLeft`
+behavior event; a newcomer does not get join notices for the existing roster.
 Clients reject raw `IP:port` joins instead of falling back to plaintext. The
 pin authenticates the host and encrypts transport, but does not authenticate
 players: anyone with a public listing or invite may attempt to join. Player
