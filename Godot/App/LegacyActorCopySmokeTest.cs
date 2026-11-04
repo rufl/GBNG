@@ -265,19 +265,19 @@ public partial class GameBuilderApp
             if (source.State.TransformParent != independentName || source.GetParent() != independent)
                 throw new InvalidOperationException("Redo did not restore the actor parent.");
 
-            SetActorSelection(new[] { independent }, independent);
-            string independentOriginalParent = independent.State.TransformParent;
-            string independentOriginalSpawnParent = LegacySaveDocument.ReadString(independent.State.Data["spawnTransformParent"]);
-            Node independentOriginalSceneParent = independent.GetParent();
-            Vector2 cycleTargetPosition = _camera.UnprojectPosition(source.GetWorldRenderBounds().GetCenter());
+            SetActorSelection(new[] { source }, source);
+            string sourceParentBeforeCycle = source.State.TransformParent;
+            string sourceSpawnParentBeforeCycle = LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]);
+            Node sourceSceneParentBeforeCycle = source.GetParent();
+            Vector2 cycleTargetPosition = _camera.UnprojectPosition(child.GetWorldRenderBounds().GetCenter());
             Input.WarpMouse(cycleTargetPosition);
             await WaitForUiFrames(1);
-            if (GetActorAtScreenPosition(GetViewport().GetMousePosition()) != source)
+            if (GetActorAtScreenPosition(GetViewport().GetMousePosition()) != child)
                 throw new InvalidOperationException("The cycle-rejection smoke test could not resolve the descendant actor.");
             _UnhandledInput(new InputEventKey { Keycode = Key.H, CtrlPressed = true, Pressed = true });
-            if (independent.State.TransformParent != independentOriginalParent
-                || LegacySaveDocument.ReadString(independent.State.Data["spawnTransformParent"]) != independentOriginalSpawnParent
-                || independent.GetParent() != independentOriginalSceneParent)
+            if (source.State.TransformParent != sourceParentBeforeCycle
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != sourceSpawnParentBeforeCycle
+                || source.GetParent() != sourceSceneParentBeforeCycle)
                 throw new InvalidOperationException("Parenting an actor to its descendant created an invalid hierarchy.");
 
             SetActorSelection(new[] { source }, source);
@@ -485,19 +485,38 @@ public partial class GameBuilderApp
             WorldActorNode persistenceSource = _actors.Single(actor => actor.LegacyName == sourceName);
             WorldActorNode persistenceParent = _actors.Single(actor => actor.LegacyName == independentName);
             SetActorSelection(new[] { persistenceSource }, persistenceSource);
-            Input.WarpMouse(_camera.UnprojectPosition(persistenceParent.GetWorldRenderBounds().GetCenter()));
-            await WaitForUiFrames(1);
-            if (GetActorAtScreenPosition(GetViewport().GetMousePosition()) != persistenceParent)
-                throw new InvalidOperationException("The parent persistence smoke test could not resolve its target actor.");
-            _UnhandledInput(new InputEventKey { Keycode = Key.H, CtrlPressed = true, Pressed = true });
+            ApplyActorParentSnapshot(
+                persistenceSource.LegacyName,
+                new ActorParentSnapshot(
+                    independentName,
+                    independentName,
+                    persistenceSource.GlobalTransform,
+                    persistenceSource.LinearVelocity,
+                    persistenceSource.AngularVelocity));
             if (persistenceSource.State.TransformParent != independentName
-                || LegacySaveDocument.ReadString(persistenceSource.State.Data["spawnTransformParent"]) != independentName)
-                throw new InvalidOperationException("The parent shortcut did not update the project state before save.");
-            _document.SaveTo(projectPath);
+                || LegacySaveDocument.ReadString(persistenceSource.State.Data["spawnTransformParent"]) != independentName
+                || persistenceSource.GetParent() != persistenceParent)
+                throw new InvalidOperationException("The parent persistence smoke fixture could not establish the expected hierarchy.");
+            string ctrlSaveMarker = $"Ctrl+S smoke {Guid.NewGuid():N}";
+            persistenceSource.State.WriteString("description", ctrlSaveMarker);
+            _actorList.GrabFocus();
+            _UnhandledInput(new InputEventKey { Keycode = Key.S, CtrlPressed = true, Pressed = true });
             LoadProject(projectPath);
             await WaitForUiFrames(2);
             if (_document?.SourcePath != projectPath || _document.Actors.Count != originalCount + 4)
-                throw new InvalidOperationException("Copied actor hierarchies did not persist after saving and reloading the project.");
+                throw new InvalidOperationException("Ctrl+S did not save the project before reload.");
+            WorldActorNode ctrlSavedSource = _actors.Single(actor => actor.LegacyName == sourceName);
+            if (ctrlSavedSource.State.Description != ctrlSaveMarker)
+                throw new InvalidOperationException("Ctrl+S did not persist the current project state.");
+
+            string cmdSaveMarker = $"Cmd+S smoke {Guid.NewGuid():N}";
+            ctrlSavedSource.State.WriteString("description", cmdSaveMarker);
+            _actorList.GrabFocus();
+            _UnhandledInput(new InputEventKey { Keycode = Key.S, MetaPressed = true, Pressed = true });
+            LoadProject(projectPath);
+            await WaitForUiFrames(2);
+            if (_document?.SourcePath != projectPath || _document.Actors.Count != originalCount + 4)
+                throw new InvalidOperationException("Cmd+S did not save the project before reload.");
             if (!_actors.Any(actor => LegacySaveDocument.ReadString(actor.State.Data["cloneParent"]) == sourceName))
                 throw new InvalidOperationException("Saved copy lineage was not retained in the .voos project.");
             WorldActorNode persistedSource = _actors.Single(actor => actor.LegacyName == sourceName);
@@ -506,8 +525,10 @@ public partial class GameBuilderApp
                 || LegacySaveDocument.ReadString(persistedSource.State.Data["spawnTransformParent"]) != independentName
                 || persistedSource.GetParent() != persistedParent)
                 throw new InvalidOperationException("The actor parent and reset parent did not persist through save and reload.");
+            if (persistedSource.State.Description != cmdSaveMarker)
+                throw new InvalidOperationException("Cmd+S did not persist the current project state.");
 
-            GD.Print($"ACTOR_COPY_SMOKE_OK selection=shift-toggle-marquee=true marqueeVisual=true quickRotate=R+toolbar=true groupPivot=true undo-redo=true parenting=CtrlH=true transformPreserved=true cycleRejected=true unparent=emptySpace=true undo-redo=true parentPersistence=true actorListToggle=true actorListScreenshot={actorListScreenshot} cameraFollow=F+button=true actorTracking=true cameraFollowScreenshot={cameraFollowScreenshot} reset=CtrlR+undo-redo=true multiCopyRoots=true multiDelete=undo-redo=true preview=true ctrlC=true snap=true descendants=true repeat=true persistence=true marqueeScreenshot={marqueeScreenshot} copyScreenshot={screenshot}");
+            GD.Print($"ACTOR_COPY_SMOKE_OK selection=shift-toggle-marquee=true marqueeVisual=true quickRotate=R+toolbar=true groupPivot=true undo-redo=true parenting=CtrlH=true transformPreserved=true cycleRejected=true unparent=emptySpace=true undo-redo=true parentPersistence=true actorListToggle=true actorListScreenshot={actorListScreenshot} cameraFollow=F+button=true actorTracking=true cameraFollowScreenshot={cameraFollowScreenshot} reset=CtrlR+undo-redo=true save=CtrlS+CmdS+persistence=true multiCopyRoots=true multiDelete=undo-redo=true preview=true ctrlC=true snap=true descendants=true repeat=true persistence=true marqueeScreenshot={marqueeScreenshot} copyScreenshot={screenshot}");
 
         }
         catch (Exception exception)
