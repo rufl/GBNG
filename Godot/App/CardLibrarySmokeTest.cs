@@ -26,13 +26,54 @@ public partial class GameBuilderApp
             await WaitForUiFrames(2);
 
             var invertLook = (CheckButton)window.FindChild("ControlsInvertVerticalLook", true, false);
+            var showTooltips = (CheckButton)window.FindChild("ControlsShowTooltips", true, false);
             var lookSensitivity = (HSlider)window.FindChild("ControlsLookSensitivity", true, false);
             var wheelSensitivity = (HSlider)window.FindChild("ControlsWheelSensitivity", true, false);
             var reset = (Button)window.FindChild("ControlsResetDefaults", true, false);
             if (!window.Visible
+                || showTooltips.ButtonPressed != _showTooltips
                 || !Mathf.IsEqualApprox((float)lookSensitivity.MinValue, 0.1f)
                 || !Mathf.IsEqualApprox((float)lookSensitivity.MaxValue, 3f))
                 throw new InvalidOperationException("The controls window did not expose the legacy mouse-look preferences.");
+
+            showTooltips.SetPressedNoSignal(true);
+            showTooltips.EmitSignal("toggled", true);
+            if (!_showTooltips || _actorListToggleButton.TooltipText != "Hide the actor list (Ctrl/Cmd+L)")
+                throw new InvalidOperationException("Enabling editor help tooltips did not restore an existing control tooltip.");
+
+            showTooltips.SetPressedNoSignal(false);
+            showTooltips.EmitSignal("toggled", false);
+            var savedTooltipPreferences = new ConfigFile();
+            if (_showTooltips
+                || _actorListToggleButton.TooltipText.Length != 0
+                || savedTooltipPreferences.Load(EditorSettingsPath) != Error.Ok
+                || savedTooltipPreferences.GetValue("editor", "show_tooltips", true).AsBool())
+                throw new InvalidOperationException("Disabling editor help tooltips did not suppress existing hints and persist the preference.");
+
+            ToggleActorList();
+            ToggleActorList();
+            var lateTooltip = new Button
+            {
+                Name = "TooltipLateAdditionSmoke",
+                Text = "Hidden tooltip smoke control",
+                TooltipText = "Late-added tooltip"
+            };
+            lateTooltip.Visible = false;
+            _editor.AddChild(lateTooltip);
+            await WaitForUiFrames(1);
+            if (_actorListToggleButton.TooltipText.Length != 0 || lateTooltip.TooltipText.Length != 0)
+                throw new InvalidOperationException("Disabled help tooltips were not suppressed on updated or newly added controls.");
+
+            showTooltips.SetPressedNoSignal(true);
+            showTooltips.EmitSignal("toggled", true);
+            savedTooltipPreferences = new ConfigFile();
+            if (!_showTooltips
+                || _actorListToggleButton.TooltipText != "Hide the actor list (Ctrl/Cmd+L)"
+                || lateTooltip.TooltipText != "Late-added tooltip"
+                || savedTooltipPreferences.Load(EditorSettingsPath) != Error.Ok
+                || !savedTooltipPreferences.GetValue("editor", "show_tooltips", false).AsBool())
+                throw new InvalidOperationException("Enabling help tooltips did not restore updated and newly added hints or persist the preference.");
+            lateTooltip.QueueFree();
 
             invertLook.SetPressedNoSignal(true);
             invertLook.EmitSignal("toggled", true);
@@ -74,7 +115,7 @@ public partial class GameBuilderApp
             string screenshot = ProjectSettings.GlobalizePath("res://.godot/controls-preferences-smoke.png");
             if (window.GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
                 throw new InvalidOperationException("Could not save the controls preferences screenshot.");
-            GD.Print($"CONTROLS_SMOKE_OK invert=true lookSensitivity=true wheelSensitivity=true persistence=true reset=true screenshot={screenshot}");
+            GD.Print($"CONTROLS_SMOKE_OK showTooltips={_showTooltips} tooltipSuppression=true tooltipRestoration=true futureControls=true invert=true lookSensitivity=true wheelSensitivity=true persistence=true reset=true screenshot={screenshot}");
         }
         catch (System.Exception exception)
         {

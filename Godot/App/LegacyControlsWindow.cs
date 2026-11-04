@@ -15,7 +15,8 @@ public sealed partial class LegacyControlsWindow : Window
     private const float MacWheelSensitivityMaximum = 0.03f;
     private const float MacWheelSensitivityDefault = 0.020f;
 
-    private readonly System.Action<bool, float, float> _applyPreferences;
+    private readonly System.Action<bool, bool, float, float> _applyPreferences;
+    private readonly CheckButton _showTooltips = new();
     private readonly CheckButton _invertVerticalLook = new();
     private readonly HSlider _lookSensitivity = new();
     private readonly HSlider _wheelSensitivity = new();
@@ -32,21 +33,22 @@ public sealed partial class LegacyControlsWindow : Window
         }
     }
 
-    public LegacyControlsWindow(System.Action<bool, float, float> applyPreferences)
+    public LegacyControlsWindow(System.Action<bool, bool, float, float> applyPreferences)
     {
         _applyPreferences = applyPreferences;
         Name = "ControlsWindow";
         Title = "Controls";
-        Size = new Vector2I(560, 330);
+        Size = new Vector2I(560, 380);
         Hide();
         CloseRequested += () => Hide();
         BuildInterface();
-        SetPreferences(false, DefaultMouseLookSensitivity, DefaultWheelSensitivitySliderValue);
+        SetPreferences(true, false, DefaultMouseLookSensitivity, DefaultWheelSensitivitySliderValue);
     }
 
-    public void SetPreferences(bool invertVerticalLook, float lookSensitivity, float wheelSensitivity)
+    public void SetPreferences(bool showTooltips, bool invertVerticalLook, float lookSensitivity, float wheelSensitivity)
     {
         _refreshing = true;
+        _showTooltips.ButtonPressed = showTooltips;
         _invertVerticalLook.ButtonPressed = invertVerticalLook;
         _lookSensitivity.Value = ClampFinite(
             lookSensitivity,
@@ -79,9 +81,14 @@ public sealed partial class LegacyControlsWindow : Window
         margin.AddChild(layout);
         layout.AddChild(new Label
         {
-            Text = "Adjust camera controls. These preferences are saved on this device.",
+            Text = "Adjust camera controls and editor help tooltips. These preferences are saved on this device.",
             AutowrapMode = TextServer.AutowrapMode.Word
         });
+
+        _showTooltips.Name = "ControlsShowTooltips";
+        _showTooltips.Text = "Show editor help tooltips";
+        _showTooltips.Toggled += _ => ApplyCurrentPreferences();
+        layout.AddChild(_showTooltips);
 
         _invertVerticalLook.Name = "ControlsInvertVerticalLook";
         _invertVerticalLook.Text = "Invert vertical mouse look";
@@ -124,6 +131,7 @@ public sealed partial class LegacyControlsWindow : Window
             return;
         RefreshSensitivityLabels();
         _applyPreferences(
+            _showTooltips.ButtonPressed,
             _invertVerticalLook.ButtonPressed,
             (float)_lookSensitivity.Value,
             (float)_wheelSensitivity.Value);
@@ -131,7 +139,7 @@ public sealed partial class LegacyControlsWindow : Window
 
     private void ResetToDefaults()
     {
-        SetPreferences(false, DefaultMouseLookSensitivity, DefaultWheelSensitivitySliderValue);
+        SetPreferences(_showTooltips.ButtonPressed, false, DefaultMouseLookSensitivity, DefaultWheelSensitivitySliderValue);
         ApplyCurrentPreferences();
     }
 

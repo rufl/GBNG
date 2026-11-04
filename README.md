@@ -66,7 +66,7 @@ Behavior UI image and image-slice widgets honor the legacy `noFilter` option: ne
 Behavior UI button hitboxes include their top and left edges and exclude their right and bottom edges, matching Unity's half-open rectangle containment.
 Behavior UI text and button labels preserve fractional legacy `textSize` values instead of rounding them to integer font sizes.
 
-The **Controls** toolbar button exposes invert-vertical mouse look, mouse-look sensitivity (0.1–3×), and mouse-wheel zoom sensitivity. These device-local preferences reset to the original platform defaults and are saved in `user://editor-settings.cfg`, not in `.voos` projects.
+The **Controls** toolbar button exposes a persistent **Show editor help tooltips** option (enabled by default). Turning it off suppresses native control hints on existing and newly created UI while leaving code-diagnostic hovers and player action prompts available. It also exposes invert-vertical mouse look, mouse-look sensitivity (0.1–3×), and mouse-wheel zoom sensitivity; camera settings reset to the original platform defaults. All preferences are saved in `user://editor-settings.cfg`, not in `.voos` projects.
 The **Audio** toolbar button controls device-local sound-effects volume (0–100%, default 50%) and background music volume (0–100%, default 100%) on separate mixer buses; both save to `user://editor-settings.cfg`. Godot plays the repository's original music tracks using the Unity A–F adaptive stem progression and `AudioStreamInteractive` transitions scheduled at each clip's end.
 
 When the main window loses focus, the app caps its frame rate at 30 FPS to reduce background load; regaining focus restores unlimited foreground rendering.

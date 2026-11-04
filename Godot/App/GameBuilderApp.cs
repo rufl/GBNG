@@ -30,9 +30,11 @@ public partial class GameBuilderApp : Node3D
     private bool _autoSetSpawnOnMove = true;
     private bool _autoSetSpawnOnRotate = true;
     private bool _invertMouseLook;
+    private bool _showTooltips = true;
     private float _mouseLookSensitivity = LegacyControlsWindow.DefaultMouseLookSensitivity;
     private float _mouseWheelSensitivity = LegacyControlsWindow.DefaultWheelSensitivitySliderValue;
     private LegacyControlsWindow _controlsWindow = null!;
+    private LegacyTooltipPolicy? _tooltipPolicy;
     private LegacyAudioSettingsWindow _audioSettingsWindow = null!;
     private float _sfxVolume = LegacyAudioSettings.DefaultSfxVolume;
     private float _musicVolume = LegacyAudioSettings.DefaultMusicVolume;
@@ -183,6 +185,8 @@ public partial class GameBuilderApp : Node3D
         AddChild(_lanSession);
         BuildWorldServices();
         LoadEditorPreferences();
+        _tooltipPolicy = new LegacyTooltipPolicy(GetTree());
+        _tooltipPolicy.SetEnabled(_showTooltips);
         LegacyAudioSettings.ApplySfxVolume(_sfxVolume);
         LegacyAudioSettings.ApplyMusicVolume(_musicVolume);
         AddChild(new LegacyMusicController());
@@ -527,7 +531,7 @@ public partial class GameBuilderApp : Node3D
         _worldSettingsWindow = new LegacyWorldSettingsWindow(UpdateStageProperty, ApplyWorldMapSize);
         _visualEffectsWindow = new LegacyVisualEffectsWindow(_cameraEffects);
         _controlsWindow = new LegacyControlsWindow(SetControlPreferences);
-        _controlsWindow.SetPreferences(_invertMouseLook, _mouseLookSensitivity, _mouseWheelSensitivity);
+        _controlsWindow.SetPreferences(_showTooltips, _invertMouseLook, _mouseLookSensitivity, _mouseWheelSensitivity);
         _audioSettingsWindow = new LegacyAudioSettingsWindow(SetSfxVolumePreference, SetMusicVolumePreference);
         _audioSettingsWindow.SetSfxVolume(_sfxVolume);
         _audioSettingsWindow.SetMusicVolume(_musicVolume);
@@ -1577,6 +1581,8 @@ public partial class GameBuilderApp : Node3D
     public override void _ExitTree()
     {
         CleanupApplicationFocusHandling();
+        _tooltipPolicy?.Dispose();
+        _tooltipPolicy = null;
         _behaviorRuntime?.Dispose();
         _behaviorRuntime = null;
     }
@@ -2737,9 +2743,13 @@ public partial class GameBuilderApp : Node3D
         _actorListVisible = !_actorListVisible;
         _actorList.Visible = _actorListVisible && !_playMode;
         _actorListToggleButton.Text = _actorListVisible ? "Hide" : "Show";
-        _actorListToggleButton.TooltipText = _actorListVisible
+        string tooltipText = _actorListVisible
             ? "Hide the actor list (Ctrl/Cmd+L)"
             : "Show the actor list (Ctrl/Cmd+L)";
+        if (_tooltipPolicy is null)
+            _actorListToggleButton.TooltipText = tooltipText;
+        else
+            _tooltipPolicy.SetTooltip(_actorListToggleButton, tooltipText);
     }
 
     private void ToggleCameraFollowingActor()
@@ -3074,6 +3084,7 @@ public partial class GameBuilderApp : Node3D
         if (settings.Load(EditorSettingsPath) != Error.Ok)
             return;
         _parentOnReset = settings.GetValue("editor", "parent_on_reset", true).AsBool();
+        _showTooltips = settings.GetValue("editor", "show_tooltips", true).AsBool();
         _autoSetSpawnOnMove = settings.GetValue("editor", "auto_set_spawn_on_move", true).AsBool();
         _autoSetSpawnOnRotate = settings.GetValue("editor", "auto_set_spawn_on_rotate", true).AsBool();
         _invertMouseLook = settings.GetValue("controls", "invert_vertical_look", false).AsBool();
@@ -3119,8 +3130,10 @@ public partial class GameBuilderApp : Node3D
             _autoSetSpawnOnRotateToggle.SetPressedNoSignal(enabled);
         SaveEditorPreferences();
     }
-    private void SetControlPreferences(bool invertMouseLook, float mouseLookSensitivity, float mouseWheelSensitivity)
+    private void SetControlPreferences(bool showTooltips, bool invertMouseLook, float mouseLookSensitivity, float mouseWheelSensitivity)
     {
+        _showTooltips = showTooltips;
+        _tooltipPolicy?.SetEnabled(showTooltips);
         _invertMouseLook = invertMouseLook;
         _mouseLookSensitivity = ClampControlPreference(
             mouseLookSensitivity,
@@ -3180,6 +3193,7 @@ public partial class GameBuilderApp : Node3D
         var settings = new ConfigFile();
         settings.Load(EditorSettingsPath);
         settings.SetValue("editor", "parent_on_reset", _parentOnReset);
+        settings.SetValue("editor", "show_tooltips", _showTooltips);
         settings.SetValue("editor", "auto_set_spawn_on_move", _autoSetSpawnOnMove);
         settings.SetValue("editor", "auto_set_spawn_on_rotate", _autoSetSpawnOnRotate);
         settings.SetValue("controls", "invert_vertical_look", _invertMouseLook);
