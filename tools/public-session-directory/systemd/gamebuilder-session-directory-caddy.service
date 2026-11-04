@@ -1,0 +1,21 @@
+[Unit]
+Description=Game Builder session-directory Caddy proxy
+After=gamebuilder-session-directory.service
+Requires=gamebuilder-session-directory.service
+
+[Service]
+Type=simple
+Environment=XDG_CONFIG_HOME=%h/.local/share/gamebuilder-session-directory/caddy-config
+Environment=XDG_DATA_HOME=%h/.local/share/gamebuilder-session-directory/caddy-data
+ReadWritePaths=%h/.local/share/gamebuilder-session-directory/caddy-config
+ReadWritePaths=%h/.local/share/gamebuilder-session-directory/caddy-data
+ExecStart=%h/.local/bin/caddy run --config=%h/.local/share/gamebuilder-session-directory/Caddyfile.tailnet --adapter=caddyfile
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+
+[Install]
+WantedBy=default.target

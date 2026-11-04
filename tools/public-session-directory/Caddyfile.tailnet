@@ -1,0 +1,15 @@
+{
+	admin off
+	auto_https off
+}
+
+:47801 {
+	bind 127.0.0.1
+	handle_path /session-directory/* {
+		reverse_proxy 127.0.0.1:47800
+	}
+	handle {
+		reverse_proxy 127.0.0.1:47800
+	}
+
+}
