@@ -1131,8 +1131,10 @@ public partial class GameBuilderApp
             behaviorCode.Text = "export function onCollision(msg) {\n  const broken = ;\n}";
             InvokeSmoke(behaviorEditor, "ApplyScript");
             var diagnostics = (Label)behaviorEditor.FindChild("BehaviorScriptDiagnostics", true, false);
-            if (!diagnostics.Visible || !diagnostics.Text.Contains("Line 2:", StringComparison.Ordinal))
-                throw new InvalidOperationException($"Invalid JavaScript did not produce a line-numbered editor diagnostic: '{diagnostics.Text}'.");
+            if (!diagnostics.Visible
+                || !diagnostics.Text.Contains("Line 2:", StringComparison.Ordinal)
+                || !diagnostics.Text.Contains("Column ", StringComparison.Ordinal))
+                throw new InvalidOperationException($"Invalid JavaScript did not produce line- and column-numbered diagnostics: '{diagnostics.Text}'.");
             int syntaxErrorGutter = FindDiagnosticGutter(behaviorCode);
             if (syntaxErrorGutter < 0
                 || behaviorCode.GetLineGutterText(1, syntaxErrorGutter) != "!"
@@ -1147,9 +1149,10 @@ public partial class GameBuilderApp
             if (LegacySaveDocument.ReadString(FindEmbeddedBehaviorSmoke(behaviorValidationId)?["javascript"]) != originalSource)
                 throw new InvalidOperationException("Invalid JavaScript replaced the last valid embedded behavior source.");
             await WaitForUiFrames(1);
+            string syntaxDiagnosticScreenshot = ProjectSettings.GlobalizePath("res://.godot/behavior-syntax-diagnostic-smoke.png");
+            if (GetViewport().GetTexture().GetImage().SavePng(syntaxDiagnosticScreenshot) != Error.Ok)
+                throw new InvalidOperationException("Could not save the syntax-column JavaScript diagnostic screenshot.");
             string diagnosticScreenshot = ProjectSettings.GlobalizePath("res://.godot/behavior-diagnostics-smoke.png");
-            if (GetViewport().GetTexture().GetImage().SavePng(diagnosticScreenshot) != Error.Ok)
-                throw new InvalidOperationException("Could not save the line-numbered JavaScript diagnostic screenshot.");
 
             const string validBehaviorSource = "export function onCollision(msg) { broadcast('EditorDiagnosticsSmoke'); }";
             int textLengthBeforeEdit = behaviorCode.Text.Length;

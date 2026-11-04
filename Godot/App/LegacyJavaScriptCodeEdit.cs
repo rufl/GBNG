@@ -10,6 +10,9 @@ public sealed partial class LegacyJavaScriptCodeEdit : CodeEdit
     private static readonly Regex GlobalFunctionDeclaration = new(
         @"(?m)^(?:async\s+)?function\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex DiagnosticColumn = new(
+        @"(?:^Line \d+: Column |line \d+:)(?<column>\d+)\b",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly string[] ApiFunctionNames = LoadApiFunctionNames();
     private const int MinimumFontSize = 8;
     private const int MaximumFontSize = 36;
@@ -17,6 +20,8 @@ public sealed partial class LegacyJavaScriptCodeEdit : CodeEdit
     public const string DiagnosticGutterName = "JavaScriptDiagnostics";
     private static readonly Color DiagnosticLineBackground = new(0.48f, 0.08f, 0.08f, 0.28f);
     private static readonly Color DiagnosticGutterColor = new(1f, 0.36f, 0.36f);
+    private static readonly Color DiagnosticUnderlineColor = new(1f, 0.24f, 0.24f);
+    private readonly Dictionary<int, (int StartColumn, int EndColumn)> _diagnosticUnderlineRanges = new();
     private readonly Dictionary<int, string> _diagnosticMessagesByLine = new();
     private int _diagnosticGutter = -1;
 
@@ -56,10 +61,18 @@ public sealed partial class LegacyJavaScriptCodeEdit : CodeEdit
             return;
 
         _diagnosticMessagesByLine[line] = message;
+        Match columnMatch = DiagnosticColumn.Match(message);
+        if (columnMatch.Success
+            && int.TryParse(columnMatch.Groups["column"].Value, out int oneBasedColumn)
+            && oneBasedColumn > 0)
+            _diagnosticUnderlineRanges[line] = FindDiagnosticUnderlineRange(line, oneBasedColumn);
+        else
+            _diagnosticUnderlineRanges.Remove(line);
         SetGutterWidth(_diagnosticGutter, 16);
         SetLineGutterText(line, _diagnosticGutter, "!");
         SetLineGutterItemColor(line, _diagnosticGutter, DiagnosticGutterColor);
         SetLineBackgroundColor(line, DiagnosticLineBackground);
+        QueueRedraw();
     }
 
     public void ClearDiagnosticLines()
@@ -73,7 +86,66 @@ public sealed partial class LegacyJavaScriptCodeEdit : CodeEdit
             SetLineBackgroundColor(line, Colors.Transparent);
         }
         _diagnosticMessagesByLine.Clear();
+        _diagnosticUnderlineRanges.Clear();
         SetGutterWidth(_diagnosticGutter, 0);
+        QueueRedraw();
+    }
+
+    public override void _Draw()
+    {
+        foreach (KeyValuePair<int, (int StartColumn, int EndColumn)> diagnostic in _diagnosticUnderlineRanges)
+        {
+            int line = diagnostic.Key;
+            if (line >= GetLineCount())
+                continue;
+
+            Rect2I startRect = GetRectAtLineColumn(line, diagnostic.Value.StartColumn);
+            Rect2I endRect = GetRectAtLineColumn(line, diagnostic.Value.EndColumn);
+            float startX = startRect.Position.X;
+            float endX = endRect.Position.X;
+            if (endX - startX < 5f)
+                endX = startX + Mathf.Max(startRect.Size.X, 5f);
+            float baseline = startRect.Position.Y + startRect.Size.Y - 1f;
+            if (baseline < 0f || baseline > Size.Y)
+                continue;
+            DrawDiagnosticSquiggle(startX, endX, baseline);
+        }
+    }
+
+    private (int StartColumn, int EndColumn) FindDiagnosticUnderlineRange(int line, int oneBasedColumn)
+    {
+        string sourceLine = GetLine(line);
+        int startColumn = Math.Clamp(oneBasedColumn - 1, 0, sourceLine.Length);
+        while (startColumn < sourceLine.Length && char.IsWhiteSpace(sourceLine[startColumn]))
+            startColumn++;
+        if (startColumn == sourceLine.Length)
+            return (startColumn, startColumn);
+
+        int endColumn = startColumn + 1;
+        if (IsIdentifierCharacter(sourceLine[startColumn]))
+        {
+            while (endColumn < sourceLine.Length && IsIdentifierCharacter(sourceLine[endColumn]))
+                endColumn++;
+        }
+        return (startColumn, endColumn);
+    }
+
+    private void DrawDiagnosticSquiggle(float startX, float endX, float baseline)
+    {
+        const float segmentWidth = 2f;
+        const float amplitude = 1.25f;
+        float x = startX;
+        float y = baseline;
+        bool crest = false;
+        while (x < endX)
+        {
+            float nextX = Mathf.Min(x + segmentWidth, endX);
+            float nextY = baseline + (crest ? -amplitude : amplitude);
+            DrawLine(new Vector2(x, y), new Vector2(nextX, nextY), DiagnosticUnderlineColor, 1.5f, true);
+            x = nextX;
+            y = nextY;
+            crest = !crest;
+        }
     }
 
     public override string _GetTooltip(Vector2 atPosition)

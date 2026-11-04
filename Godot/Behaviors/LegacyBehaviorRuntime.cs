@@ -16,7 +16,7 @@ public sealed partial class LegacyBehaviorRuntime : IDisposable
 {
     private static readonly Regex GuidPattern = new(@"guid:\s*([0-9a-f]{32})", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Regex ExportPattern = new(@"(?m)^\s*export\s+(?=(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z_$][\w$]*))", RegexOptions.Compiled | RegexOptions.CultureInvariant);
-    private static readonly Regex JavaScriptLineColumn = new(@"(?<line>\d+):\d+\b", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex JavaScriptLineColumn = new(@"(?<line>\d+):(?<column>\d+)\b", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Regex BehaviorStackLineColumn = new(@"\bline (?<line>\d+):(?<column>\d+)\b", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private const int FunctionConstructorLineOffset = 2;
     private const string BuiltinBehaviorRoot = "res://Assets/StreamingAssets/BehaviorLibrary";
@@ -181,6 +181,7 @@ public sealed partial class LegacyBehaviorRuntime : IDisposable
         catch (ScriptEngineException exception)
         {
             string details = exception.ErrorDetails ?? exception.Message;
+            int column = 0;
             int line = 0;
             string locationPrefix = behaviorUri + ":";
             int locationStart = details.IndexOf(locationPrefix, StringComparison.Ordinal);
@@ -196,6 +197,8 @@ public sealed partial class LegacyBehaviorRuntime : IDisposable
                             sourceLineCount++;
                     }
                     line = Math.Clamp(wrappedLine - 1, 1, sourceLineCount);
+                    if (int.TryParse(match.Groups["column"].Value, out int wrappedColumn))
+                        column = wrappedColumn;
                 }
             }
 
@@ -203,7 +206,11 @@ public sealed partial class LegacyBehaviorRuntime : IDisposable
             int newline = message.IndexOf('\n');
             if (newline >= 0)
                 message = message[..newline].TrimEnd('\r');
-            return line > 0 ? $"Line {line}: {message}" : message;
+            if (line <= 0)
+                return message;
+            return column > 0
+                ? $"Line {line}: Column {column}: {message}"
+                : $"Line {line}: {message}";
         }
     }
 
