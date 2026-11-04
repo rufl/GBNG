@@ -354,6 +354,9 @@ directory carry that certificate. Manual sharing uses a complete
 `GBDIRECT1|address|port|certificate` invite. When the directory is reachable,
 copied invites use its request-observed address. Public IPv4 addresses use the
 selected UPnP external port; private/LAN addresses use the listening port.
+The configured UDP port is the transport/UPnP internal port; the directory and
+copied public IPv4 invites advertise the UPnP external port when mapping succeeds.
+IPv6 advertises its configured UDP port directly.
 Without the directory, the host falls back to a local interface address and
 listening port, which may only be reachable on the LAN. The invite itself does
 not require the directory.

@@ -744,17 +744,16 @@ public class NetworkingController : Photon.PunBehaviour
     MasterClientInit();
     if (startHost)
     {
+      ushort hostPort = GameBuilderApplication.CurrentGameOptions.joinPort == 0
+        ? DefaultDirectHostPort
+        : GameBuilderApplication.CurrentGameOptions.joinPort;
       if (!directNetworkManager.IsListening && !directNetworkManager.StartHost())
       {
-        ushort hostPort = GameBuilderApplication.CurrentGameOptions.joinPort == 0
-          ? DefaultDirectHostPort
-          : GameBuilderApplication.CurrentGameOptions.joinPort;
         string addressFamily = GameBuilderApplication.CurrentGameOptions.directHostUsesIpv6 ? "IPv6" : "IPv4";
         OnFatalError($"Could not start the direct-host server on {addressFamily} UDP port {hostPort}. Check that the address family is enabled and the port is available.");
         yield break;
       }
-      if (!IsDirectIpv6Host)
-        DirectHostPortMapper.BeginHostMapping();
+      DirectHostPortMapper.BeginHostMapping(hostPort);
       directRpcRouter.Initialize(directNetworkManager);
       RegisterDirectNetworkHandlers();
     }

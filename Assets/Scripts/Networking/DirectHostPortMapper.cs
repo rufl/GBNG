@@ -25,6 +25,7 @@ public sealed class DirectHostPortMapper : MonoBehaviour
   Task<string> renewalTask;
   Task<string> cleanupTask;
   UpnpIgdPortMapper.Mapping currentMapping;
+  ushort internalPort = NetworkingController.DefaultDirectHostPort;
   float nextRenewalTime;
 
   public static bool IsMappingResolved { get { return mappingResolved; } }
@@ -36,10 +37,25 @@ public sealed class DirectHostPortMapper : MonoBehaviour
     EnsureInstance();
   }
 
-  public static void BeginHostMapping()
+  public static void BeginHostMapping(ushort hostPort)
   {
-    if (NetworkingController.IsDirectIpv6Host) return;
-    EnsureInstance().BeginMappingInternal();
+    if (hostPort == 0) hostPort = NetworkingController.DefaultDirectHostPort;
+    DirectHostPortMapper service = EnsureInstance();
+    if (NetworkingController.IsDirectIpv6Host)
+    {
+      service.StopMappingInternal();
+      service.internalPort = hostPort;
+      publicPort = GetAdvertisedPort(hostPort, 0);
+      mappingResolved = true;
+      statusMessage = "IPv6 direct host uses UDP port " + hostPort + "; UPnP mapping is not required.";
+      return;
+    }
+    service.BeginMappingInternal(hostPort);
+  }
+
+  internal static ushort GetAdvertisedPort(ushort localPort, ushort mappedPort)
+  {
+    return mappedPort == 0 ? localPort : mappedPort;
   }
 
   static DirectHostPortMapper EnsureInstance()
@@ -59,7 +75,7 @@ public sealed class DirectHostPortMapper : MonoBehaviour
     }
     instance = this;
     manager = NetworkManager.Singleton;
-    if (IsHosting(manager)) BeginMappingInternal();
+    if (IsHosting(manager)) BeginMappingInternal(GetConfiguredHostPort());
   }
 
   void Update()
@@ -67,7 +83,7 @@ public sealed class DirectHostPortMapper : MonoBehaviour
     if (manager == null) manager = NetworkManager.Singleton;
     bool shouldHost = IsHosting(manager);
     if (shouldHost && !hosting)
-      BeginMappingInternal();
+      BeginMappingInternal(GetConfiguredHostPort());
     else if (!shouldHost && hosting)
       StopMappingInternal();
 
@@ -88,14 +104,23 @@ public sealed class DirectHostPortMapper : MonoBehaviour
       && !NetworkingController.IsDirectIpv6Host;
   }
 
-  void BeginMappingInternal()
+  ushort GetConfiguredHostPort()
   {
-    if (hosting) return;
+    ushort configuredPort = GameBuilderApplication.CurrentGameOptions.joinPort;
+    return configuredPort == 0 ? NetworkingController.DefaultDirectHostPort : configuredPort;
+  }
+
+  void BeginMappingInternal(ushort hostPort)
+  {
+    if (hostPort == 0) hostPort = NetworkingController.DefaultDirectHostPort;
+    if (hosting && internalPort == hostPort) return;
+    if (hosting) StopMappingInternal();
+    internalPort = hostPort;
     hosting = true;
     generation++;
     pendingMapping = true;
     mappingResolved = false;
-    publicPort = NetworkingController.DefaultDirectHostPort;
+    publicPort = GetAdvertisedPort(hostPort, 0);
     statusMessage = "Checking for an UPnP router...";
     StartPendingMapping();
   }
@@ -106,7 +131,8 @@ public sealed class DirectHostPortMapper : MonoBehaviour
     if (cleanupTask != null && !cleanupTask.IsCompleted) return;
     pendingMapping = false;
     mappingGeneration = generation;
-    mappingTask = Task.Run(() => UpnpIgdPortMapper.TryCreate(NetworkingController.DefaultDirectHostPort));
+    ushort mappingPort = internalPort;
+    mappingTask = Task.Run(() => UpnpIgdPortMapper.TryCreate(mappingPort));
   }
 
   void CompleteMapping()
@@ -133,16 +159,16 @@ public sealed class DirectHostPortMapper : MonoBehaviour
     }
 
     currentMapping = result.Mapping;
-    publicPort = currentMapping == null
-      ? NetworkingController.DefaultDirectHostPort
-      : currentMapping.ExternalPort;
+    publicPort = GetAdvertisedPort(
+      internalPort,
+      currentMapping == null ? (ushort)0 : currentMapping.ExternalPort);
     mappingResolved = true;
     statusMessage = result.Message;
     renewalWarningLogged = false;
     if (currentMapping == null)
     {
       Debug.LogWarning(statusMessage + " Forward UDP port "
-        + NetworkingController.DefaultDirectHostPort + " manually if Internet joins fail.");
+        + internalPort + " manually if Internet joins fail.");
     }
     else
     {
@@ -200,6 +226,7 @@ public sealed class DirectHostPortMapper : MonoBehaviour
     generation++;
     mappingResolved = true;
     publicPort = NetworkingController.DefaultDirectHostPort;
+    internalPort = NetworkingController.DefaultDirectHostPort;
     statusMessage = "Host stopped; router mapping cleanup requested.";
 
     UpnpIgdPortMapper.Mapping lease = currentMapping;
