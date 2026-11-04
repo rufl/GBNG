@@ -250,10 +250,16 @@ public class GameDetail : MonoBehaviour
   {
     if (NetworkingController.CanDoMultiplayerMapSwitch())
     {
+      bool startAsPublic;
+#if USE_PUN
+      startAsPublic = PhotonNetwork.room.IsVisible;
+#else
+      startAsPublic = GameBuilderApplication.CurrentGameOptions.playOptions.startAsPublic;
+#endif
       playAction.Invoke(new GameBuilderApplication.PlayOptions
       {
         isMultiplayer = true,
-        startAsPublic = PhotonNetwork.room.IsVisible
+        startAsPublic = startAsPublic
       });
     }
     else
