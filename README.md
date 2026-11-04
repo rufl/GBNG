@@ -290,8 +290,10 @@ if the default Docker subnet conflicts with another network.
 For a Linux staging host with Caddy and Tailscale but no public domain, use
 `Caddyfile.tailnet` and the user services in `tools/public-session-directory`.
 Copy `server.py` and `Caddyfile.tailnet` to
-`~/.local/share/gamebuilder-session-directory/`, copy both `.service` files to
-`~/.config/systemd/user/`, then run:
+`~/.local/share/gamebuilder-session-directory/`, and copy
+`gamebuilder-session-directory.service` and
+`gamebuilder-session-directory-caddy.service` to `~/.config/systemd/user/`, then
+run:
 
 ```text
 systemctl --user daemon-reload
@@ -309,11 +311,39 @@ This endpoint is accessible only to devices in the tailnet, not the public
 Internet. Do not enable Funnel on a port whose other Serve routes proxy unrelated
 applications.
 
+##### Temporary public test with Cloudflare Quick Tunnel
+
+Cloudflare [Quick Tunnels](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)
+need no account or domain and create a temporary
+`https://<name>.trycloudflare.com` hostname. Install `cloudflared` at
+`~/.local/bin/cloudflared`, copy
+`gamebuilder-session-directory-cloudflared.service` to
+`~/.config/systemd/user/`, then run:
+
+```text
+systemctl --user daemon-reload
+systemctl --user enable --now gamebuilder-session-directory.service gamebuilder-session-directory-caddy.service gamebuilder-session-directory-cloudflared.service
+journalctl --user -u gamebuilder-session-directory-cloudflared.service -n 50 --no-pager
+```
+
+Set `GAMEBUILDER_SESSION_DIRECTORY` for hosts and clients to the
+`https://<name>.trycloudflare.com` URL printed by `cloudflared`, or pass it as
+`--session-directory=`. The tunnel forwards only to loopback Caddy port `47802`;
+Caddy requires Cloudflare's `CF-Connecting-IP` and replaces
+`X-Forwarded-For` with that address before forwarding to the directory. The
+tailnet route and other Chopper services are not exposed by this tunnel.
+
+Anyone with the Quick Tunnel URL can access the unauthenticated directory. The
+URL changes whenever a tunnel is created, stops working when the process stops,
+has no uptime guarantee, and supports at most 200 in-flight requests. This is a
+public smoke-test path, not durable hosting. It carries directory HTTP requests
+only; game traffic remains direct UDP and still depends on IPv6 reachability,
+UPnP, or manual router forwarding.
 The service stores session records in memory and refreshes host data every 15
 seconds. Public listings hide entries after 60 seconds without a heartbeat;
-records remain migration-accessible for five minutes before purge. The free
-software does not include hosting, a public hostname, or a reliable always-on
-Internet endpoint. The Compose setup automates TLS certificate provisioning,
+records remain migration-accessible for five minutes before purge. The repository
+does not provide a durable hosted service, stable public hostname, or guaranteed
+always-on endpoint. The Compose setup automates TLS certificate provisioning,
 but requires a reachable domain and open ports. The directory limits each
 source IP to eight new registrations per five minutes and supports up to 1,000
 simultaneous sessions. It does not authenticate players. Direct UDP game
@@ -328,9 +358,11 @@ avatar animation, and tool-effect data). LAN/DNS/loopback smokes exercise host
 discovery, direct joins, identity, RPC targeting, map switching, and kicking.
 Standalone loopback tests transfer a 400 KiB initial snapshot and a 256 KiB
 Photon RPC through live NGO/UTP managers. Reliable RPC, event, and observable
-packets are split into 48 KiB chunks, with a 1 MiB packet cap. Internet
-reachability and router-specific forwarding remain untested; offline smoke
-verifies save/load round-tripping.
+packets are split into 48 KiB chunks, with a 1 MiB packet cap. The temporary
+Quick Tunnel smoke verified public HTTPS directory health, client-IP forwarding
+against spoofed `X-Forwarded-For`, and register/list/heartbeat/unregister. Internet
+UDP game reachability and router-specific forwarding remain untested; offline
+smoke verifies save/load round-tripping.
 
 If a direct-host session loses its host after a client loads the initial
 snapshot, every client autosaves its local copy. When the self-hosted directory

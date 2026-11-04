@@ -16,3 +16,16 @@
 		reverse_proxy 127.0.0.1:47800
 	}
 }
+
+:47802 {
+	bind 127.0.0.1
+	@missingCloudflareIp not header CF-Connecting-IP *
+	handle @missingCloudflareIp {
+		respond "Cloudflare client IP is required." 400
+	}
+	handle {
+		reverse_proxy 127.0.0.1:47800 {
+			header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+		}
+	}
+}
