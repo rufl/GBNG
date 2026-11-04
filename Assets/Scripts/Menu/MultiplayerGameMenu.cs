@@ -221,9 +221,21 @@ public class MultiplayerGameMenu : MonoBehaviour
 
   IEnumerator OnCopyClickedRoutine()
   {
-    Util.CopyToUserClipboard(networkingController.GetJoinedRoomName());
-    multiplayerMenuUI.copyCodeButton.onClick.RemoveListener(OnCopyClicked);
     string orig = multiplayerMenuUI.copyButtonTextField.text;
+    multiplayerMenuUI.copyCodeButton.onClick.RemoveListener(OnCopyClicked);
+#if !USE_PUN
+    if (networkingController.IsDirectHost())
+    {
+      multiplayerMenuUI.copyButtonTextField.text = "Preparing...";
+      multiplayerMenuUI.copyCodeButton.interactable = false;
+      float deadline = Time.realtimeSinceStartup + 10f;
+      while ((!DirectHostPortMapper.IsMappingResolved || !DirectSessionDirectory.IsHostAddressResolved)
+        && Time.realtimeSinceStartup < deadline)
+        yield return null;
+      multiplayerMenuUI.copyCodeButton.interactable = true;
+    }
+#endif
+    Util.CopyToUserClipboard(networkingController.GetJoinedRoomName());
     multiplayerMenuUI.copyButtonTextField.text = "Copied!";
     yield return new WaitForSecondsRealtime(1f);
     multiplayerMenuUI.copyButtonTextField.text = orig;

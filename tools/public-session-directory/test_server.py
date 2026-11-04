@@ -288,8 +288,14 @@ class IPv4DirectoryHttpTests(unittest.TestCase):
             return opener.open(message, timeout=3)
 
         body = make_session()
+
         del body["AddressFamily"]
         try:
+            with request("/v1/address") as response:
+                self.assertEqual(response.status, 200)
+                self.assertEqual(
+                    json.loads(response.read().decode("utf-8"))["Address"],
+                    "127.0.0.1")
             with request("/v1/sessions", "POST", body) as response:
                 self.assertEqual(response.status, 201)
             with request("/v1/sessions") as response:
@@ -327,7 +333,13 @@ class IPv6DirectoryHttpTests(unittest.TestCase):
                 message.add_header("Authorization", "Bearer " + token)
             return opener.open(message, timeout=3)
 
+
         try:
+            with request("/v1/address") as response:
+                self.assertEqual(response.status, 200)
+                self.assertEqual(
+                    json.loads(response.read().decode("utf-8"))["Address"],
+                    "::1")
             with request("/v1/sessions", "POST", make_session(6)) as response:
                 self.assertEqual(response.status, 201)
                 registration = json.loads(response.read().decode("utf-8"))

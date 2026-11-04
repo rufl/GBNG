@@ -67,6 +67,8 @@ public class NetworkingController : Photon.PunBehaviour
   readonly HashSet<ulong> directClientsAwaitingReconnect = new HashSet<ulong>();
   readonly DirectHostInitChunkAssembler directHostInitAssembler = new DirectHostInitChunkAssembler();
   string directHostShareAddress;
+  string directHostShareAddressAddress;
+  ushort directHostShareAddressPort;
 
   public static string SteamIdPlayerProperty = "SteamID";
   public static string SteamProfileNamePlayerProperty = "SteamProfileName";
@@ -213,15 +215,23 @@ public class NetworkingController : Photon.PunBehaviour
       return directHostShareAddress;
     }
 
-    if (!directHostShareAddress.IsNullOrEmpty())
-    {
-      return directHostShareAddress;
-    }
-
     if (options.directHostUsesIpv6)
     {
+      if (IPAddress.TryParse(DirectSessionDirectory.HostPublicAddress, out IPAddress publicIpv6)
+        && IsUsableDirectIpv6Address(publicIpv6))
+        return GetOrCreateDirectHostShareAddress(publicIpv6.ToString(), port);
       return GetDirectIpv6HostShareAddress(port);
     }
+
+    if (IPAddress.TryParse(DirectSessionDirectory.HostPublicAddress, out IPAddress publicIpv4)
+      && publicIpv4.AddressFamily == AddressFamily.InterNetwork)
+    {
+      ushort sharePort = IsDirectPublicIpv4Address(publicIpv4)
+        ? DirectHostPortMapper.PublicPort
+        : port;
+      return GetOrCreateDirectHostShareAddress(publicIpv4.ToString(), sharePort);
+    }
+
 
 
     string fallback = "127.0.0.1";
@@ -233,8 +243,7 @@ public class NetworkingController : Photon.PunBehaviour
         IPAddress localAddress = ((IPEndPoint)routeSocket.LocalEndPoint).Address;
         if (localAddress.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(localAddress))
         {
-          directHostShareAddress = CreateDirectHostInvite(localAddress.ToString(), port);
-          return directHostShareAddress;
+          return GetOrCreateDirectHostShareAddress(localAddress.ToString(), port);
         }
       }
     }
@@ -271,17 +280,41 @@ public class NetworkingController : Photon.PunBehaviour
 
         if (hasGateway)
         {
-          directHostShareAddress = CreateDirectHostInvite(address.ToString(), port);
-          return directHostShareAddress;
+          return GetOrCreateDirectHostShareAddress(address.ToString(), port);
         }
         fallback = address.ToString();
       }
     }
 
-    directHostShareAddress = CreateDirectHostInvite(fallback, port);
-    return directHostShareAddress;
+    return GetOrCreateDirectHostShareAddress(fallback, port);
 #endif
   }
+  string GetOrCreateDirectHostShareAddress(string address, ushort port)
+  {
+    if (directHostShareAddress.IsNullOrEmpty()
+      || directHostShareAddressAddress != address
+      || directHostShareAddressPort != port)
+    {
+      directHostShareAddressAddress = address;
+      directHostShareAddressPort = port;
+      directHostShareAddress = CreateDirectHostInvite(address, port);
+    }
+    return directHostShareAddress;
+  }
+
+  static bool IsDirectPublicIpv4Address(IPAddress address)
+  {
+    byte[] octets = address.GetAddressBytes();
+    return !IPAddress.IsLoopback(address)
+      && octets[0] != 0
+      && octets[0] < 224
+      && !(octets[0] == 10)
+      && !(octets[0] == 172 && octets[1] >= 16 && octets[1] <= 31)
+      && !(octets[0] == 192 && octets[1] == 168)
+      && !(octets[0] == 169 && octets[1] == 254)
+      && !(octets[0] == 100 && octets[1] >= 64 && octets[1] <= 127);
+  }
+
   string CreateDirectHostInvite(string address, ushort port)
   {
     return DirectHostTls.CreateInvite(address, port, DirectHostTls.GetHostCredentials().CertificatePem);
@@ -299,8 +332,7 @@ public class NetworkingController : Photon.PunBehaviour
         IPAddress localAddress = ((IPEndPoint)routeSocket.LocalEndPoint).Address;
         if (IsUsableDirectIpv6Address(localAddress))
         {
-          directHostShareAddress = CreateDirectHostInvite(localAddress.ToString(), port);
-          return directHostShareAddress;
+          return GetOrCreateDirectHostShareAddress(localAddress.ToString(), port);
         }
       }
     }
@@ -340,8 +372,7 @@ public class NetworkingController : Photon.PunBehaviour
     }
 
     IPAddress shareAddress = globalAddress ?? uniqueLocalAddress ?? IPAddress.IPv6Loopback;
-    directHostShareAddress = CreateDirectHostInvite(shareAddress.ToString(), port);
-    return directHostShareAddress;
+    return GetOrCreateDirectHostShareAddress(shareAddress.ToString(), port);
   }
 
   static bool IsUsableDirectIpv6Address(IPAddress address)

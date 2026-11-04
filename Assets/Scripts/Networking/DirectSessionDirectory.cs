@@ -3,6 +3,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using Unity.Netcode;
 using UnityEngine;
@@ -66,11 +67,18 @@ public sealed class DirectSessionDirectory : MonoBehaviour
     public int Generation;
   }
 
+  [Serializable]
+  sealed class AddressResponse
+  {
+    public string Address;
+  }
+
   static DirectSessionDirectory instance;
   static bool endpointResolved;
   static string endpoint;
   static string endpointError;
   static int revision;
+  static string hostPublicAddress;
 
   NetworkManager manager;
   SessionInfo[] publicSessions = new SessionInfo[0];
@@ -89,6 +97,9 @@ public sealed class DirectSessionDirectory : MonoBehaviour
   float nextHostRequestTime;
   float nextListRequestTime;
   int hostGeneration;
+  bool addressRequestInFlight;
+  bool hostAddressResolved;
+  float nextHostAddressRequestTime;
 
   static string clientMigrationSessionId;
   static string clientMigrationToken;
@@ -96,6 +107,11 @@ public sealed class DirectSessionDirectory : MonoBehaviour
   static int clientMigrationGeneration;
   static bool clientMigrationIsPublic;
   public static int Revision { get { return revision; } }
+  public static string HostPublicAddress { get { return hostPublicAddress; } }
+  public static bool IsHostAddressResolved
+  {
+    get { return string.IsNullOrEmpty(GetEndpoint()) || (instance != null && instance.hostAddressResolved); }
+  }
 
   public static bool IsConfigured
   {
@@ -257,6 +273,8 @@ public sealed class DirectSessionDirectory : MonoBehaviour
       {
         migrationUnavailable = false;
         wasPublishing = true;
+        hostPublicAddress = null;
+        hostAddressResolved = false;
         hostGeneration++;
         nextHostRequestTime = 0f;
         if (!string.IsNullOrEmpty(options.directHostMigrationSessionId))
@@ -271,6 +289,12 @@ public sealed class DirectSessionDirectory : MonoBehaviour
               options.directHostMigrationName);
         }
       }
+      if (!string.IsNullOrEmpty(GetEndpoint())
+        && !addressRequestInFlight
+        && Time.realtimeSinceStartup >= nextHostAddressRequestTime)
+      {
+        StartCoroutine(RefreshHostAddressRoutine(hostGeneration));
+      }
       if (!migrationUnavailable
         && !string.IsNullOrEmpty(GetEndpoint())
         && DirectHostPortMapper.IsMappingResolved
@@ -283,6 +307,9 @@ public sealed class DirectSessionDirectory : MonoBehaviour
     else if (wasPublishing)
     {
       wasPublishing = false;
+      hostPublicAddress = null;
+      hostAddressResolved = true;
+      nextHostAddressRequestTime = 0f;
       hostGeneration++;
       nextHostRequestTime = 0f;
       if (!string.IsNullOrEmpty(sessionId) && !string.IsNullOrEmpty(sessionToken))
@@ -415,6 +442,45 @@ public sealed class DirectSessionDirectory : MonoBehaviour
     }
     sessionRequestInFlight = false;
   }
+
+  IEnumerator RefreshHostAddressRoutine(int generation)
+  {
+    addressRequestInFlight = true;
+    nextHostAddressRequestTime = Time.realtimeSinceStartup + HeartbeatInterval;
+    UnityWebRequest request = UnityWebRequest.Get(GetEndpoint() + "/v1/address");
+    request.downloadHandler = new DownloadHandlerBuffer();
+    request.timeout = RequestTimeoutSeconds;
+    request.redirectLimit = 0;
+    yield return request.SendWebRequest();
+
+    bool successful = request.result == UnityWebRequest.Result.Success
+      && request.responseCode == 200;
+    string responseBody = request.downloadHandler == null ? string.Empty : request.downloadHandler.text;
+    request.Dispose();
+    addressRequestInFlight = false;
+    if (!successful || generation != hostGeneration || !wasPublishing)
+    {
+      if (generation == hostGeneration && wasPublishing) hostAddressResolved = true;
+      yield break;
+    }
+
+    AddressResponse response = null;
+    try { response = JsonUtility.FromJson<AddressResponse>(responseBody); }
+    catch (Exception) { }
+    IPAddress address;
+    int expectedFamily = GameBuilderApplication.CurrentGameOptions.directHostUsesIpv6 ? 6 : 4;
+    if (response != null
+      && IPAddress.TryParse(response.Address, out address)
+      && (address.AddressFamily == AddressFamily.InterNetworkV6 ? 6 : 4) == expectedFamily
+      && !address.IsIPv6Multicast
+      && !address.IsIPv4MappedToIPv6)
+      hostPublicAddress = address.ToString();
+    else
+      hostPublicAddress = null;
+    hostAddressResolved = true;
+
+  }
+
 
   IEnumerator UnregisterRoutine(string id, string token)
   {
@@ -645,7 +711,11 @@ public sealed class DirectSessionDirectory : MonoBehaviour
 
   void OnDestroy()
   {
-    if (instance == this) instance = null;
+    if (instance == this)
+    {
+      hostPublicAddress = null;
+      instance = null;
+    }
   }
 }
 #endif

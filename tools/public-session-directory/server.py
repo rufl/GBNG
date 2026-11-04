@@ -267,6 +267,11 @@ class DirectoryHandler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == "/health":
             self.send_json(200, {"Status": "ok"})
+        elif path == "/v1/address":
+            try:
+                self.send_json(200, {"Address": self.state.request_address(self)})
+            except ValueError as error:
+                self.send_json(400, {"Error": str(error)})
         elif path == "/v1/sessions":
             self.send_json(200, self.state.list_sessions())
         elif path.endswith("/migration"):

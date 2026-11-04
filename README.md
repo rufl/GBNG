@@ -208,10 +208,10 @@ falls back to `::1`, which is only reachable from the host itself.
   register their endpoint and certificate so existing peers can migrate after
   a host loss. Private records stay out of public listings but their endpoint,
   name, and certificate remain in the directory's memory for up to five minutes.
-  Without the directory, LAN discovery and manual invites still work, but
-  automatic host migration is unavailable. The directory learns the host's
-  IPv4/IPv6 address from the request source and is discovery/coordination only,
-  not a relay or NAT traversal service.
+  Without the directory, LAN discovery and local-network manual invites still
+  work, but automatic host migration and public-address invite resolution are
+  unavailable. The directory returns the host's request-observed IP through
+  `/v1/address`; it is discovery/coordination only, not a relay or NAT traversal service.
 
 #### Self-hosted public session directory
 
@@ -316,8 +316,13 @@ IPv6-only hosting are separate choices. IPv6 hosts use IPv6 multicast for LAN
 discovery and may appear in the public directory when configured and reachable
 over IPv6. Each direct host keeps an ephemeral 2048-bit RSA private key in
 memory and advertises only its public certificate. LAN discovery and the public
-directory carry that certificate; manual sharing uses a complete
-`GBDIRECT1|address|port|certificate` invite and does not require the directory.
+directory carry that certificate. Manual sharing uses a complete
+`GBDIRECT1|address|port|certificate` invite. When the directory is reachable,
+copied invites use its request-observed address. Public IPv4 addresses use the
+selected UPnP external port; private/LAN addresses use the listening port.
+Without the directory, the host falls back to a local interface address and
+listening port, which may only be reachable on the LAN. The invite itself does
+not require the directory.
 Direct-host sessions show join/leave notices to the host and existing clients.
 When a peer leaves, every surviving participant also receives the `PlayerLeft`
 behavior event; a newcomer does not get join notices for the existing roster.
