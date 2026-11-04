@@ -304,6 +304,8 @@ public class MultiplayerMenu : ThumbnailMenu
   public override void Setup()
   {
     base.Setup();
+    searchField.onValueChanged.AddListener((searchString) => SetSearchString(searchString));
+    searchClear.onClick.AddListener(() => searchField.text = "");
     Util.FindIfNotSet(this, ref scenes);
     Util.FindIfNotSet(this, ref loadingScreen);
     joinCodeButton.onClick.AddListener(JoinMultiplayerPopup);
