@@ -53,29 +53,23 @@ public partial class GameBuilderApp
                 throw new InvalidOperationException("Changing music volume did not update its mixer bus and persist the preference.");
 
             await ToSignal(GetTree().CreateTimer(1.5), SceneTreeTimer.SignalName.Timeout);
-            var firstMusicPlayer = (AudioStreamPlayer)FindChild("MusicPlayerA", true, false);
-            var secondMusicPlayer = (AudioStreamPlayer)FindChild("MusicPlayerB", true, false);
-            AudioStreamPlayer activeMusicPlayer = firstMusicPlayer.Playing
-                ? firstMusicPlayer
-                : secondMusicPlayer;
-            if ((!firstMusicPlayer.Playing && !secondMusicPlayer.Playing)
-                || activeMusicPlayer.Stream is null
-                || activeMusicPlayer.GetPlaybackPosition() <= 0d)
+            var musicPlayer = (AudioStreamPlayer)FindChild("MusicPlayer", true, false);
+            AudioStreamInteractive musicStream = musicPlayer.Stream as AudioStreamInteractive
+                ?? throw new InvalidOperationException("The music player did not use Godot's interactive audio stream.");
+            AudioStreamPlaybackInteractive musicPlayback = musicPlayer.GetStreamPlayback() as AudioStreamPlaybackInteractive
+                ?? throw new InvalidOperationException("The music stream did not create interactive playback.");
+            int firstClipIndex = musicPlayback.GetCurrentClipIndex();
+            if (!musicPlayer.Playing || firstClipIndex < 0)
                 throw new InvalidOperationException("The original adaptive music tracks did not start playback.");
-            AudioStream activeMusicStream = activeMusicPlayer.Stream
-                ?? throw new InvalidOperationException("The active legacy music stream was not loaded.");
-            double trackDuration = activeMusicStream.GetLength();
+            AudioStream firstTrack = musicStream.GetClipStream(firstClipIndex)
+                ?? throw new InvalidOperationException("The current adaptive music clip was not loaded.");
+            double trackDuration = firstTrack.GetLength();
             if (trackDuration <= 0d)
                 throw new InvalidOperationException("The active legacy music stream has no duration.");
-            double untilNextTrack = Math.Max(0.25d, trackDuration - activeMusicPlayer.GetPlaybackPosition() + 0.25d);
-            await ToSignal(GetTree().CreateTimer(untilNextTrack), SceneTreeTimer.SignalName.Timeout);
-            AudioStreamPlayer nextMusicPlayer = ReferenceEquals(activeMusicPlayer, firstMusicPlayer)
-                ? secondMusicPlayer
-                : firstMusicPlayer;
-            if (!nextMusicPlayer.Playing
-                || nextMusicPlayer.Stream is null
-                || nextMusicPlayer.GetPlaybackPosition() <= 0d)
-                throw new InvalidOperationException("Background music did not advance to its next adaptive track.");
+            await ToSignal(GetTree().CreateTimer(trackDuration + 0.25d), SceneTreeTimer.SignalName.Timeout);
+            int nextClipIndex = musicPlayback.GetCurrentClipIndex();
+            if (!musicPlayer.Playing || nextClipIndex < 0 || nextClipIndex == firstClipIndex)
+                throw new InvalidOperationException("Background music did not advance to its next end-scheduled adaptive track.");
 
             musicVolume.Value = 0.0;
             if (!Mathf.IsEqualApprox(_musicVolume, 0f)
@@ -90,7 +84,7 @@ public partial class GameBuilderApp
                 throw new InvalidOperationException("Setting SFX volume to zero did not mute its mixer bus.");
 
             reset.EmitSignal("pressed");
-            await WaitForUiFrames(1);
+            await WaitForUiFrames(2);
             var resetPreferences = new ConfigFile();
             if (!Mathf.IsEqualApprox(_sfxVolume, LegacyAudioSettings.DefaultSfxVolume)
                 || !Mathf.IsEqualApprox(_musicVolume, LegacyAudioSettings.DefaultMusicVolume)

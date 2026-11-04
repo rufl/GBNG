@@ -25,11 +25,14 @@ public sealed partial class LegacyMusicController : Node
     };
 
     private readonly RandomNumberGenerator _random = new();
-    private AudioStream[][] _tracksByStem = System.Array.Empty<AudioStream[]>();
-    private AudioStreamPlayer[] _players = System.Array.Empty<AudioStreamPlayer>();
-    private Stem _lastStem;
-    private AudioStream? _lastClip;
-    private int _activePlayer;
+    private int[][] _clipIndicesByStem = System.Array.Empty<int[]>();
+    private AudioStreamInteractive _musicStream = null!;
+    private AudioStreamPlayer _player = null!;
+    private AudioStreamPlaybackInteractive? _playback;
+    private Stem _currentStem;
+    private int _currentClipIndex = -1;
+    private Stem _pendingStem;
+    private int _pendingClipIndex = -1;
 
     public LegacyMusicController()
     {
@@ -39,69 +42,114 @@ public sealed partial class LegacyMusicController : Node
     public override void _Ready()
     {
         _random.Randomize();
-        LoadTracks();
-        CreatePlayers();
-
-        _lastStem = _random.Randf() < 0.5f ? Stem.A : Stem.D;
-        _lastClip = GetRandomClip(_lastStem, null);
-        _players[_activePlayer].Stream = _lastClip;
+        LoadTracksAndTransitions();
+        _currentStem = _random.Randf() < 0.5f ? Stem.A : Stem.D;
+        _currentClipIndex = GetRandomClipIndex(_currentStem, -1);
+        _musicStream.InitialClip = _currentClipIndex;
+        _player = new AudioStreamPlayer
+        {
+            Name = "MusicPlayer",
+            Bus = LegacyAudioSettings.MusicBusName,
+            Stream = _musicStream
+        };
+        AddChild(_player);
         GetTree().CreateTimer(1d).Timeout += StartInitialTrack;
     }
 
-    private void LoadTracks()
+    public override void _Process(double delta)
     {
-        _tracksByStem = new AudioStream[TrackPathsByStem.Length][];
+        if (_playback is null || _pendingClipIndex < 0
+            || _playback.GetCurrentClipIndex() != _pendingClipIndex)
+            return;
+
+        _currentStem = _pendingStem;
+        _currentClipIndex = _pendingClipIndex;
+        _pendingClipIndex = -1;
+        ScheduleNextClip();
+    }
+
+    private void LoadTracksAndTransitions()
+    {
+        int clipCount = 0;
+        foreach (string[] tracks in TrackPathsByStem)
+            clipCount += tracks.Length;
+
+        _musicStream = new AudioStreamInteractive { ClipCount = clipCount };
+        _clipIndicesByStem = new int[TrackPathsByStem.Length][];
+        int nextClipIndex = 0;
         for (int stem = 0; stem < TrackPathsByStem.Length; stem++)
         {
             string[] paths = TrackPathsByStem[stem];
-            var tracks = new AudioStream[paths.Length];
+            var clipIndices = new int[paths.Length];
             for (int index = 0; index < paths.Length; index++)
-                tracks[index] = ResourceLoader.Load<AudioStream>(paths[index])
+            {
+                AudioStream track = ResourceLoader.Load<AudioStream>(paths[index])
                     ?? throw new System.InvalidOperationException($"Could not load legacy music track '{paths[index]}'.");
-            _tracksByStem[stem] = tracks;
+                clipIndices[index] = nextClipIndex;
+                _musicStream.SetClipStream(nextClipIndex, track);
+                nextClipIndex++;
+            }
+            _clipIndicesByStem[stem] = clipIndices;
         }
+
+        AddTransitions(Stem.A, Stem.A);
+        AddTransitions(Stem.A, Stem.B);
+        AddTransitions(Stem.B, Stem.A);
+        AddTransitions(Stem.B, Stem.B);
+        AddTransitions(Stem.B, Stem.C);
+        AddTransitions(Stem.C, Stem.B);
+        AddTransitions(Stem.C, Stem.D);
+        AddTransitions(Stem.D, Stem.E);
+        AddTransitions(Stem.E, Stem.E);
+        AddTransitions(Stem.E, Stem.F);
+        AddTransitions(Stem.F, Stem.A);
     }
 
-    private void CreatePlayers()
+    private void AddTransitions(Stem fromStem, Stem toStem)
     {
-        _players = new AudioStreamPlayer[2];
-        for (int index = 0; index < _players.Length; index++)
+        int[] fromClips = _clipIndicesByStem[(int)fromStem];
+        int[] toClips = _clipIndicesByStem[(int)toStem];
+        foreach (int fromClip in fromClips)
         {
-            var player = new AudioStreamPlayer
+            foreach (int toClip in toClips)
             {
-                Name = index == 0 ? "MusicPlayerA" : "MusicPlayerB",
-                Bus = LegacyAudioSettings.MusicBusName
-            };
-            player.Finished += OnTrackFinished;
-            AddChild(player);
-            _players[index] = player;
+                if (fromClip == toClip)
+                    continue;
+                _musicStream.AddTransition(
+                    fromClip,
+                    toClip,
+                    AudioStreamInteractive.TransitionFromTime.End,
+                    AudioStreamInteractive.TransitionToTime.Start,
+                    AudioStreamInteractive.FadeMode.Disabled,
+                    0f);
+            }
         }
     }
 
     private void StartInitialTrack()
     {
-        if (IsInsideTree())
-            _players[_activePlayer].Play();
-    }
-
-    private void OnTrackFinished()
-    {
         if (!IsInsideTree())
             return;
+        _player.Play();
+        _playback = _player.GetStreamPlayback() as AudioStreamPlaybackInteractive
+            ?? throw new System.InvalidOperationException("Godot did not create an interactive music playback.");
+        ScheduleNextClip();
+    }
 
-        Stem nextStem = ChooseNextStem();
-        AudioStream? previousClip = nextStem == _lastStem ? _lastClip : null;
-        AudioStream nextClip = GetRandomClip(nextStem, previousClip);
-        _activePlayer = 1 - _activePlayer;
-        _players[_activePlayer].Stream = nextClip;
-        _players[_activePlayer].Play();
-        _lastStem = nextStem;
-        _lastClip = nextClip;
+    private void ScheduleNextClip()
+    {
+        if (_playback is null || _pendingClipIndex >= 0)
+            return;
+
+        _pendingStem = ChooseNextStem();
+        int previousClip = _pendingStem == _currentStem ? _currentClipIndex : -1;
+        _pendingClipIndex = GetRandomClipIndex(_pendingStem, previousClip);
+        _playback.SwitchToClip(_pendingClipIndex);
     }
 
     private Stem ChooseNextStem()
     {
-        switch (_lastStem)
+        switch (_currentStem)
         {
             case Stem.A:
                 return _random.Randf() < 0.25f ? Stem.A : Stem.B;
@@ -117,15 +165,15 @@ public sealed partial class LegacyMusicController : Node
             case Stem.F:
                 return Stem.A;
             default:
-                throw new System.InvalidOperationException($"Unknown legacy music stem '{_lastStem}'.");
+                throw new System.InvalidOperationException($"Unknown legacy music stem '{_currentStem}'.");
         }
     }
 
-    private AudioStream GetRandomClip(Stem stem, AudioStream? previousClip)
+    private int GetRandomClipIndex(Stem stem, int previousClipIndex)
     {
-        AudioStream[] clips = _tracksByStem[(int)stem];
+        int[] clips = _clipIndicesByStem[(int)stem];
         int index = _random.RandiRange(0, clips.Length - 1);
-        if (clips.Length > 1 && ReferenceEquals(clips[index], previousClip))
+        if (clips.Length > 1 && clips[index] == previousClipIndex)
             index = (index + 1) % clips.Length;
         return clips[index];
     }

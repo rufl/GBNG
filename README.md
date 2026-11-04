@@ -67,7 +67,7 @@ Behavior UI button hitboxes include their top and left edges and exclude their r
 Behavior UI text and button labels preserve fractional legacy `textSize` values instead of rounding them to integer font sizes.
 
 The **Controls** toolbar button exposes invert-vertical mouse look, mouse-look sensitivity (0.1–3×), and mouse-wheel zoom sensitivity. These device-local preferences reset to the original platform defaults and are saved in `user://editor-settings.cfg`, not in `.voos` projects.
-The **Audio** toolbar button controls device-local sound-effects volume (0–100%, default 50%) and background music volume (0–100%, default 100%) on separate mixer buses; both save to `user://editor-settings.cfg`. Godot plays the repository's original music tracks with the Unity A–F adaptive stem progression.
+The **Audio** toolbar button controls device-local sound-effects volume (0–100%, default 50%) and background music volume (0–100%, default 100%) on separate mixer buses; both save to `user://editor-settings.cfg`. Godot plays the repository's original music tracks using the Unity A–F adaptive stem progression and `AudioStreamInteractive` transitions scheduled at each clip's end.
 
 In play mode, legacy player tooltips for `Action1` and `Action2` render as bottom-center LMB/RMB prompts for the local player. LAN hosts forward each player's prompts to the matching client; stopping play clears them.
 
