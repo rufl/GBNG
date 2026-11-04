@@ -16,6 +16,8 @@ public partial class GameBuilderApp
         int exitCode = 0;
         string? originalProjectPath = _document?.SourcePath;
         bool originalParentOnReset = _parentOnReset;
+        bool originalAutoSetSpawnOnMove = _autoSetSpawnOnMove;
+        bool originalAutoSetSpawnOnRotate = _autoSetSpawnOnRotate;
         string? temporaryDirectory = null;
         try
         {
@@ -97,6 +99,7 @@ public partial class GameBuilderApp
             ClearHistory();
             SetActorSelection(new[] { source }, source);
             await WaitForUiFrames(2);
+            RunAutoSetSpawnSmoke(source, child);
             _cameraTarget = (source.GlobalPosition + independent.GlobalPosition) * 0.5f;
             _cameraDistance = 18f;
             UpdateOrbitCamera();
@@ -249,7 +252,7 @@ public partial class GameBuilderApp
             if (!_parentOnReset)
                 throw new InvalidOperationException("The Parent on reset toggle did not enable the preference.");
             var persistedParentSetting = new ConfigFile();
-            if (persistedParentSetting.Load(ParentOnResetSettingsPath) != Error.Ok
+            if (persistedParentSetting.Load(EditorSettingsPath) != Error.Ok
                 || !persistedParentSetting.GetValue("editor", "parent_on_reset", false).AsBool())
                 throw new InvalidOperationException("Enabling Parent on reset did not persist the preference.");
             SetActorSelection(new[] { source }, source);
@@ -352,7 +355,7 @@ public partial class GameBuilderApp
             if (_parentOnReset)
                 throw new InvalidOperationException("The Parent on reset toggle did not disable the preference before unparenting.");
             var persistedDisabledSetting = new ConfigFile();
-            if (persistedDisabledSetting.Load(ParentOnResetSettingsPath) != Error.Ok
+            if (persistedDisabledSetting.Load(EditorSettingsPath) != Error.Ok
                 || persistedDisabledSetting.GetValue("editor", "parent_on_reset", true).AsBool())
                 throw new InvalidOperationException("Disabling Parent on reset did not persist the preference.");
             var sourceBeforeUnparent = new ActorMotionSnapshot(source.GlobalTransform, source.LinearVelocity, source.AngularVelocity);
@@ -791,6 +794,8 @@ public partial class GameBuilderApp
         }
         finally
         {
+            SetAutoSetSpawnOnMovePreference(originalAutoSetSpawnOnMove);
+            SetAutoSetSpawnOnRotatePreference(originalAutoSetSpawnOnRotate);
             SetParentOnResetPreference(originalParentOnReset);
             CancelCopyPlacement(showStatus: false);
             if (originalProjectPath is not null)
@@ -803,6 +808,185 @@ public partial class GameBuilderApp
         }
 
         GetTree().Quit(exitCode);
+    }
+
+    private void RunAutoSetSpawnSmoke(WorldActorNode source, WorldActorNode child)
+    {
+        bool originalAutoSetSpawnOnMove = _autoSetSpawnOnMove;
+        bool originalAutoSetSpawnOnRotate = _autoSetSpawnOnRotate;
+        Vector3 originalSourceSpawnPosition = source.State.SpawnPosition;
+        Quaternion originalSourceSpawnRotation = source.State.SpawnRotation;
+        Vector3 originalChildSpawnPosition = child.State.SpawnPosition;
+        Quaternion originalChildSpawnRotation = child.State.SpawnRotation;
+        Transform3D originalSourceTransform = source.GlobalTransform;
+        Transform3D originalChildTransform = child.GlobalTransform;
+
+        SetActorSelection(new[] { source }, source);
+        SetAutoSetSpawnOnMovePreference(true);
+        SetAutoSetSpawnOnRotatePreference(true);
+        if (!_autoSetSpawnOnMoveToggle.ButtonPressed || !_autoSetSpawnOnRotateToggle.ButtonPressed)
+            throw new InvalidOperationException("The automatic restart-transform options did not enable.");
+
+        float moveTarget = source.GlobalPosition.X + 20f;
+        if (moveTarget > _positionFields[0].MaxValue)
+            moveTarget = source.GlobalPosition.X - 20f;
+        if (moveTarget < _positionFields[0].MinValue || moveTarget > _positionFields[0].MaxValue)
+            throw new InvalidOperationException("The movement smoke actor is outside the inspector's coordinate range.");
+        _positionFields[0].Value = moveTarget;
+        if (source.GlobalTransform.IsEqualApprox(originalSourceTransform))
+            throw new InvalidOperationException("The move inspector did not change the actor transform.");
+        AssertSpawnTransformMatchesCurrent(source, "moving with auto-set enabled");
+        AssertSpawnTransformMatchesCurrent(child, "moving an actor family with auto-set enabled");
+        UndoEdit();
+        if (!source.GlobalTransform.IsEqualApprox(originalSourceTransform)
+            || !child.GlobalTransform.IsEqualApprox(originalChildTransform))
+            throw new InvalidOperationException("Undo did not restore the actor family transforms after the move.");
+        AssertSpawnTransformMatchesCurrent(source, "undoing a move with auto-set enabled");
+        AssertSpawnTransformMatchesCurrent(child, "undoing a family move with auto-set enabled");
+        RedoEdit();
+        AssertSpawnTransformMatchesCurrent(source, "redoing a move with auto-set enabled");
+        AssertSpawnTransformMatchesCurrent(child, "redoing a family move with auto-set enabled");
+        UndoEdit();
+        AssertSpawnTransformMatchesCurrent(source, "restoring a move with auto-set enabled");
+        AssertSpawnTransformMatchesCurrent(child, "restoring a family move with auto-set enabled");
+
+        SetAutoSetSpawnOnMovePreference(false);
+        float moveWithoutAutoSetTarget = source.GlobalPosition.X + 30f;
+        if (moveWithoutAutoSetTarget > _positionFields[0].MaxValue)
+            moveWithoutAutoSetTarget = source.GlobalPosition.X - 30f;
+        if (moveWithoutAutoSetTarget < _positionFields[0].MinValue
+            || moveWithoutAutoSetTarget > _positionFields[0].MaxValue)
+            throw new InvalidOperationException("The auto-set-disabled move fixture is outside the inspector's coordinate range.");
+        Vector3 sourceSpawnWithoutMoveAutoSet = source.State.SpawnPosition;
+        Quaternion sourceRotationWithoutMoveAutoSet = source.State.SpawnRotation;
+        Vector3 childSpawnWithoutMoveAutoSet = child.State.SpawnPosition;
+        Quaternion childRotationWithoutMoveAutoSet = child.State.SpawnRotation;
+        _positionFields[0].Value = moveWithoutAutoSetTarget;
+        AssertSpawnTransformUnchanged(source, sourceSpawnWithoutMoveAutoSet, sourceRotationWithoutMoveAutoSet, "moving with auto-set disabled");
+        AssertSpawnTransformUnchanged(child, childSpawnWithoutMoveAutoSet, childRotationWithoutMoveAutoSet, "moving a family with auto-set disabled");
+        UndoEdit();
+        AssertSpawnTransformUnchanged(source, sourceSpawnWithoutMoveAutoSet, sourceRotationWithoutMoveAutoSet, "undoing a move with auto-set disabled");
+        AssertSpawnTransformUnchanged(child, childSpawnWithoutMoveAutoSet, childRotationWithoutMoveAutoSet, "undoing a family move with auto-set disabled");
+        RedoEdit();
+        AssertSpawnTransformUnchanged(source, sourceSpawnWithoutMoveAutoSet, sourceRotationWithoutMoveAutoSet, "redoing a move with auto-set disabled");
+        AssertSpawnTransformUnchanged(child, childSpawnWithoutMoveAutoSet, childRotationWithoutMoveAutoSet, "redoing a family move with auto-set disabled");
+        UndoEdit();
+
+        float rotationTarget = source.GlobalRotationDegrees.Y + 30f;
+        if (rotationTarget > _rotationFields[1].MaxValue)
+            rotationTarget = source.GlobalRotationDegrees.Y - 30f;
+        if (rotationTarget < _rotationFields[1].MinValue || rotationTarget > _rotationFields[1].MaxValue)
+            throw new InvalidOperationException("The rotation smoke actor is outside the inspector's coordinate range.");
+        Transform3D beforeRotation = source.GlobalTransform;
+        _rotationFields[1].Value = rotationTarget;
+        if (source.GlobalTransform.IsEqualApprox(beforeRotation))
+            throw new InvalidOperationException("The rotation inspector did not change the actor transform.");
+        AssertSpawnTransformMatchesCurrent(source, "rotating with auto-set enabled");
+        AssertSpawnTransformMatchesCurrent(child, "rotating an actor family with auto-set enabled");
+        UndoEdit();
+        AssertSpawnTransformMatchesCurrent(source, "undoing a rotation with auto-set enabled");
+        AssertSpawnTransformMatchesCurrent(child, "undoing a family rotation with auto-set enabled");
+        RedoEdit();
+        AssertSpawnTransformMatchesCurrent(source, "redoing a rotation with auto-set enabled");
+        AssertSpawnTransformMatchesCurrent(child, "redoing a family rotation with auto-set enabled");
+        UndoEdit();
+
+        Button quickRotateButton = FindChild("QuickRotateActorsButton", true, false) as Button
+            ?? throw new InvalidOperationException("The quick-rotate toolbar button was not found.");
+        Transform3D beforeQuickRotation = source.GlobalTransform;
+        quickRotateButton.EmitSignal("pressed");
+        if (source.GlobalTransform.IsEqualApprox(beforeQuickRotation))
+            throw new InvalidOperationException("The quick-rotate action did not change the actor transform.");
+        AssertSpawnTransformMatchesCurrent(source, "quick rotation with auto-set enabled");
+        AssertSpawnTransformMatchesCurrent(child, "quickly rotating an actor family with auto-set enabled");
+        UndoEdit();
+        AssertSpawnTransformMatchesCurrent(source, "undoing quick rotation with auto-set enabled");
+        AssertSpawnTransformMatchesCurrent(child, "undoing a quick family rotation with auto-set enabled");
+        RedoEdit();
+        AssertSpawnTransformMatchesCurrent(source, "redoing quick rotation with auto-set enabled");
+        AssertSpawnTransformMatchesCurrent(child, "redoing a quick family rotation with auto-set enabled");
+        UndoEdit();
+
+        SetAutoSetSpawnOnRotatePreference(false);
+        var persistedAutoSetSettings = new ConfigFile();
+        if (persistedAutoSetSettings.Load(EditorSettingsPath) != Error.Ok
+            || persistedAutoSetSettings.GetValue("editor", "auto_set_spawn_on_move", true).AsBool()
+            || persistedAutoSetSettings.GetValue("editor", "auto_set_spawn_on_rotate", true).AsBool())
+            throw new InvalidOperationException("Disabling automatic restart transforms did not persist both editor preferences.");
+
+        Vector3 sourceSpawnWithoutRotateAutoSet = source.State.SpawnPosition;
+        Quaternion sourceRotationWithoutRotateAutoSet = source.State.SpawnRotation;
+        Vector3 childSpawnWithoutRotateAutoSet = child.State.SpawnPosition;
+        Quaternion childRotationWithoutRotateAutoSet = child.State.SpawnRotation;
+        beforeRotation = source.GlobalTransform;
+        _rotationFields[1].Value = rotationTarget;
+        AssertSpawnTransformUnchanged(source, sourceSpawnWithoutRotateAutoSet, sourceRotationWithoutRotateAutoSet, "rotating with auto-set disabled");
+        AssertSpawnTransformUnchanged(child, childSpawnWithoutRotateAutoSet, childRotationWithoutRotateAutoSet, "rotating a family with auto-set disabled");
+        UndoEdit();
+        AssertSpawnTransformUnchanged(source, sourceSpawnWithoutRotateAutoSet, sourceRotationWithoutRotateAutoSet, "undoing a rotation with auto-set disabled");
+        AssertSpawnTransformUnchanged(child, childSpawnWithoutRotateAutoSet, childRotationWithoutRotateAutoSet, "undoing a family rotation with auto-set disabled");
+        RedoEdit();
+        AssertSpawnTransformUnchanged(source, sourceSpawnWithoutRotateAutoSet, sourceRotationWithoutRotateAutoSet, "redoing a rotation with auto-set disabled");
+        AssertSpawnTransformUnchanged(child, childSpawnWithoutRotateAutoSet, childRotationWithoutRotateAutoSet, "redoing a family rotation with auto-set disabled");
+        UndoEdit();
+
+        beforeQuickRotation = source.GlobalTransform;
+        quickRotateButton.EmitSignal("pressed");
+        if (source.GlobalTransform.IsEqualApprox(beforeQuickRotation))
+            throw new InvalidOperationException("The quick-rotate action did not change the actor transform while auto-set was disabled.");
+        AssertSpawnTransformUnchanged(source, sourceSpawnWithoutRotateAutoSet, sourceRotationWithoutRotateAutoSet, "quick rotation with auto-set disabled");
+        AssertSpawnTransformUnchanged(child, childSpawnWithoutRotateAutoSet, childRotationWithoutRotateAutoSet, "quick family rotation with auto-set disabled");
+        UndoEdit();
+        AssertSpawnTransformUnchanged(source, sourceSpawnWithoutRotateAutoSet, sourceRotationWithoutRotateAutoSet, "undoing quick rotation with auto-set disabled");
+        AssertSpawnTransformUnchanged(child, childSpawnWithoutRotateAutoSet, childRotationWithoutRotateAutoSet, "undoing quick family rotation with auto-set disabled");
+        RedoEdit();
+        AssertSpawnTransformUnchanged(source, sourceSpawnWithoutRotateAutoSet, sourceRotationWithoutRotateAutoSet, "redoing quick rotation with auto-set disabled");
+        AssertSpawnTransformUnchanged(child, childSpawnWithoutRotateAutoSet, childRotationWithoutRotateAutoSet, "redoing quick family rotation with auto-set disabled");
+        UndoEdit();
+
+        float scaleTarget = source.Scale.X + 0.5f;
+        _scaleFields[0].Value = scaleTarget;
+        AssertSpawnTransformMatchesCurrent(source, "scaling with automatic family restart updates");
+        AssertSpawnTransformMatchesCurrent(child, "scaling an actor family with automatic restart updates");
+        UndoEdit();
+        AssertSpawnTransformMatchesCurrent(source, "undoing scale");
+        AssertSpawnTransformMatchesCurrent(child, "undoing family scale");
+        RedoEdit();
+        AssertSpawnTransformMatchesCurrent(source, "redoing scale");
+        AssertSpawnTransformMatchesCurrent(child, "redoing family scale");
+        UndoEdit();
+        if (!source.GlobalTransform.IsEqualApprox(originalSourceTransform)
+            || !child.GlobalTransform.IsEqualApprox(originalChildTransform))
+            throw new InvalidOperationException("The auto-set smoke did not restore the actor family transforms.");
+
+        source.State.WriteLegacyVector("spawnPosition", CoordinateSpace.ToLegacy(originalSourceSpawnPosition));
+        source.State.WriteLegacyQuaternion("spawnRotation", CoordinateSpace.ToLegacy(originalSourceSpawnRotation));
+        child.State.WriteLegacyVector("spawnPosition", CoordinateSpace.ToLegacy(originalChildSpawnPosition));
+        child.State.WriteLegacyQuaternion("spawnRotation", CoordinateSpace.ToLegacy(originalChildSpawnRotation));
+        SetActorSelection(new[] { source }, source);
+        GD.Print("AUTOSET_SPAWN_SMOKE_OK move=enabled+disabled family=source+child undoRedo=true rotate=enabled+disabled quickRotate=enabled+disabled scale=family preferencePersistence=true");
+
+        SetAutoSetSpawnOnMovePreference(originalAutoSetSpawnOnMove);
+        SetAutoSetSpawnOnRotatePreference(originalAutoSetSpawnOnRotate);
+        ClearHistory();
+    }
+
+    private static void AssertSpawnTransformMatchesCurrent(WorldActorNode actor, string operation)
+    {
+        if (!actor.State.SpawnPosition.IsEqualApprox(actor.GlobalPosition)
+            || !actor.State.SpawnRotation.IsEqualApprox(actor.GlobalBasis.GetRotationQuaternion()))
+            throw new InvalidOperationException($"The restart transform for '{actor.State.DisplayName}' did not match its current transform after {operation}.");
+    }
+
+    private static void AssertSpawnTransformUnchanged(
+        WorldActorNode actor,
+        Vector3 expectedPosition,
+        Quaternion expectedRotation,
+        string operation)
+    {
+        if (!actor.State.SpawnPosition.IsEqualApprox(expectedPosition)
+            || !actor.State.SpawnRotation.IsEqualApprox(expectedRotation))
+            throw new InvalidOperationException($"The restart transform for '{actor.State.DisplayName}' changed during {operation}.");
     }
 
     private void ClickActorForSmoke(WorldActorNode actor, bool addToSelection = false, bool toggleSelection = false)

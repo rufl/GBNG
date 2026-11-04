@@ -25,7 +25,11 @@ public partial class GameBuilderApp : Node3D
     private Button _actorListToggleButton = null!;
     private CheckBox _parentOnResetToggle = null!;
     private bool _parentOnReset = true;
-    private const string ParentOnResetSettingsPath = "user://editor-settings.cfg";
+    private bool _autoSetSpawnOnMove = true;
+    private bool _autoSetSpawnOnRotate = true;
+    private const string EditorSettingsPath = "user://editor-settings.cfg";
+    private CheckBox _autoSetSpawnOnMoveToggle = null!;
+    private CheckBox _autoSetSpawnOnRotateToggle = null!;
     private Label _spawnParentLabel = null!;
     private Button _spawnParentButton = null!;
     private bool _settingSpawnParent;
@@ -159,7 +163,7 @@ public partial class GameBuilderApp : Node3D
         _lanSession.StateChanged += OnLanSessionStateChanged;
         AddChild(_lanSession);
         BuildWorldServices();
-        LoadParentOnResetPreference();
+        LoadEditorPreferences();
         BuildInterface();
         PopulateSamples();
         string[] commandLineArgs = OS.GetCmdlineUserArgs();
@@ -730,6 +734,27 @@ public partial class GameBuilderApp : Node3D
         scroll.AddChild(inspector);
         _selectionTitle = CreateLabel("Select an actor", 18);
         inspector.AddChild(_selectionTitle);
+        var autoSpawnSettings = new HBoxContainer();
+        autoSpawnSettings.AddChild(CreateLabel("Update spawn:", 14));
+        _autoSetSpawnOnMoveToggle = new CheckBox
+        {
+            Name = "AutoSetSpawnOnMoveToggle",
+            Text = "Move",
+            TooltipText = "Update restart position and rotation for the whole actor family when moving.",
+            ButtonPressed = _autoSetSpawnOnMove
+        };
+        _autoSetSpawnOnMoveToggle.Toggled += SetAutoSetSpawnOnMovePreference;
+        autoSpawnSettings.AddChild(_autoSetSpawnOnMoveToggle);
+        _autoSetSpawnOnRotateToggle = new CheckBox
+        {
+            Name = "AutoSetSpawnOnRotateToggle",
+            Text = "Rotate",
+            TooltipText = "Update restart position and rotation for the whole actor family when rotating.",
+            ButtonPressed = _autoSetSpawnOnRotate
+        };
+        _autoSetSpawnOnRotateToggle.Toggled += SetAutoSetSpawnOnRotatePreference;
+        autoSpawnSettings.AddChild(_autoSetSpawnOnRotateToggle);
+        inspector.AddChild(autoSpawnSettings);
         inspector.AddChild(CreateLabel("Reset parent", 14));
         _spawnParentLabel = CreateLabel("<none>", 13);
         _spawnParentLabel.Name = "SpawnParentLabel";
@@ -1147,6 +1172,7 @@ public partial class GameBuilderApp : Node3D
             return;
         actor.Scale = scale;
         actor.State.SetScale(scale);
+        UpdateActorFamilySpawnTransforms(actor);
         if (_selectedActor == actor)
             SelectActor(actor);
     }
@@ -2391,15 +2417,20 @@ public partial class GameBuilderApp : Node3D
     {
         if (_updatingInspector || _playMode || _selectedActor is null)
             return;
-        string actorName = _selectedActor.LegacyName;
-        Transform3D oldTransform = _selectedActor.GlobalTransform;
-        Vector3 position = _selectedActor.GlobalPosition;
+        WorldActorNode actor = _selectedActor;
+        string actorName = actor.LegacyName;
+        string displayName = actor.State.DisplayName;
+        bool autoSetSpawn = _autoSetSpawnOnMove;
+        Transform3D oldTransform = actor.GlobalTransform;
+        Vector3 position = actor.GlobalPosition;
         position[axis] = value;
-        _selectedActor.GlobalPosition = position;
-        Transform3D newTransform = _selectedActor.GlobalTransform;
-        RecordHistory($"Move {_selectedActor.State.DisplayName}",
-            () => SetActorTransform(actorName, oldTransform),
-            () => SetActorTransform(actorName, newTransform));
+        actor.GlobalPosition = position;
+        Transform3D newTransform = actor.GlobalTransform;
+        if (autoSetSpawn)
+            SetActorTransform(actorName, newTransform, updateSpawnFamily: true);
+        RecordHistory($"Move {displayName}",
+            () => SetActorTransform(actorName, oldTransform, autoSetSpawn),
+            () => SetActorTransform(actorName, newTransform, autoSetSpawn));
     }
 
     private void UpdateSelectedSpawnPosition(int axis, float value)
@@ -2425,15 +2456,20 @@ public partial class GameBuilderApp : Node3D
     {
         if (_updatingInspector || _playMode || _selectedActor is null)
             return;
-        string actorName = _selectedActor.LegacyName;
-        Transform3D oldTransform = _selectedActor.GlobalTransform;
-        Vector3 rotation = _selectedActor.GlobalRotationDegrees;
+        WorldActorNode actor = _selectedActor;
+        string actorName = actor.LegacyName;
+        string displayName = actor.State.DisplayName;
+        bool autoSetSpawn = _autoSetSpawnOnRotate;
+        Transform3D oldTransform = actor.GlobalTransform;
+        Vector3 rotation = actor.GlobalRotationDegrees;
         rotation[axis] = degrees;
-        _selectedActor.GlobalRotationDegrees = rotation;
-        Transform3D newTransform = _selectedActor.GlobalTransform;
-        RecordHistory($"Rotate {_selectedActor.State.DisplayName}",
-            () => SetActorTransform(actorName, oldTransform),
-            () => SetActorTransform(actorName, newTransform));
+        actor.GlobalRotationDegrees = rotation;
+        Transform3D newTransform = actor.GlobalTransform;
+        if (autoSetSpawn)
+            SetActorTransform(actorName, newTransform, updateSpawnFamily: true);
+        RecordHistory($"Rotate {displayName}",
+            () => SetActorTransform(actorName, oldTransform, autoSetSpawn),
+            () => SetActorTransform(actorName, newTransform, autoSetSpawn));
     }
 
     private void ToggleActorList()
@@ -2753,11 +2789,14 @@ public partial class GameBuilderApp : Node3D
         }
     }
 
-    private void LoadParentOnResetPreference()
+    private void LoadEditorPreferences()
     {
         var settings = new ConfigFile();
-        if (settings.Load(ParentOnResetSettingsPath) == Error.Ok)
-            _parentOnReset = settings.GetValue("editor", "parent_on_reset", true).AsBool();
+        if (settings.Load(EditorSettingsPath) != Error.Ok)
+            return;
+        _parentOnReset = settings.GetValue("editor", "parent_on_reset", true).AsBool();
+        _autoSetSpawnOnMove = settings.GetValue("editor", "auto_set_spawn_on_move", true).AsBool();
+        _autoSetSpawnOnRotate = settings.GetValue("editor", "auto_set_spawn_on_rotate", true).AsBool();
     }
 
     private void SetParentOnResetPreference(bool enabled)
@@ -2767,13 +2806,40 @@ public partial class GameBuilderApp : Node3D
             && IsInstanceValid(_parentOnResetToggle)
             && _parentOnResetToggle.ButtonPressed != enabled)
             _parentOnResetToggle.SetPressedNoSignal(enabled);
+        SaveEditorPreferences();
+    }
 
+    private void SetAutoSetSpawnOnMovePreference(bool enabled)
+    {
+        _autoSetSpawnOnMove = enabled;
+        if (_autoSetSpawnOnMoveToggle is not null
+            && IsInstanceValid(_autoSetSpawnOnMoveToggle)
+            && _autoSetSpawnOnMoveToggle.ButtonPressed != enabled)
+            _autoSetSpawnOnMoveToggle.SetPressedNoSignal(enabled);
+        SaveEditorPreferences();
+    }
+
+    private void SetAutoSetSpawnOnRotatePreference(bool enabled)
+    {
+        _autoSetSpawnOnRotate = enabled;
+        if (_autoSetSpawnOnRotateToggle is not null
+            && IsInstanceValid(_autoSetSpawnOnRotateToggle)
+            && _autoSetSpawnOnRotateToggle.ButtonPressed != enabled)
+            _autoSetSpawnOnRotateToggle.SetPressedNoSignal(enabled);
+        SaveEditorPreferences();
+    }
+
+    private void SaveEditorPreferences()
+    {
         var settings = new ConfigFile();
-        settings.SetValue("editor", "parent_on_reset", enabled);
-        Error error = settings.Save(ParentOnResetSettingsPath);
+        settings.Load(EditorSettingsPath);
+        settings.SetValue("editor", "parent_on_reset", _parentOnReset);
+        settings.SetValue("editor", "auto_set_spawn_on_move", _autoSetSpawnOnMove);
+        settings.SetValue("editor", "auto_set_spawn_on_rotate", _autoSetSpawnOnRotate);
+        Error error = settings.Save(EditorSettingsPath);
         if (error != Error.Ok)
         {
-            string message = $"Could not save Parent on reset preference: {error}.";
+            string message = $"Could not save editor preferences: {error}.";
             GD.PushWarning(message);
             if (_status is not null && IsInstanceValid(_status))
                 _status.Text = message;
@@ -3010,10 +3076,11 @@ public partial class GameBuilderApp : Node3D
                 Vector3.Zero));
         }
 
-        ApplyActorMotionStates(after);
+        bool autoSetSpawn = _autoSetSpawnOnRotate;
+        ApplyActorMotionStates(after, autoSetSpawn);
         RecordHistory("Rotate",
-            () => ApplyActorMotionStates(before),
-            () => ApplyActorMotionStates(after));
+            () => ApplyActorMotionStates(before, autoSetSpawn),
+            () => ApplyActorMotionStates(after, autoSetSpawn));
     }
 
     private void ResetActors()
@@ -3054,7 +3121,9 @@ public partial class GameBuilderApp : Node3D
         return true;
     }
 
-    private void ApplyActorMotionStates(IReadOnlyDictionary<string, ActorMotionSnapshot> states)
+    private void ApplyActorMotionStates(
+        IReadOnlyDictionary<string, ActorMotionSnapshot> states,
+        bool updateSpawnFamily = false)
     {
         foreach (WorldActorNode actor in _actors.OrderBy(GetActorHierarchyDepth))
         {
@@ -3064,19 +3133,59 @@ public partial class GameBuilderApp : Node3D
             actor.LinearVelocity = state.Velocity;
             actor.AngularVelocity = state.AngularVelocity;
         }
+        if (updateSpawnFamily)
+        {
+            var updatedRoots = new HashSet<WorldActorNode>();
+            foreach (WorldActorNode actor in _actors)
+            {
+                if (!states.ContainsKey(actor.LegacyName))
+                    continue;
+                WorldActorNode root = GetActorFamilyRoot(actor);
+                if (updatedRoots.Add(root))
+                    UpdateActorFamilySpawnTransformsForRoot(root);
+            }
+        }
         if (_selectedActor is not null)
             SelectActor(_selectedActor);
     }
 
-    private void SetActorTransform(string actorName, Transform3D transform)
+    private void SetActorTransform(string actorName, Transform3D transform, bool updateSpawnFamily = false)
     {
         WorldActorNode? actor = FindActor(actorName);
         if (actor is null)
             return;
         actor.GlobalTransform = transform;
+        if (updateSpawnFamily)
+            UpdateActorFamilySpawnTransforms(actor);
         if (_selectedActor == actor)
             SelectActor(actor);
     }
+
+    private void UpdateActorFamilySpawnTransforms(WorldActorNode actor)
+        => UpdateActorFamilySpawnTransformsForRoot(GetActorFamilyRoot(actor));
+
+    private static WorldActorNode GetActorFamilyRoot(WorldActorNode actor)
+    {
+        while (actor.GetParent() is WorldActorNode parent)
+            actor = parent;
+        return actor;
+    }
+
+    private void UpdateActorFamilySpawnTransformsForRoot(WorldActorNode root)
+    {
+        foreach (WorldActorNode familyMember in _actors)
+        {
+            if (familyMember != root && !root.IsAncestorOf(familyMember))
+                continue;
+            familyMember.State.WriteLegacyVector(
+                "spawnPosition",
+                CoordinateSpace.ToLegacy(familyMember.GlobalPosition));
+            familyMember.State.WriteLegacyQuaternion(
+                "spawnRotation",
+                CoordinateSpace.ToLegacy(familyMember.GlobalBasis.GetRotationQuaternion()));
+        }
+    }
+
 
     private void RecordHistory(string label, Action undo, Action redo)
     {
