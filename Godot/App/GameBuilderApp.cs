@@ -40,6 +40,8 @@ public partial class GameBuilderApp : Node3D
     private OptionButton _samplePicker = null!;
     private SpinBox[] _positionFields = Array.Empty<SpinBox>();
     private SpinBox[] _rotationFields = Array.Empty<SpinBox>();
+    private SpinBox[] _spawnPositionFields = Array.Empty<SpinBox>();
+    private Button _setSpawnToCurrentButton = null!;
     private Control _welcome = null!;
     private Control _editor = null!;
     private Label _status = null!;
@@ -776,6 +778,29 @@ public partial class GameBuilderApp : Node3D
             field.ValueChanged += value => UpdateSelectedPosition(index, (float)value);
             row.AddChild(field);
             _positionFields[axis] = field;
+            inspector.AddChild(row);
+        }
+        inspector.AddChild(CreateLabel("Spawn position", 14));
+        _setSpawnToCurrentButton = new Button
+        {
+            Name = "SetSpawnToCurrentButton",
+            Text = "Use current position",
+            TooltipText = "Set the actor's restart position to its current world position and use its current parent.",
+            Disabled = true
+        };
+        _setSpawnToCurrentButton.Pressed += SetSelectedActorSpawnPositionToCurrent;
+        inspector.AddChild(_setSpawnToCurrentButton);
+        _spawnPositionFields = new SpinBox[3];
+        for (int axis = 0; axis < 3; axis++)
+        {
+            var row = new HBoxContainer();
+            row.AddChild(CreateLabel(axes[axis], 14));
+            SpinBox field = CreateSpinBox();
+            field.Name = $"SpawnPosition{axes[axis]}Field";
+            int index = axis;
+            field.ValueChanged += value => UpdateSelectedSpawnPosition(index, (float)value);
+            row.AddChild(field);
+            _spawnPositionFields[axis] = field;
             inspector.AddChild(row);
         }
         inspector.AddChild(CreateLabel("World rotation (degrees)", 14));
@@ -2328,6 +2353,11 @@ public partial class GameBuilderApp : Node3D
         }
         for (int axis = 0; axis < 3; axis++)
         {
+            _spawnPositionFields[axis].Editable = hasActor && !_playMode;
+            _spawnPositionFields[axis].Value = hasActor ? _selectedActor!.State.SpawnPosition[axis] : 0d;
+        }
+        for (int axis = 0; axis < 3; axis++)
+        {
             _rotationFields[axis].Editable = hasActor && !_playMode;
             _rotationFields[axis].Value = hasActor ? _selectedActor!.GlobalRotationDegrees[axis] : 0d;
         }
@@ -2351,6 +2381,7 @@ public partial class GameBuilderApp : Node3D
         else
             _spawnParentLabel.Text = spawnParentName.Length == 0 ? "<none>" : spawnParentName;
         _spawnParentButton.Disabled = !hasActor || _selectedActors.Count != 1 || _playMode;
+        _setSpawnToCurrentButton.Disabled = !hasActor || _selectedActors.Count != 1 || _playMode;
         SetInspectorInputsEnabled(hasActor && !_playMode);
         _behaviorEditorButton.Disabled = !hasActor || _playMode;
         _updatingInspector = false;
@@ -2369,6 +2400,25 @@ public partial class GameBuilderApp : Node3D
         RecordHistory($"Move {_selectedActor.State.DisplayName}",
             () => SetActorTransform(actorName, oldTransform),
             () => SetActorTransform(actorName, newTransform));
+    }
+
+    private void UpdateSelectedSpawnPosition(int axis, float value)
+    {
+        if (_updatingInspector || _playMode || _selectedActor is null)
+            return;
+        WorldActorNode actor = _selectedActor;
+        Vector3 oldSpawnPosition = actor.State.SpawnPosition;
+        Vector3 newSpawnPosition = oldSpawnPosition;
+        newSpawnPosition[axis] = value;
+        if (oldSpawnPosition.Equals(newSpawnPosition))
+            return;
+
+        string actorName = actor.LegacyName;
+        string displayName = actor.State.DisplayName;
+        SetActorSpawnPosition(actorName, newSpawnPosition);
+        RecordHistory($"Set restart spawn position for {displayName}",
+            () => SetActorSpawnPosition(actorName, oldSpawnPosition),
+            () => SetActorSpawnPosition(actorName, newSpawnPosition));
     }
 
     private void UpdateSelectedRotation(int axis, float degrees)
@@ -2459,6 +2509,9 @@ public partial class GameBuilderApp : Node3D
         _positionFields[2].Editable = !enabled && _selectedActor is not null;
         foreach (SpinBox rotationField in _rotationFields)
             rotationField.Editable = !enabled && _selectedActor is not null;
+        foreach (SpinBox spawnPositionField in _spawnPositionFields)
+            spawnPositionField.Editable = !enabled && _selectedActor is not null;
+        _setSpawnToCurrentButton.Disabled = enabled || _selectedActors.Count != 1;
         SetInspectorInputsEnabled(!enabled && _selectedActor is not null);
         _behaviorEditorButton.Disabled = enabled || _selectedActor is null;
         UpdateHistoryButtons();
@@ -2800,6 +2853,51 @@ public partial class GameBuilderApp : Node3D
         WorldActorNode? actor = FindActor(actorName);
         if (actor is null)
             return;
+        actor.State.WriteString("spawnTransformParent", spawnParentName);
+        if (_selectedActor == actor)
+            SelectActor(actor);
+    }
+
+    private void SetSelectedActorSpawnPositionToCurrent()
+    {
+        if (_document is null || _playMode || _selectedActors.Count != 1)
+            return;
+
+        WorldActorNode actor = _selectedActors[0];
+        if (!_actors.Contains(actor))
+            return;
+
+        Vector3 previousPosition = actor.State.SpawnPosition;
+        string previousParent = LegacySaveDocument.ReadString(actor.State.Data["spawnTransformParent"]);
+        Vector3 currentPosition = actor.GlobalPosition;
+        string currentParent = actor.State.TransformParent;
+        if (previousPosition.Equals(currentPosition) && previousParent == currentParent)
+            return;
+
+        string actorName = actor.LegacyName;
+        string displayName = actor.State.DisplayName;
+        SetActorSpawnState(actorName, currentPosition, currentParent);
+        RecordHistory($"Set restart position for {displayName}",
+            () => SetActorSpawnState(actorName, previousPosition, previousParent),
+            () => SetActorSpawnState(actorName, currentPosition, currentParent));
+    }
+
+    private void SetActorSpawnPosition(string actorName, Vector3 spawnPosition)
+    {
+        WorldActorNode? actor = FindActor(actorName);
+        if (actor is null)
+            return;
+        actor.State.WriteLegacyVector("spawnPosition", CoordinateSpace.ToLegacy(spawnPosition));
+        if (_selectedActor == actor)
+            SelectActor(actor);
+    }
+
+    private void SetActorSpawnState(string actorName, Vector3 spawnPosition, string spawnParentName)
+    {
+        WorldActorNode? actor = FindActor(actorName);
+        if (actor is null)
+            return;
+        actor.State.WriteLegacyVector("spawnPosition", CoordinateSpace.ToLegacy(spawnPosition));
         actor.State.WriteString("spawnTransformParent", spawnParentName);
         if (_selectedActor == actor)
             SelectActor(actor);

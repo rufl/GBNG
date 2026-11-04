@@ -446,9 +446,107 @@ public partial class GameBuilderApp
                 || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != originalSpawnTransformParent
                 || source.GetParent() != originalSceneParent)
                 throw new InvalidOperationException("Undo did not return the actor to its original hierarchy.");
+            SetActorSelection(new[] { source }, source);
+            SpinBox spawnXField = FindChild("SpawnPositionXField", true, false) as SpinBox
+                ?? throw new InvalidOperationException("The restart spawn-position X field was not found.");
+            Button setSpawnToCurrentButton = FindChild("SetSpawnToCurrentButton", true, false) as Button
+                ?? throw new InvalidOperationException("The Use current position button was not found.");
+            if (!spawnXField.Editable || setSpawnToCurrentButton.Disabled)
+                throw new InvalidOperationException("The restart spawn controls were not enabled for a single actor.");
+
+            Vector3 originalSpawnPosition = source.State.SpawnPosition;
+            Quaternion originalSpawnRotation = source.State.SpawnRotation;
+            string originalResetParent = LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]);
+            string originalCurrentParent = source.State.TransformParent;
+            Transform3D originalCurrentTransform = source.GlobalTransform;
+            Node originalCurrentSceneParent = source.GetParent();
+            float manualSpawnX = source.GlobalPosition.X + 20f;
+            if (manualSpawnX > spawnXField.MaxValue || Mathf.IsEqualApprox(manualSpawnX, originalSpawnPosition.X))
+                manualSpawnX = source.GlobalPosition.X - 20f;
+            if (manualSpawnX < spawnXField.MinValue
+                || manualSpawnX > spawnXField.MaxValue
+                || Mathf.IsEqualApprox(manualSpawnX, originalSpawnPosition.X))
+                throw new InvalidOperationException("The smoke actor has no distinct restart position within the inspector's coordinate range.");
+
+            spawnXField.Value = manualSpawnX;
+            float effectiveSpawnX = (float)spawnXField.Value;
+            if (Mathf.IsEqualApprox(effectiveSpawnX, originalSpawnPosition.X))
+                throw new InvalidOperationException("The restart spawn-position field did not accept a distinct value.");
+            Vector3 editedSpawnPosition = originalSpawnPosition;
+            editedSpawnPosition.X = effectiveSpawnX;
+            if (!source.State.SpawnPosition.IsEqualApprox(editedSpawnPosition)
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != originalResetParent
+                || !source.State.SpawnRotation.IsEqualApprox(originalSpawnRotation)
+                || source.State.TransformParent != originalCurrentParent
+                || source.GetParent() != originalCurrentSceneParent
+                || !source.GlobalTransform.IsEqualApprox(originalCurrentTransform))
+                throw new InvalidOperationException($"Editing restart spawn position changed more than the spawn position: field={spawnXField.Value}, manual={manualSpawnX}, current={source.GlobalPosition}, spawn={source.State.SpawnPosition}/{editedSpawnPosition}, resetParent='{LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"])}'/'{originalResetParent}', spawnRotationMatches={source.State.SpawnRotation.IsEqualApprox(originalSpawnRotation)}, transformParent='{source.State.TransformParent}'/'{originalCurrentParent}', sceneParentMatches={source.GetParent() == originalCurrentSceneParent}, currentTransformMatches={source.GlobalTransform.IsEqualApprox(originalCurrentTransform)}.");
+            UndoEdit();
+            if (!source.State.SpawnPosition.IsEqualApprox(originalSpawnPosition)
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != originalResetParent)
+                throw new InvalidOperationException("Undo did not restore the previous restart spawn position.");
+            RedoEdit();
+            if (!source.State.SpawnPosition.IsEqualApprox(editedSpawnPosition)
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != originalResetParent)
+                throw new InvalidOperationException("Redo did not restore the edited restart spawn position.");
+
+            string alternateResetParent = originalCurrentParent == independentName ? string.Empty : independentName;
+            SetActorSpawnParent(sourceName, alternateResetParent);
+            setSpawnToCurrentButton.EmitSignal("pressed");
+            if (!source.State.SpawnPosition.IsEqualApprox(source.GlobalPosition)
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != originalCurrentParent
+                || !source.State.SpawnRotation.IsEqualApprox(originalSpawnRotation)
+                || source.State.TransformParent != originalCurrentParent
+                || source.GetParent() != originalCurrentSceneParent
+                || !source.GlobalTransform.IsEqualApprox(originalCurrentTransform))
+                throw new InvalidOperationException("Use current position did not update only the restart position and reset parent.");
+            UndoEdit();
+            if (!source.State.SpawnPosition.IsEqualApprox(editedSpawnPosition)
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != alternateResetParent)
+                throw new InvalidOperationException("Undo did not restore both values changed by Use current position.");
+            RedoEdit();
+            if (!source.State.SpawnPosition.IsEqualApprox(source.GlobalPosition)
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != originalCurrentParent)
+                throw new InvalidOperationException("Redo did not restore the current restart position and parent.");
+            UndoEdit();
+            UndoEdit();
+            SetActorSpawnParent(sourceName, originalResetParent);
+            if (!source.State.SpawnPosition.IsEqualApprox(originalSpawnPosition)
+                || LegacySaveDocument.ReadString(source.State.Data["spawnTransformParent"]) != originalResetParent)
+                throw new InvalidOperationException("Undo did not return the restart spawn state to its original values.");
+
+            Vector3 beforeUpperBoundary = source.State.SpawnPosition;
+            if (!Mathf.IsEqualApprox(beforeUpperBoundary.X, (float)spawnXField.MaxValue))
+            {
+                spawnXField.Value = spawnXField.MaxValue + spawnXField.Step;
+                if (!Mathf.IsEqualApprox((float)spawnXField.Value, (float)spawnXField.MaxValue)
+                    || !Mathf.IsEqualApprox(source.State.SpawnPosition.X, (float)spawnXField.MaxValue))
+                    throw new InvalidOperationException("The restart spawn-position field did not clamp to its upper boundary.");
+                UndoEdit();
+                if (!source.State.SpawnPosition.IsEqualApprox(beforeUpperBoundary))
+                    throw new InvalidOperationException("Undo did not restore the spawn position after upper-bound editing.");
+            }
+            Vector3 beforeLowerBoundary = source.State.SpawnPosition;
+            if (!Mathf.IsEqualApprox(beforeLowerBoundary.X, (float)spawnXField.MinValue))
+            {
+                spawnXField.Value = spawnXField.MinValue - spawnXField.Step;
+                if (!Mathf.IsEqualApprox((float)spawnXField.Value, (float)spawnXField.MinValue)
+                    || !Mathf.IsEqualApprox(source.State.SpawnPosition.X, (float)spawnXField.MinValue))
+                    throw new InvalidOperationException("The restart spawn-position field did not clamp to its lower boundary.");
+                UndoEdit();
+                if (!source.State.SpawnPosition.IsEqualApprox(beforeLowerBoundary))
+                    throw new InvalidOperationException("Undo did not restore the spawn position after lower-bound editing.");
+            }
+            if (!source.State.SpawnRotation.IsEqualApprox(originalSpawnRotation)
+                || source.State.TransformParent != originalCurrentParent
+                || source.GetParent() != originalCurrentSceneParent
+                || !source.GlobalTransform.IsEqualApprox(originalCurrentTransform))
+                throw new InvalidOperationException("Restart spawn edits changed the actor's current transform, hierarchy, or spawn rotation.");
 
             SetActorSelection(new[] { source, independent }, source);
             await WaitForUiFrames(1);
+            if (!_spawnPositionFields[0].Editable || !setSpawnToCurrentButton.Disabled)
+                throw new InvalidOperationException("Multi-selection did not preserve the focused actor field while disabling the single-actor reset action.");
 
 
             BeginCopyPlacement();
@@ -635,6 +733,17 @@ public partial class GameBuilderApp
                 || LegacySaveDocument.ReadString(persistenceSource.State.Data["spawnTransformParent"]) != independentName
                 || persistenceSource.GetParent() != persistenceParent)
                 throw new InvalidOperationException("The parent persistence smoke fixture could not establish the expected hierarchy.");
+            Vector3 persistenceSpawnPosition = persistenceSource.State.SpawnPosition;
+            float persistenceSpawnY = persistenceSpawnPosition.Y + 2f;
+            if (persistenceSpawnY > _spawnPositionFields[1].MaxValue)
+                persistenceSpawnY = persistenceSpawnPosition.Y - 2f;
+            if (persistenceSpawnY < _spawnPositionFields[1].MinValue || persistenceSpawnY > _spawnPositionFields[1].MaxValue)
+                throw new InvalidOperationException("The persistence smoke actor has no restart position within the inspector's coordinate range.");
+            persistenceSpawnPosition.Y = persistenceSpawnY;
+            _spawnPositionFields[1].Value = persistenceSpawnY;
+            persistenceSpawnPosition.Y = (float)_spawnPositionFields[1].Value;
+            if (!persistenceSource.State.SpawnPosition.IsEqualApprox(persistenceSpawnPosition))
+                throw new InvalidOperationException($"Editing the restart spawn position did not update the persistence fixture: requestedY={persistenceSpawnY}, fieldY={_spawnPositionFields[1].Value}, selected='{_selectedActor?.LegacyName}', spawn={persistenceSource.State.SpawnPosition}, expected={persistenceSpawnPosition}.");
             string ctrlSaveMarker = $"Ctrl+S smoke {Guid.NewGuid():N}";
             persistenceSource.State.WriteString("description", ctrlSaveMarker);
             _actorList.GrabFocus();
@@ -646,6 +755,8 @@ public partial class GameBuilderApp
             WorldActorNode ctrlSavedSource = _actors.Single(actor => actor.LegacyName == sourceName);
             if (ctrlSavedSource.State.Description != ctrlSaveMarker)
                 throw new InvalidOperationException("Ctrl+S did not persist the current project state.");
+            if (!ctrlSavedSource.State.SpawnPosition.IsEqualApprox(persistenceSpawnPosition))
+                throw new InvalidOperationException("Ctrl+S did not persist the restart spawn position.");
 
             string cmdSaveMarker = $"Cmd+S smoke {Guid.NewGuid():N}";
             ctrlSavedSource.State.WriteString("description", cmdSaveMarker);
@@ -663,8 +774,12 @@ public partial class GameBuilderApp
                 || LegacySaveDocument.ReadString(persistedSource.State.Data["spawnTransformParent"]) != independentName
                 || persistedSource.GetParent() != persistedParent)
                 throw new InvalidOperationException("The actor parent and reset parent did not persist through save and reload.");
+            if (!persistedSource.State.SpawnPosition.IsEqualApprox(persistenceSpawnPosition))
+                throw new InvalidOperationException("The restart spawn position did not persist through save and reload.");
             if (persistedSource.State.Description != cmdSaveMarker)
                 throw new InvalidOperationException("Cmd+S did not persist the current project state.");
+
+            GD.Print("RESTART_SPAWN_SMOKE_OK inspector=true edit=true setCurrentPositionAndParent=true undoRedo=true currentTransformPreserved=true spawnRotationPreserved=true bounds=true multiSelection=true persistence=CtrlS+CmdS");
 
             GD.Print($"ACTOR_COPY_SMOKE_OK selection=shift-toggle-marquee=true marqueeVisual=true quickRotate=R+toolbar=true groupPivot=true undo-redo=true parenting=CtrlH=true transformPreserved=true cycleRejected=true unparent=emptySpace=true undo-redo=true parentPersistence=true actorListToggle=true actorListScreenshot={actorListScreenshot} cameraFollow=F+button=true actorTracking=true cameraFollowScreenshot={cameraFollowScreenshot} reset=CtrlR+undo-redo=true save=CtrlS+CmdS+persistence=true delete=Delete+Backspace+undoRedo=true multiCopyRoots=true preview=true ctrlC=true snap=true descendants=true repeat=true persistence=true marqueeScreenshot={marqueeScreenshot} copyScreenshot={screenshot}");
 

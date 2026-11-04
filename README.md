@@ -36,6 +36,8 @@ The actor list and world support multi-selection: Shift adds, Ctrl/Cmd toggles, 
 
 The **Parent on reset** checkbox controls whether **Ctrl+H** / **Cmd+H** also changes the parent restored by reset; it is enabled by default and saved as an editor preference on this device.
 
+The inspector's **Spawn position** fields edit the saved restart position independently of the actor's current world transform and spawn rotation; each edit participates in Undo/Redo. **Use current position** copies the actor's current world position and transform parent into its restart state without changing its current transform or spawn rotation.
+
 The inspector's **Reset parent** control restores the separate legacy **Parent on restart** action: press **Choose in scene…**, click an actor to assign it, or click empty world space to clear it. It changes `spawnTransformParent` without changing the actor's current transform parent and participates in Undo/Redo.
 
 
