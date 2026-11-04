@@ -21,6 +21,7 @@ public partial class GameBuilderApp
         Vector2I originalWindowSize = GetWindow().Size;
         Vector2I originalWindowPosition = GetWindow().Position;
         bool originalFullscreen = _fullscreen;
+        GraphicsQuality originalGraphicsQuality = _graphicsQuality;
         try
         {
             await WaitForUiFrames(2);
@@ -35,6 +36,7 @@ public partial class GameBuilderApp
             var fullscreenMode = (CheckButton)window.FindChild("OptionsFullscreen", true, false);
             var windowedSize = (OptionButton)window.FindChild("OptionsWindowedSize", true, false);
             var currentDisplaySize = (Label)window.FindChild("OptionsCurrentDisplaySize", true, false);
+            var graphicsQuality = (OptionButton)window.FindChild("OptionsGraphicsQuality", true, false);
             var lookSensitivity = (HSlider)window.FindChild("ControlsLookSensitivity", true, false);
             var wheelSensitivity = (HSlider)window.FindChild("ControlsWheelSensitivity", true, false);
             var reset = (Button)window.FindChild("ControlsResetDefaults", true, false);
@@ -42,6 +44,8 @@ public partial class GameBuilderApp
                 || showTooltips.ButtonPressed != _showTooltips
                 || fullscreenMode.ButtonPressed != _fullscreen
                 || windowedSize.ItemCount == 0
+                || graphicsQuality.ItemCount != 3
+                || graphicsQuality.Selected != (int)_graphicsQuality
                 || !Mathf.IsEqualApprox((float)lookSensitivity.MinValue, 0.1f)
                 || !Mathf.IsEqualApprox((float)lookSensitivity.MaxValue, 3f))
                 throw new InvalidOperationException("The options window did not expose the legacy mouse and display preferences.");
@@ -116,6 +120,38 @@ public partial class GameBuilderApp
                 || (int)savedDisplayPreferences.GetValue("display", "windowed_width", 0).AsDouble() != alternateSize.X
                 || (int)savedDisplayPreferences.GetValue("display", "windowed_height", 0).AsDouble() != alternateSize.Y)
                 throw new InvalidOperationException("Leaving fullscreen did not restore the selected windowed size.");
+            Godot.Environment qualityEnvironment = GetNode<WorldEnvironment>("WorldEnvironment").Environment
+                ?? throw new InvalidOperationException("The quality smoke requires the editor world environment.");
+            DirectionalLight3D qualitySun = GetNode<DirectionalLight3D>("Sun");
+            for (int qualityIndex = 0; qualityIndex < graphicsQuality.ItemCount; qualityIndex++)
+            {
+                graphicsQuality.Select(qualityIndex);
+                graphicsQuality.EmitSignal("item_selected", (long)qualityIndex);
+                await WaitForUiFrames(1);
+                bool highQuality = qualityIndex == (int)GraphicsQuality.High;
+                bool lowQuality = qualityIndex == (int)GraphicsQuality.Low;
+                DirectionalLight3D.ShadowMode expectedShadowMode = qualityIndex switch
+                {
+                    (int)GraphicsQuality.High => DirectionalLight3D.ShadowMode.Parallel4Splits,
+                    (int)GraphicsQuality.Medium => DirectionalLight3D.ShadowMode.Parallel2Splits,
+                    _ => DirectionalLight3D.ShadowMode.Orthogonal
+                };
+                float expectedShadowDistance = qualityIndex == (int)GraphicsQuality.High ? 100f : 40f;
+                DisplayServer.VSyncMode expectedVsync = lowQuality
+                    ? DisplayServer.VSyncMode.Disabled
+                    : DisplayServer.VSyncMode.Enabled;
+                savedDisplayPreferences = new ConfigFile();
+                if (_graphicsQuality != (GraphicsQuality)qualityIndex
+                    || graphicsQuality.Selected != qualityIndex
+                    || qualityEnvironment.SsaoEnabled != highQuality
+                    || qualitySun.ShadowEnabled == lowQuality
+                    || qualitySun.DirectionalShadowMode != expectedShadowMode
+                    || !Mathf.IsEqualApprox(qualitySun.DirectionalShadowMaxDistance, expectedShadowDistance)
+                    || DisplayServer.WindowGetVsyncMode() != expectedVsync
+                    || savedDisplayPreferences.Load(EditorSettingsPath) != Error.Ok
+                    || (int)savedDisplayPreferences.GetValue("display", "graphics_quality", -1).AsDouble() != qualityIndex)
+                    throw new InvalidOperationException($"The {graphicsQuality.GetItemText(qualityIndex)} quality preset did not apply and persist its Godot rendering profile.");
+            }
 
             showTooltips.SetPressedNoSignal(true);
             showTooltips.EmitSignal("toggled", true);
@@ -196,7 +232,7 @@ public partial class GameBuilderApp
             string screenshot = ProjectSettings.GlobalizePath("res://.godot/controls-preferences-smoke.png");
             if (window.GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
                 throw new InvalidOperationException("Could not save the controls preferences screenshot.");
-            GD.Print($"CONTROLS_SMOKE_OK fullscreenToggle=true windowedRestore=true windowedResolution=true fullscreenSizeRestore=true showTooltips={_showTooltips} tooltipSuppression=true tooltipRestoration=true futureControls=true invert=true lookSensitivity=true wheelSensitivity=true persistence=true reset=true screenshot={screenshot}");
+            GD.Print($"CONTROLS_SMOKE_OK fullscreenToggle=true windowedRestore=true windowedResolution=true fullscreenSizeRestore=true graphicsQualityProfiles=true qualityPersistence=true showTooltips={_showTooltips} tooltipSuppression=true tooltipRestoration=true futureControls=true invert=true lookSensitivity=true wheelSensitivity=true persistence=true reset=true screenshot={screenshot}");
         }
         catch (System.Exception exception)
         {
@@ -224,6 +260,9 @@ public partial class GameBuilderApp
             try
             {
                 _windowedSize = originalWindowedSize;
+                _graphicsQuality = originalGraphicsQuality;
+                ApplyGraphicsQuality(_graphicsQuality);
+                _controlsWindow.SetGraphicsQuality((int)_graphicsQuality);
                 _fullscreen = originalFullscreen;
                 Window window = GetWindow();
                 window.Mode = Window.ModeEnum.Windowed;

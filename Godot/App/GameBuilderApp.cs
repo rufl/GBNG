@@ -187,6 +187,7 @@ public partial class GameBuilderApp : Node3D
         BuildWorldServices();
         _windowedSize = GetWindow().Size;
         LoadEditorPreferences();
+        ApplyGraphicsQuality(_graphicsQuality);
         RestoreWindowedSize();
         InitializeWindowedDisplayTracking();
         _tooltipPolicy = new LegacyTooltipPolicy(GetTree());
@@ -535,8 +536,9 @@ public partial class GameBuilderApp : Node3D
         _networkWindow = new LegacyLanNetworkWindow(_lanSession, PrepareNetworkHostProjectCopy, OpenReceivedNetworkProject);
         _worldSettingsWindow = new LegacyWorldSettingsWindow(UpdateStageProperty, ApplyWorldMapSize);
         _visualEffectsWindow = new LegacyVisualEffectsWindow(_cameraEffects);
-        _controlsWindow = new LegacyControlsWindow(SetControlPreferences, SetWindowedSizePreference);
+        _controlsWindow = new LegacyControlsWindow(SetControlPreferences, SetWindowedSizePreference, SetGraphicsQuality);
         _controlsWindow.SetPreferences(_showTooltips, _fullscreen, _invertMouseLook, _mouseLookSensitivity, _mouseWheelSensitivity);
+        _controlsWindow.SetGraphicsQuality((int)_graphicsQuality);
         _controlsWindow.SetDisplayOptions(GetWindowedSizePresets(GetWindow()), _windowedSize, GetWindow().Size, _fullscreen);
         _audioSettingsWindow = new LegacyAudioSettingsWindow(SetSfxVolumePreference, SetMusicVolumePreference);
         _audioSettingsWindow.SetSfxVolume(_sfxVolume);
@@ -1176,7 +1178,8 @@ public partial class GameBuilderApp : Node3D
     private void OpenControls()
     {
         _controlsWindow.SetDisplayOptions(GetWindowedSizePresets(GetWindow()), _windowedSize, GetWindow().Size, _fullscreen);
-        _controlsWindow.PopupCentered(new Vector2I(560, 500));
+        _controlsWindow.SetGraphicsQuality((int)_graphicsQuality);
+        _controlsWindow.PopupCentered(new Vector2I(560, 580));
     }
     private void OpenAudioSettings()
     {
@@ -3094,6 +3097,7 @@ public partial class GameBuilderApp : Node3D
         _parentOnReset = settings.GetValue("editor", "parent_on_reset", true).AsBool();
         _showTooltips = settings.GetValue("editor", "show_tooltips", true).AsBool();
         _fullscreen = settings.GetValue("display", "fullscreen", false).AsBool();
+        _graphicsQuality = ReadGraphicsQuality(settings);
         _windowedSize = new Vector2I(
             ReadDisplayDimension(settings, "windowed_width", _windowedSize.X),
             ReadDisplayDimension(settings, "windowed_height", _windowedSize.Y));
@@ -3209,6 +3213,7 @@ public partial class GameBuilderApp : Node3D
         settings.SetValue("editor", "parent_on_reset", _parentOnReset);
         settings.SetValue("editor", "show_tooltips", _showTooltips);
         settings.SetValue("display", "fullscreen", _fullscreen);
+        settings.SetValue("display", "graphics_quality", (int)_graphicsQuality);
         settings.SetValue("display", "windowed_width", _windowedSize.X);
         settings.SetValue("display", "windowed_height", _windowedSize.Y);
         settings.SetValue("editor", "auto_set_spawn_on_move", _autoSetSpawnOnMove);

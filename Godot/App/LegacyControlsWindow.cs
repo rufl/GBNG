@@ -17,9 +17,11 @@ public sealed partial class LegacyControlsWindow : Window
 
     private readonly System.Action<bool, bool, bool, float, float> _applyPreferences;
     private readonly System.Action<Vector2I> _applyWindowedSize;
+    private readonly System.Action<int> _applyGraphicsQuality;
     private readonly CheckButton _showTooltips = new();
     private readonly CheckButton _fullscreenMode = new();
     private readonly OptionButton _windowedSize = new();
+    private readonly OptionButton _graphicsQuality = new();
     private readonly Label _currentDisplaySize = new();
     private readonly CheckButton _invertVerticalLook = new();
     private readonly HSlider _lookSensitivity = new();
@@ -28,13 +30,17 @@ public sealed partial class LegacyControlsWindow : Window
     private readonly Label _wheelSensitivityValue = new();
     private Vector2I[] _windowedSizes = System.Array.Empty<Vector2I>();
     private bool _refreshing;
-    public LegacyControlsWindow(System.Action<bool, bool, bool, float, float> applyPreferences, System.Action<Vector2I> applyWindowedSize)
+    public LegacyControlsWindow(
+        System.Action<bool, bool, bool, float, float> applyPreferences,
+        System.Action<Vector2I> applyWindowedSize,
+        System.Action<int> applyGraphicsQuality)
     {
         _applyPreferences = applyPreferences;
         _applyWindowedSize = applyWindowedSize;
+        _applyGraphicsQuality = applyGraphicsQuality;
         Name = "ControlsWindow";
         Title = "Options";
-        Size = new Vector2I(560, 500);
+        Size = new Vector2I(560, 580);
         Hide();
         CloseRequested += () => Hide();
         BuildInterface();
@@ -65,6 +71,14 @@ public sealed partial class LegacyControlsWindow : Window
         _wheelSensitivity.Value = ClampFinite(wheelSensitivity, 0f, 1f, DefaultWheelSensitivitySliderValue);
         _refreshing = false;
         RefreshSensitivityLabels();
+    }
+    public void SetGraphicsQuality(int qualityIndex)
+    {
+        if (qualityIndex < 0 || qualityIndex >= _graphicsQuality.ItemCount)
+            return;
+        _refreshing = true;
+        _graphicsQuality.Select(qualityIndex);
+        _refreshing = false;
     }
     public void SetDisplayOptions(Vector2I[] windowedSizes, Vector2I selectedWindowedSize, Vector2I currentSize, bool fullscreen)
     {
@@ -130,13 +144,13 @@ public sealed partial class LegacyControlsWindow : Window
     {
         var margin = new MarginContainer { AnchorRight = 1f, AnchorBottom = 1f };
         margin.AddThemeConstantOverride("margin_left", 20);
-        margin.AddThemeConstantOverride("margin_top", 18);
+        margin.AddThemeConstantOverride("margin_top", 14);
         margin.AddThemeConstantOverride("margin_right", 20);
-        margin.AddThemeConstantOverride("margin_bottom", 18);
+        margin.AddThemeConstantOverride("margin_bottom", 14);
         AddChild(margin);
 
         var layout = new VBoxContainer();
-        layout.AddThemeConstantOverride("separation", 14);
+        layout.AddThemeConstantOverride("separation", 10);
         margin.AddChild(layout);
         layout.AddChild(new Label
         {
@@ -161,6 +175,21 @@ public sealed partial class LegacyControlsWindow : Window
         layout.AddChild(new Label
         {
             Text = "Windowed sizes only. Fullscreen uses the monitor's current display mode.",
+            AutowrapMode = TextServer.AutowrapMode.Word
+        });
+        _graphicsQuality.Name = "OptionsGraphicsQuality";
+        _graphicsQuality.AddItem("High");
+        _graphicsQuality.AddItem("Medium");
+        _graphicsQuality.AddItem("Low");
+        _graphicsQuality.ItemSelected += OnGraphicsQualitySelected;
+        var qualityRow = new HBoxContainer();
+        qualityRow.AddChild(new Label { Text = "Graphics quality", CustomMinimumSize = new Vector2(190f, 0f) });
+        _graphicsQuality.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        qualityRow.AddChild(_graphicsQuality);
+        layout.AddChild(qualityRow);
+        layout.AddChild(new Label
+        {
+            Text = "High: SSAO + 4 shadow splits. Medium: 2 splits. Low: no shadows or VSync. Motion blur is not built into Godot.",
             AutowrapMode = TextServer.AutowrapMode.Word
         });
 
@@ -204,6 +233,12 @@ public sealed partial class LegacyControlsWindow : Window
         layout.AddChild(footer);
     }
 
+    private void OnGraphicsQualitySelected(long index)
+    {
+        if (_refreshing || index < 0 || index >= _graphicsQuality.ItemCount)
+            return;
+        _applyGraphicsQuality((int)index);
+    }
     private void OnWindowedSizeSelected(long index)
     {
         if (_refreshing || index < 0 || index >= _windowedSizes.Length)
