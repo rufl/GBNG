@@ -399,8 +399,10 @@ and poses, ownership changes, and observable player state (tint, visibility,
 avatar animation, and tool-effect data). LAN/DNS/loopback smokes exercise host
 discovery, direct joins, identity, RPC targeting, map switching, and kicking.
 Standalone loopback tests transfer a 400 KiB initial snapshot and a 256 KiB
-Photon RPC through live NGO/UTP managers. Reliable RPC, event, and observable
-packets are split into 48 KiB chunks, with a 1 MiB packet cap. The temporary
+Photon RPC through live NGO/UTP managers. Client-originated `AllViaServer` RPCs
+execute on the host and echo back to their origin in host-relayed order. Reliable
+RPC, event, and observable packets are split into 48 KiB chunks, with a 1 MiB
+packet cap. The temporary
 Quick Tunnel smoke verified public HTTPS directory health, client-IP forwarding
 against spoofed `X-Forwarded-For`, and register/list/heartbeat/unregister. Internet
 UDP game reachability and router-specific forwarding remain untested; offline

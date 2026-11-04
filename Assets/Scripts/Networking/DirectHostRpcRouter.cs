@@ -384,6 +384,26 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
     if (target != null) SendRpc(view, methodName, PhotonTargets.All, target.ID, args);
   }
 
+  internal static bool ShouldInvokeRpcLocally(
+    PhotonTargets target,
+    int targetPlayerId,
+    int localPlayerId,
+    bool networkActive,
+    bool isServer)
+  {
+    if (targetPlayerId != 0) return targetPlayerId == localPlayerId;
+    if (target == PhotonTargets.Others) return false;
+    if (target == PhotonTargets.MasterClient || target == PhotonTargets.AllViaServer)
+      return !networkActive || isServer;
+    return true;
+  }
+
+  internal static bool ShouldEchoAllViaServerToOrigin(PhotonTargets target, int targetPlayerId)
+  {
+    return targetPlayerId == 0 && target == PhotonTargets.AllViaServer;
+  }
+
+
   static void SendRpc(PhotonView view, string methodName, PhotonTargets target, int targetPlayerId, object[] args)
   {
     if (view == null) return;
@@ -391,9 +411,8 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
     NetworkManager network = router != null ? router.manager : null;
     bool active = network != null && network.IsListening;
     int localPlayerId = PhotonNetwork.player.ID;
-    bool localTarget = targetPlayerId != 0
-      ? targetPlayerId == localPlayerId
-      : target != PhotonTargets.Others && (target != PhotonTargets.MasterClient || !active || network.IsServer);
+    bool localTarget = ShouldInvokeRpcLocally(
+      target, targetPlayerId, localPlayerId, active, active && network.IsServer);
     if (localTarget) InvokeRpc(view, methodName, args, PhotonNetwork.player);
     if (!active) return;
 
@@ -461,7 +480,10 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
           }
           if (targetPlayerId == 0)
           {
-            if (target != PhotonTargets.MasterClient) SendRpcToClients(packet, senderClientId);
+            if (target != PhotonTargets.MasterClient)
+              SendRpcToClients(
+                packet,
+                ShouldEchoAllViaServerToOrigin(target, targetPlayerId) ? ulong.MaxValue : senderClientId);
           }
           else if (targetPlayerId != senderPlayerId)
           {
