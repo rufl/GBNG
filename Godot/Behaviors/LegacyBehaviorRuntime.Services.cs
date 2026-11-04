@@ -4,6 +4,7 @@ using GBNG.Assets;
 using GBNG.Domain;
 using GBNG.World;
 using Godot;
+using GBNG.Audio;
 
 namespace GBNG.Behaviors;
 
@@ -467,7 +468,7 @@ public sealed partial class LegacyBehaviorRuntime
         if (actorName.Length > 0 && actor is null)
             return "false";
         Vector3 position = actor?.GlobalPosition ?? CoordinateSpace.ToGodot(LegacyActorData.ReadVector(args["position"], Vector3.Zero));
-        var player = new AudioStreamPlayer3D { Name = "LegacySound", Stream = stream };
+        var player = new AudioStreamPlayer3D { Name = "LegacySound", Stream = stream, Bus = LegacyAudioSettings.SfxBusName };
         if (actor is not null)
         {
             actor.AddChild(player);

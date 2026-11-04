@@ -67,6 +67,7 @@ Behavior UI button hitboxes include their top and left edges and exclude their r
 Behavior UI text and button labels preserve fractional legacy `textSize` values instead of rounding them to integer font sizes.
 
 The **Controls** toolbar button exposes invert-vertical mouse look, mouse-look sensitivity (0.1–3×), and mouse-wheel zoom sensitivity. These device-local preferences reset to the original platform defaults and are saved in `user://editor-settings.cfg`, not in `.voos` projects.
+The **Audio** toolbar button controls device-local sound-effects volume (0–100%, default 50%) through a dedicated mixer bus and saves it in `user://editor-settings.cfg`. This Godot runtime has no music playback path yet, so it does not show a nonfunctional music-volume slider.
 
 The visual card library supports text/category filtering, card-icon previews, hidden-card filtering, and drag-and-drop deck assignment. The canvas edits panels, card uses, notes, and panel layout while preserving legacy `.voos` references. A card manager creates, copies, edits, and deletes embedded cards and imports/exports legacy card-pack folders; conflicting IDs can be overwritten, duplicated, or canceled.
 
