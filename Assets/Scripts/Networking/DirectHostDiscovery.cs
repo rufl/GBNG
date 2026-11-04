@@ -5,6 +5,7 @@ using System.IO;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using Unity.Netcode;
 using UnityEngine;
@@ -18,6 +19,7 @@ public sealed class DirectHostDiscovery : MonoBehaviour
   static readonly byte[] Ipv6DiscoveryGroupBytes = Ipv6DiscoveryGroup.GetAddressBytes();
   const int MaxNameBytes = 96;
   const int MaxPacketBytes = 2048;
+  const int CertificateFingerprintBytes = 32;
   const float AdvertisementInterval = 1f;
   const float HostExpirationSeconds = 6f;
   const float SocketRetryInterval = 5f;
@@ -30,6 +32,7 @@ public sealed class DirectHostDiscovery : MonoBehaviour
     public int PlayerCount;
     public int MaxPlayers;
     public string ServerCertificatePem;
+    internal byte[] ServerCertificateFingerprint;
     internal bool IsWithdrawal;
     internal float LastSeen;
   }
@@ -226,7 +229,7 @@ public sealed class DirectHostDiscovery : MonoBehaviour
 
   byte[] CreateWithdrawalPacket()
   {
-    byte[] certificateBytes = Encoding.UTF8.GetBytes(DirectHostTls.GetHostCredentials().CertificatePem);
+    byte[] certificateFingerprint = ComputeCertificateFingerprint(DirectHostTls.GetHostCredentials().CertificatePem);
     using (MemoryStream stream = new MemoryStream())
     using (BinaryWriter writer = new BinaryWriter(stream))
     {
@@ -235,8 +238,7 @@ public sealed class DirectHostDiscovery : MonoBehaviour
       writer.Write((byte)0);
       writer.Write((byte)0);
       writer.Write((byte)0);
-      writer.Write((ushort)certificateBytes.Length);
-      writer.Write(certificateBytes);
+      writer.Write(certificateFingerprint);
       return stream.ToArray();
     }
   }
@@ -434,21 +436,18 @@ public sealed class DirectHostDiscovery : MonoBehaviour
         if (port == 0) return false;
         if (playerCount == 0)
         {
-          if (maxPlayers != 0 || nameLength != 0 || stream.Length - stream.Position < sizeof(ushort))
-            return false;
-          int certificateLength = reader.ReadUInt16();
-          if (certificateLength < 1 || certificateLength > MaxPacketBytes
-            || certificateLength != stream.Length - stream.Position) return false;
-          string certificate = new UTF8Encoding(false, true).GetString(reader.ReadBytes(certificateLength));
+          if (maxPlayers != 0 || nameLength != 0
+            || stream.Length - stream.Position != CertificateFingerprintBytes) return false;
           host = new HostInfo
           {
             Address = address.ToString(),
             Port = port,
-            ServerCertificatePem = certificate,
+            ServerCertificateFingerprint = reader.ReadBytes(CertificateFingerprintBytes),
             IsWithdrawal = true
           };
           return true;
         }
+
 
         if (maxPlayers < playerCount || maxPlayers > PhotonNetwork.MaximumDirectPlayers
           || nameLength < 1 || nameLength > MaxNameBytes
@@ -467,6 +466,7 @@ public sealed class DirectHostDiscovery : MonoBehaviour
           PlayerCount = playerCount,
           MaxPlayers = maxPlayers,
           ServerCertificatePem = serverCertificate,
+          ServerCertificateFingerprint = ComputeCertificateFingerprint(serverCertificate),
           LastSeen = Time.realtimeSinceStartup
         };
         return true;
@@ -481,10 +481,12 @@ public sealed class DirectHostDiscovery : MonoBehaviour
   void RecordHost(HostInfo host)
   {
     string key = host.Address + ":" + host.Port;
+    if (host.ServerCertificateFingerprint == null && !string.IsNullOrEmpty(host.ServerCertificatePem))
+      host.ServerCertificateFingerprint = ComputeCertificateFingerprint(host.ServerCertificatePem);
     if (host.IsWithdrawal)
     {
       if (hosts.TryGetValue(key, out HostInfo previous)
-        && previous.ServerCertificatePem == host.ServerCertificatePem)
+        && FingerprintsEqual(previous.ServerCertificateFingerprint, host.ServerCertificateFingerprint))
       {
         hosts.Remove(key);
         revision++;
@@ -504,6 +506,22 @@ public sealed class DirectHostDiscovery : MonoBehaviour
     }
     hosts.Add(key, host);
     revision++;
+  }
+
+  static byte[] ComputeCertificateFingerprint(string certificatePem)
+  {
+    using (SHA256 sha256 = SHA256.Create())
+      return sha256.ComputeHash(Encoding.UTF8.GetBytes(certificatePem));
+  }
+
+  static bool FingerprintsEqual(byte[] first, byte[] second)
+  {
+    if (first == null || second == null || first.Length != CertificateFingerprintBytes
+      || second.Length != CertificateFingerprintBytes) return false;
+    int difference = 0;
+    for (int i = 0; i < CertificateFingerprintBytes; i++)
+      difference |= first[i] ^ second[i];
+    return difference == 0;
   }
 
   static bool IsLocalAddress(IPAddress address)
