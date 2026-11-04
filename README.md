@@ -173,7 +173,8 @@ Photon PUN nor a paid Unity service is required.
 
 - From the splash screen, open **Multiplayer** and choose **Host a game** for
   the unchanged IPv4 host mode. Choose **Host IPv6 game** for an IPv6-only host.
-- Filter hosts and public sessions by name; toggle the lobby sort between name and player count.
+- Search hosts and public sessions by name; sort by name or player count and use
+  **Refresh** to request updated listings.
 - Other players on the same IPv4 LAN see public IPv4 hosts in the room list.
   Private hosts are omitted from IPv4 and IPv6 LAN discovery but remain joinable
   by manually sharing their address. Switching a discovered host to private

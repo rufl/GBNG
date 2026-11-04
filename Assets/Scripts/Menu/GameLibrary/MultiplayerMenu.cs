@@ -309,6 +309,7 @@ public class MultiplayerMenu : ThumbnailMenu
     Util.FindIfNotSet(this, ref scenes);
     Util.FindIfNotSet(this, ref loadingScreen);
     joinCodeButton.onClick.AddListener(JoinMultiplayerPopup);
+    refreshButton.onClick.AddListener(Refresh);
     joinMultiplayerPopup.confirmWithInputEvent = JoinMultiplayer;
     joinMultiplayerPopup.cancelEvent = CancelMultiplayerPopup;
     DirectHostDiscovery.BeginBrowsing();
