@@ -36,6 +36,29 @@ public partial class GameBuilderApp
             if (_assetStoreWindow.Visible || _worldSettingsWindow.Visible
                 || ((Window)_worldSettingsWindow.FindChild("WorldMapSizeDialog", true, false)).Visible)
                 throw new InvalidOperationException("Editor utility windows must remain hidden until opened by the user.");
+            int actorCountBeforeListToggle = _actors.Count;
+            int selectedCountBeforeListToggle = _selectedActors.Count;
+            WorldActorNode? focusBeforeListToggle = _selectedActor;
+            Button actorListToggleButton = FindChild("ActorListToggleButton", true, false) as Button
+                ?? throw new InvalidOperationException("The actor-list toggle button was not found.");
+            _actorList.GrabFocus();
+            _UnhandledInput(new InputEventKey { Keycode = Key.L, CtrlPressed = true, Pressed = true });
+            await WaitForUiFrames(1);
+            if (_actorList.Visible
+                || _actors.Count != actorCountBeforeListToggle
+                || _selectedActors.Count != selectedCountBeforeListToggle
+                || _selectedActor != focusBeforeListToggle)
+                throw new InvalidOperationException("Ctrl+L did not hide the actor list without changing the world selection.");
+            string actorListScreenshot = ProjectSettings.GlobalizePath("res://.godot/actor-list-toggle-smoke.png");
+            if (GetViewport().GetTexture().GetImage().SavePng(actorListScreenshot) != Error.Ok)
+                throw new InvalidOperationException("The hidden actor-list surface screenshot could not be saved.");
+            actorListToggleButton.EmitSignal("pressed");
+            await WaitForUiFrames(1);
+            if (!_actorList.Visible
+                || _actors.Count != actorCountBeforeListToggle
+                || _selectedActors.Count != selectedCountBeforeListToggle
+                || _selectedActor != focusBeforeListToggle)
+                throw new InvalidOperationException("The actor-list Show button did not restore the list and selection.");
 
             WorldActorNode source = _actors
                 .Where(actor => !actor.LegacyName.StartsWith("builtin:", StringComparison.Ordinal)
@@ -428,7 +451,7 @@ public partial class GameBuilderApp
                 || persistedSource.GetParent() != persistedParent)
                 throw new InvalidOperationException("The actor parent and reset parent did not persist through save and reload.");
 
-            GD.Print($"ACTOR_COPY_SMOKE_OK selection=shift-toggle-marquee=true marqueeVisual=true quickRotate=R+toolbar=true groupPivot=true undo-redo=true parenting=CtrlH=true transformPreserved=true cycleRejected=true unparent=emptySpace=true undo-redo=true parentPersistence=true multiCopyRoots=true multiDelete=undo-redo=true preview=true ctrlC=true snap=true descendants=true repeat=true persistence=true marqueeScreenshot={marqueeScreenshot} copyScreenshot={screenshot}");
+            GD.Print($"ACTOR_COPY_SMOKE_OK selection=shift-toggle-marquee=true marqueeVisual=true quickRotate=R+toolbar=true groupPivot=true undo-redo=true parenting=CtrlH=true transformPreserved=true cycleRejected=true unparent=emptySpace=true undo-redo=true parentPersistence=true actorListToggle=true actorListScreenshot={actorListScreenshot} multiCopyRoots=true multiDelete=undo-redo=true preview=true ctrlC=true snap=true descendants=true repeat=true persistence=true marqueeScreenshot={marqueeScreenshot} copyScreenshot={screenshot}");
 
         }
         catch (Exception exception)

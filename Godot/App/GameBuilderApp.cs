@@ -22,6 +22,7 @@ public partial class GameBuilderApp : Node3D
     private Node3D _world = null!;
     private Camera3D _camera = null!;
     private ItemList _actorList = null!;
+    private Button _actorListToggleButton = null!;
     private OptionButton _assetPicker = null!;
     private LineEdit _assetSearch = null!;
     private Label _assetCount = null!;
@@ -54,6 +55,7 @@ public partial class GameBuilderApp : Node3D
     private bool _selectionMarqueeAdd;
     private bool _selectionMarqueeToggle;
     private bool _syncingActorList;
+    private bool _actorListVisible = true;
 
     private LegacyTerrainNode? _terrain;
     private MeshInstance3D? _stageGroundMesh;
@@ -337,6 +339,8 @@ public partial class GameBuilderApp : Node3D
                     BeginCopyPlacement();
                 else if (key.Keycode == Key.H)
                     SetSelectedActorParentAtCursor();
+                else if (key.Keycode == Key.L)
+                    ToggleActorList();
                 else if (key.Keycode == Key.Y || (key.Keycode == Key.Z && key.ShiftPressed))
                     RedoEdit();
                 else if (key.Keycode == Key.Z)
@@ -604,7 +608,18 @@ public partial class GameBuilderApp : Node3D
         body.AddChild(leftPanel);
         var left = new VBoxContainer();
         leftPanel.AddChild(left);
-        left.AddChild(CreateLabel("Actors", 18));
+        var actorListHeader = new HBoxContainer();
+        actorListHeader.AddChild(CreateLabel("Actors", 18));
+        _actorListToggleButton = new Button
+        {
+            Name = "ActorListToggleButton",
+            Text = "Hide",
+            TooltipText = "Hide the actor list (Ctrl/Cmd+L)",
+            CustomMinimumSize = new Vector2(58f, 28f)
+        };
+        _actorListToggleButton.Pressed += ToggleActorList;
+        actorListHeader.AddChild(_actorListToggleButton);
+        left.AddChild(actorListHeader);
         _actorList = new ItemList { SizeFlagsVertical = Control.SizeFlags.ExpandFill, SelectMode = ItemList.SelectModeEnum.Multi };
         _actorList.MultiSelected += SelectActorByIndex;
         left.AddChild(_actorList);
@@ -2282,6 +2297,16 @@ public partial class GameBuilderApp : Node3D
             () => SetActorTransform(actorName, newTransform));
     }
 
+    private void ToggleActorList()
+    {
+        _actorListVisible = !_actorListVisible;
+        _actorList.Visible = _actorListVisible && !_playMode;
+        _actorListToggleButton.Text = _actorListVisible ? "Hide" : "Show";
+        _actorListToggleButton.TooltipText = _actorListVisible
+            ? "Hide the actor list (Ctrl/Cmd+L)"
+            : "Show the actor list (Ctrl/Cmd+L)";
+    }
+
     private void SetPlayMode(bool enabled, bool fromHost = false)
     {
         if (_document is null)
@@ -2310,7 +2335,8 @@ public partial class GameBuilderApp : Node3D
         _playButton.Text = enabled ? "Stop" : "Play";
         _playButton.Disabled = _lanSession.IsClient;
         _behaviorUi.Visible = enabled;
-        _actorList.Visible = !enabled;
+        _actorList.Visible = !enabled && _actorListVisible;
+        _actorListToggleButton.Disabled = enabled;
         _positionFields[0].Editable = !enabled && _selectedActor is not null;
         _positionFields[1].Editable = !enabled && _selectedActor is not null;
         _positionFields[2].Editable = !enabled && _selectedActor is not null;
