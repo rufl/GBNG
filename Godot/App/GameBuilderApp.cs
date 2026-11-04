@@ -48,6 +48,8 @@ public partial class GameBuilderApp : Node3D
     private SpinBox[] _positionFields = Array.Empty<SpinBox>();
     private SpinBox[] _rotationFields = Array.Empty<SpinBox>();
     private SpinBox[] _spawnPositionFields = Array.Empty<SpinBox>();
+    private SpinBox[] _renderableOffsetFields = Array.Empty<SpinBox>();
+    private SpinBox[] _renderableRotationFields = Array.Empty<SpinBox>();
     private Button _setSpawnToCurrentButton = null!;
     private Control _welcome = null!;
     private Control _editor = null!;
@@ -97,6 +99,8 @@ public partial class GameBuilderApp : Node3D
     private LineEdit _displayNameField = null!;
     private TextEdit _descriptionField = null!;
     private SpinBox[] _scaleFields = Array.Empty<SpinBox>();
+    private CheckBox _renderableOffsetsToggle = null!;
+    private VBoxContainer _renderableOffsetsPanel = null!;
     private SpinBox[] _tintFields = Array.Empty<SpinBox>();
     private CheckBox _solidField = null!;
     private CheckBox _physicsField = null!;
@@ -738,6 +742,7 @@ public partial class GameBuilderApp : Node3D
         body.AddChild(rightPanel);
         var scroll = new ScrollContainer
         {
+            Name = "InspectorScrollContainer",
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             SizeFlagsVertical = Control.SizeFlags.ExpandFill
         };
@@ -880,6 +885,50 @@ public partial class GameBuilderApp : Node3D
             _scaleFields[axis] = field;
             _inspectorInputs.Add(field);
             inspector.AddChild(row);
+        }
+        _renderableOffsetsToggle = new CheckBox
+        {
+            Name = "ShowRenderableOffsetsToggle",
+            Text = "Show offsets (advanced)",
+            TooltipText = "Edit the rendered model's position and rotation relative to the actor origin."
+        };
+        _renderableOffsetsToggle.Toggled += visible => _renderableOffsetsPanel.Visible = visible;
+        inspector.AddChild(_renderableOffsetsToggle);
+        _renderableOffsetsPanel = new VBoxContainer
+        {
+            Name = "RenderableOffsetsPanel",
+            Visible = false,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+        };
+        _renderableOffsetsPanel.AddThemeConstantOverride("separation", 7);
+        inspector.AddChild(_renderableOffsetsPanel);
+        _renderableOffsetsPanel.AddChild(CreateLabel("Model position offset", 14));
+        _renderableOffsetFields = new SpinBox[3];
+        for (int axis = 0; axis < 3; axis++)
+        {
+            var row = new HBoxContainer();
+            row.AddChild(CreateLabel(axes[axis], 14));
+            SpinBox field = CreateSpinBox();
+            field.Name = $"RenderableOffset{axes[axis]}Field";
+            int index = axis;
+            field.ValueChanged += value => UpdateSelectedRenderableOffset(index, (float)value);
+            row.AddChild(field);
+            _renderableOffsetFields[axis] = field;
+            _renderableOffsetsPanel.AddChild(row);
+        }
+        _renderableOffsetsPanel.AddChild(CreateLabel("Model rotation offset (degrees)", 14));
+        _renderableRotationFields = new SpinBox[3];
+        for (int axis = 0; axis < 3; axis++)
+        {
+            var row = new HBoxContainer();
+            row.AddChild(CreateLabel(axes[axis], 14));
+            SpinBox field = CreateSpinBox();
+            field.Name = $"RenderableRotationOffset{axes[axis]}Field";
+            int index = axis;
+            field.ValueChanged += value => UpdateSelectedRenderableRotation(index, (float)value);
+            row.AddChild(field);
+            _renderableRotationFields[axis] = field;
+            _renderableOffsetsPanel.AddChild(row);
         }
         inspector.AddChild(CreateLabel("Tint (RGBA)", 14));
         _tintFields = new SpinBox[4];
@@ -1199,6 +1248,66 @@ public partial class GameBuilderApp : Node3D
         actor.Scale = scale;
         actor.State.SetScale(scale);
         UpdateActorFamilySpawnTransforms(actor);
+        if (_selectedActor == actor)
+            SelectActor(actor);
+    }
+    private void UpdateSelectedRenderableOffset(int axis, float value)
+    {
+        if (_updatingInspector || _playMode || _selectedActors.Count != 1 || _selectedActor is null)
+            return;
+
+        WorldActorNode actor = _selectedActor;
+        Vector3 oldOffset = actor.State.RenderableOffset;
+        Vector3 newOffset = oldOffset;
+        newOffset[axis] = value;
+        if (oldOffset.IsEqualApprox(newOffset))
+            return;
+
+        string actorName = actor.LegacyName;
+        string displayName = actor.State.DisplayName;
+        SetActorRenderableOffset(actorName, newOffset);
+        RecordHistory($"Set model position offset for {displayName}",
+            () => SetActorRenderableOffset(actorName, oldOffset),
+            () => SetActorRenderableOffset(actorName, newOffset));
+    }
+
+    private void SetActorRenderableOffset(string actorName, Vector3 offset)
+    {
+        WorldActorNode? actor = FindActor(actorName);
+        if (actor is null)
+            return;
+        actor.SetRenderableOffset(CoordinateSpace.ToLegacy(offset));
+        if (_selectedActor == actor)
+            SelectActor(actor);
+    }
+
+    private void UpdateSelectedRenderableRotation(int axis, float degrees)
+    {
+        if (_updatingInspector || _playMode || _selectedActors.Count != 1 || _selectedActor is null)
+            return;
+
+        WorldActorNode actor = _selectedActor;
+        Quaternion oldRotation = actor.State.RenderableRotation;
+        Vector3 newEuler = oldRotation.GetEuler();
+        newEuler[axis] = Mathf.DegToRad(degrees);
+        Quaternion newRotation = Quaternion.FromEuler(newEuler);
+        if (oldRotation.IsEqualApprox(newRotation))
+            return;
+
+        string actorName = actor.LegacyName;
+        string displayName = actor.State.DisplayName;
+        SetActorRenderableRotation(actorName, newRotation);
+        RecordHistory($"Set model rotation offset for {displayName}",
+            () => SetActorRenderableRotation(actorName, oldRotation),
+            () => SetActorRenderableRotation(actorName, newRotation));
+    }
+
+    private void SetActorRenderableRotation(string actorName, Quaternion rotation)
+    {
+        WorldActorNode? actor = FindActor(actorName);
+        if (actor is null)
+            return;
+        actor.SetRenderableRotation(CoordinateSpace.ToLegacy(rotation));
         if (_selectedActor == actor)
             SelectActor(actor);
     }
@@ -2415,6 +2524,18 @@ public partial class GameBuilderApp : Node3D
             _rotationFields[axis].Editable = hasActor && !_playMode;
             _rotationFields[axis].Value = hasActor ? _selectedActor!.GlobalRotationDegrees[axis] : 0d;
         }
+        Vector3 renderableOffset = hasActor ? _selectedActor!.State.RenderableOffset : Vector3.Zero;
+        Vector3 renderableRotationDegrees = hasActor
+            ? _selectedActor!.State.RenderableRotation.GetEuler() * (180f / Mathf.Pi)
+            : Vector3.Zero;
+        for (int axis = 0; axis < 3; axis++)
+        {
+            _renderableOffsetFields[axis].Editable = hasActor && _selectedActors.Count == 1 && !_playMode;
+            _renderableOffsetFields[axis].Value = renderableOffset[axis];
+            _renderableRotationFields[axis].Editable = hasActor && _selectedActors.Count == 1 && !_playMode;
+            _renderableRotationFields[axis].Value = renderableRotationDegrees[axis];
+        }
+        _renderableOffsetsToggle.Disabled = !hasActor || _selectedActors.Count != 1 || _playMode;
         Color tint = hasActor ? _selectedActor!.State.Tint : Colors.White;
         _tintFields[0].Value = tint.R;
         _tintFields[1].Value = tint.G;
@@ -2583,6 +2704,11 @@ public partial class GameBuilderApp : Node3D
             rotationField.Editable = !enabled && _selectedActor is not null;
         foreach (SpinBox spawnPositionField in _spawnPositionFields)
             spawnPositionField.Editable = !enabled && _selectedActor is not null;
+        foreach (SpinBox renderableOffsetField in _renderableOffsetFields)
+            renderableOffsetField.Editable = !enabled && _selectedActors.Count == 1 && _selectedActor is not null;
+        foreach (SpinBox renderableRotationField in _renderableRotationFields)
+            renderableRotationField.Editable = !enabled && _selectedActors.Count == 1 && _selectedActor is not null;
+        _renderableOffsetsToggle.Disabled = enabled || _selectedActors.Count != 1;
         _setSpawnToCurrentButton.Disabled = enabled || _selectedActors.Count != 1;
         SetInspectorInputsEnabled(!enabled && _selectedActor is not null);
         _behaviorEditorButton.Disabled = enabled || _selectedActor is null;

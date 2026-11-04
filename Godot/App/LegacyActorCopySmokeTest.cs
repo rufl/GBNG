@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json.Nodes;
@@ -625,7 +626,7 @@ public partial class GameBuilderApp
                 || Mathf.IsEqualApprox(manualSpawnX, originalSpawnPosition.X))
                 throw new InvalidOperationException("The smoke actor has no distinct restart position within the inspector's coordinate range.");
 
-            spawnXField.Value = manualSpawnX;
+            CommitNumberFieldInput(spawnXField, manualSpawnX);
             float effectiveSpawnX = (float)spawnXField.Value;
             if (Mathf.IsEqualApprox(effectiveSpawnX, originalSpawnPosition.X))
                 throw new InvalidOperationException("The restart spawn-position field did not accept a distinct value.");
@@ -675,7 +676,7 @@ public partial class GameBuilderApp
             Vector3 beforeUpperBoundary = source.State.SpawnPosition;
             if (!Mathf.IsEqualApprox(beforeUpperBoundary.X, (float)spawnXField.MaxValue))
             {
-                spawnXField.Value = spawnXField.MaxValue + spawnXField.Step;
+                CommitNumberFieldInput(spawnXField, spawnXField.MaxValue + spawnXField.Step);
                 if (!Mathf.IsEqualApprox((float)spawnXField.Value, (float)spawnXField.MaxValue)
                     || !Mathf.IsEqualApprox(source.State.SpawnPosition.X, (float)spawnXField.MaxValue))
                     throw new InvalidOperationException("The restart spawn-position field did not clamp to its upper boundary.");
@@ -686,7 +687,7 @@ public partial class GameBuilderApp
             Vector3 beforeLowerBoundary = source.State.SpawnPosition;
             if (!Mathf.IsEqualApprox(beforeLowerBoundary.X, (float)spawnXField.MinValue))
             {
-                spawnXField.Value = spawnXField.MinValue - spawnXField.Step;
+                CommitNumberFieldInput(spawnXField, spawnXField.MinValue - spawnXField.Step);
                 if (!Mathf.IsEqualApprox((float)spawnXField.Value, (float)spawnXField.MinValue)
                     || !Mathf.IsEqualApprox(source.State.SpawnPosition.X, (float)spawnXField.MinValue))
                     throw new InvalidOperationException("The restart spawn-position field did not clamp to its lower boundary.");
@@ -700,10 +701,92 @@ public partial class GameBuilderApp
                 || !source.GlobalTransform.IsEqualApprox(originalCurrentTransform))
                 throw new InvalidOperationException("Restart spawn edits changed the actor's current transform, hierarchy, or spawn rotation.");
 
+            CheckBox showModelOffsetsToggle = FindChild("ShowRenderableOffsetsToggle", true, false) as CheckBox
+                ?? throw new InvalidOperationException("The advanced model-offset toggle was not found.");
+            VBoxContainer modelOffsetsPanel = FindChild("RenderableOffsetsPanel", true, false) as VBoxContainer
+                ?? throw new InvalidOperationException("The advanced model-offset panel was not found.");
+            showModelOffsetsToggle.ButtonPressed = true;
+            if (!modelOffsetsPanel.Visible)
+                throw new InvalidOperationException("The advanced model-offset toggle did not reveal the model controls.");
+            SpinBox renderableOffsetXField = FindChild("RenderableOffsetXField", true, false) as SpinBox
+                ?? throw new InvalidOperationException("The renderable offset X field was not found.");
+            SpinBox renderableRotationYField = FindChild("RenderableRotationOffsetYField", true, false) as SpinBox
+                ?? throw new InvalidOperationException("The renderable rotation Y field was not found.");
+            if (!renderableOffsetXField.Editable || !renderableRotationYField.Editable)
+                throw new InvalidOperationException("The model offset controls were not enabled for a single selected actor.");
+            ScrollContainer inspectorScroll = FindChild("InspectorScrollContainer", true, false) as ScrollContainer
+                ?? throw new InvalidOperationException("The inspector scroll container was not found.");
+            await WaitForUiFrames(1);
+            inspectorScroll.EnsureControlVisible(renderableRotationYField);
+            await WaitForUiFrames(1);
+            inspectorScroll.ScrollHorizontal = 0;
+            await WaitForUiFrames(1);
+            string modelOffsetScreenshot = ProjectSettings.GlobalizePath("res://.godot/renderable-offset-smoke.png");
+            if (GetViewport().GetTexture().GetImage().SavePng(modelOffsetScreenshot) != Error.Ok)
+                throw new InvalidOperationException("The advanced model-offset inspector screenshot could not be saved.");
+
+            Node3D sourceRenderable = source.GetNodeOrNull<Node3D>("Renderable")
+                ?? throw new InvalidOperationException("The smoke actor has no renderable root.");
+            Vector3 originalRenderableOffset = source.State.RenderableOffset;
+            Quaternion originalRenderableRotation = source.State.RenderableRotation;
+            Transform3D actorTransformBeforeModelOffsets = source.GlobalTransform;
+            Vector3 editedRenderableOffset = originalRenderableOffset;
+            editedRenderableOffset.X += 1.25f;
+            CommitNumberFieldInput(renderableOffsetXField, editedRenderableOffset.X);
+            editedRenderableOffset.X = (float)renderableOffsetXField.Value;
+            if (!source.State.RenderableOffset.IsEqualApprox(editedRenderableOffset)
+                || !sourceRenderable.Position.IsEqualApprox(editedRenderableOffset)
+                || !source.State.RenderableRotation.IsEqualApprox(originalRenderableRotation)
+                || !source.GlobalTransform.IsEqualApprox(actorTransformBeforeModelOffsets)
+                || !source.State.SpawnPosition.IsEqualApprox(originalSpawnPosition)
+                || !source.State.SpawnRotation.IsEqualApprox(originalSpawnRotation))
+                throw new InvalidOperationException("Editing model position offset did not update only the rendered model.");
+            UndoEdit();
+            if (!source.State.RenderableOffset.IsEqualApprox(originalRenderableOffset)
+                || !sourceRenderable.Position.IsEqualApprox(originalRenderableOffset))
+                throw new InvalidOperationException("Undo did not restore the rendered model's original position offset.");
+            RedoEdit();
+            if (!source.State.RenderableOffset.IsEqualApprox(editedRenderableOffset)
+                || !sourceRenderable.Position.IsEqualApprox(editedRenderableOffset))
+                throw new InvalidOperationException("Redo did not restore the edited rendered model position offset.");
+            UndoEdit();
+
+            Vector3 editedRotationEuler = originalRenderableRotation.GetEuler();
+            editedRotationEuler.Y += Mathf.DegToRad(25f);
+            CommitNumberFieldInput(renderableRotationYField, editedRotationEuler.Y * (180f / Mathf.Pi));
+            editedRotationEuler.Y = Mathf.DegToRad((float)renderableRotationYField.Value);
+            Quaternion editedRenderableRotation = Quaternion.FromEuler(editedRotationEuler);
+            if (!source.State.RenderableRotation.IsEqualApprox(editedRenderableRotation)
+                || !sourceRenderable.Quaternion.IsEqualApprox(editedRenderableRotation)
+                || !source.State.RenderableOffset.IsEqualApprox(originalRenderableOffset)
+                || !source.GlobalTransform.IsEqualApprox(actorTransformBeforeModelOffsets)
+                || !source.State.SpawnPosition.IsEqualApprox(originalSpawnPosition)
+                || !source.State.SpawnRotation.IsEqualApprox(originalSpawnRotation))
+                throw new InvalidOperationException("Editing model rotation offset did not update only the rendered model.");
+            UndoEdit();
+            if (!source.State.RenderableRotation.IsEqualApprox(originalRenderableRotation)
+                || !sourceRenderable.Quaternion.IsEqualApprox(originalRenderableRotation))
+                throw new InvalidOperationException("Undo did not restore the rendered model's original rotation offset.");
+            RedoEdit();
+            if (!source.State.RenderableRotation.IsEqualApprox(editedRenderableRotation)
+                || !sourceRenderable.Quaternion.IsEqualApprox(editedRenderableRotation))
+                throw new InvalidOperationException("Redo did not restore the edited rendered model rotation offset.");
+            UndoEdit();
+            showModelOffsetsToggle.ButtonPressed = false;
+            if (modelOffsetsPanel.Visible
+                || !source.State.RenderableOffset.IsEqualApprox(originalRenderableOffset)
+                || !source.State.RenderableRotation.IsEqualApprox(originalRenderableRotation))
+                throw new InvalidOperationException("The model-offset smoke did not restore its original values and collapsed state.");
+
+
             SetActorSelection(new[] { source, independent }, source);
             await WaitForUiFrames(1);
-            if (!_spawnPositionFields[0].Editable || !setSpawnToCurrentButton.Disabled)
-                throw new InvalidOperationException("Multi-selection did not preserve the focused actor field while disabling the single-actor reset action.");
+            if (!_spawnPositionFields[0].Editable
+                || !setSpawnToCurrentButton.Disabled
+                || !showModelOffsetsToggle.Disabled
+                || renderableOffsetXField.Editable
+                || renderableRotationYField.Editable)
+                throw new InvalidOperationException("Multi-selection did not disable single-actor restart and model-offset controls.");
 
 
             BeginCopyPlacement();
@@ -897,7 +980,7 @@ public partial class GameBuilderApp
             if (persistenceSpawnY < _spawnPositionFields[1].MinValue || persistenceSpawnY > _spawnPositionFields[1].MaxValue)
                 throw new InvalidOperationException("The persistence smoke actor has no restart position within the inspector's coordinate range.");
             persistenceSpawnPosition.Y = persistenceSpawnY;
-            _spawnPositionFields[1].Value = persistenceSpawnY;
+            CommitNumberFieldInput(_spawnPositionFields[1], persistenceSpawnY);
             persistenceSpawnPosition.Y = (float)_spawnPositionFields[1].Value;
             if (!persistenceSource.State.SpawnPosition.IsEqualApprox(persistenceSpawnPosition))
                 throw new InvalidOperationException($"Editing the restart spawn position did not update the persistence fixture: requestedY={persistenceSpawnY}, fieldY={_spawnPositionFields[1].Value}, selected='{_selectedActor?.LegacyName}', spawn={persistenceSource.State.SpawnPosition}, expected={persistenceSpawnPosition}.");
@@ -938,7 +1021,7 @@ public partial class GameBuilderApp
 
             GD.Print("RESTART_SPAWN_SMOKE_OK inspector=true edit=true setCurrentPositionAndParent=true undoRedo=true currentTransformPreserved=true spawnRotationPreserved=true bounds=true multiSelection=true persistence=CtrlS+CmdS");
 
-            GD.Print($"ACTOR_COPY_SMOKE_OK selection=shift-toggle-marquee=true marqueeVisual=true quickRotate=R+toolbar=true groupPivot=true undo-redo=true parenting=CtrlH=true transformPreserved=true cycleRejected=true unparent=emptySpace=true undo-redo=true parentPersistence=true currentParentPicker=assign+clear+cancel+cycleRejected=true undoRedo=true parentOnReset=enabled+disabled worldTransform+velocityPreserved=true actorListToggle=true actorListScreenshot={actorListScreenshot} cameraFollow=F+button=true actorTracking=true cameraFollowScreenshot={cameraFollowScreenshot} reset=CtrlR+undo-redo=true save=CtrlS+CmdS+persistence=true delete=Delete+Backspace+undoRedo=true multiCopyRoots=true preview=true ctrlC=true snap=true descendants=true repeat=true persistence=true marqueeScreenshot={marqueeScreenshot} copyScreenshot={screenshot}");
+            GD.Print($"ACTOR_COPY_SMOKE_OK selection=shift-toggle-marquee=true marqueeVisual=true quickRotate=R+toolbar=true groupPivot=true undo-redo=true parenting=CtrlH=true transformPreserved=true cycleRejected=true unparent=emptySpace=true undo-redo=true parentPersistence=true currentParentPicker=assign+clear+cancel+cycleRejected=true undoRedo=true parentOnReset=enabled+disabled worldTransform+velocityPreserved=true renderableOffset=position+rotation=true undoRedo=true advancedToggle=true screenshot={modelOffsetScreenshot} actorListToggle=true actorListScreenshot={actorListScreenshot} cameraFollow=F+button=true actorTracking=true cameraFollowScreenshot={cameraFollowScreenshot} reset=CtrlR+undo-redo=true save=CtrlS+CmdS+persistence=true delete=Delete+Backspace+undoRedo=true multiCopyRoots=true preview=true ctrlC=true snap=true descendants=true repeat=true persistence=true marqueeScreenshot={marqueeScreenshot} copyScreenshot={screenshot}");
 
         }
         catch (Exception exception)
@@ -986,7 +1069,7 @@ public partial class GameBuilderApp
             moveTarget = source.GlobalPosition.X - 20f;
         if (moveTarget < _positionFields[0].MinValue || moveTarget > _positionFields[0].MaxValue)
             throw new InvalidOperationException("The movement smoke actor is outside the inspector's coordinate range.");
-        _positionFields[0].Value = moveTarget;
+        CommitNumberFieldInput(_positionFields[0], moveTarget);
         if (source.GlobalTransform.IsEqualApprox(originalSourceTransform))
             throw new InvalidOperationException("The move inspector did not change the actor transform.");
         AssertSpawnTransformMatchesCurrent(source, "moving with auto-set enabled");
@@ -1015,7 +1098,7 @@ public partial class GameBuilderApp
         Quaternion sourceRotationWithoutMoveAutoSet = source.State.SpawnRotation;
         Vector3 childSpawnWithoutMoveAutoSet = child.State.SpawnPosition;
         Quaternion childRotationWithoutMoveAutoSet = child.State.SpawnRotation;
-        _positionFields[0].Value = moveWithoutAutoSetTarget;
+        CommitNumberFieldInput(_positionFields[0], moveWithoutAutoSetTarget);
         AssertSpawnTransformUnchanged(source, sourceSpawnWithoutMoveAutoSet, sourceRotationWithoutMoveAutoSet, "moving with auto-set disabled");
         AssertSpawnTransformUnchanged(child, childSpawnWithoutMoveAutoSet, childRotationWithoutMoveAutoSet, "moving a family with auto-set disabled");
         UndoEdit();
@@ -1032,7 +1115,7 @@ public partial class GameBuilderApp
         if (rotationTarget < _rotationFields[1].MinValue || rotationTarget > _rotationFields[1].MaxValue)
             throw new InvalidOperationException("The rotation smoke actor is outside the inspector's coordinate range.");
         Transform3D beforeRotation = source.GlobalTransform;
-        _rotationFields[1].Value = rotationTarget;
+        CommitNumberFieldInput(_rotationFields[1], rotationTarget);
         if (source.GlobalTransform.IsEqualApprox(beforeRotation))
             throw new InvalidOperationException("The rotation inspector did not change the actor transform.");
         AssertSpawnTransformMatchesCurrent(source, "rotating with auto-set enabled");
@@ -1073,7 +1156,7 @@ public partial class GameBuilderApp
         Vector3 childSpawnWithoutRotateAutoSet = child.State.SpawnPosition;
         Quaternion childRotationWithoutRotateAutoSet = child.State.SpawnRotation;
         beforeRotation = source.GlobalTransform;
-        _rotationFields[1].Value = rotationTarget;
+        CommitNumberFieldInput(_rotationFields[1], rotationTarget);
         AssertSpawnTransformUnchanged(source, sourceSpawnWithoutRotateAutoSet, sourceRotationWithoutRotateAutoSet, "rotating with auto-set disabled");
         AssertSpawnTransformUnchanged(child, childSpawnWithoutRotateAutoSet, childRotationWithoutRotateAutoSet, "rotating a family with auto-set disabled");
         UndoEdit();
@@ -1099,7 +1182,7 @@ public partial class GameBuilderApp
         UndoEdit();
 
         float scaleTarget = source.Scale.X + 0.5f;
-        _scaleFields[0].Value = scaleTarget;
+        CommitNumberFieldInput(_scaleFields[0], scaleTarget);
         AssertSpawnTransformMatchesCurrent(source, "scaling with automatic family restart updates");
         AssertSpawnTransformMatchesCurrent(child, "scaling an actor family with automatic restart updates");
         UndoEdit();
@@ -1123,6 +1206,13 @@ public partial class GameBuilderApp
         SetAutoSetSpawnOnMovePreference(originalAutoSetSpawnOnMove);
         SetAutoSetSpawnOnRotatePreference(originalAutoSetSpawnOnRotate);
         ClearHistory();
+    }
+
+    private static void CommitNumberFieldInput(SpinBox field, double value)
+    {
+        LineEdit lineEdit = field.GetLineEdit();
+        lineEdit.Text = value.ToString("R", CultureInfo.InvariantCulture);
+        field.Apply();
     }
 
     private static void AssertSpawnTransformMatchesCurrent(WorldActorNode actor, string operation)

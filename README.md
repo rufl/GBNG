@@ -42,6 +42,8 @@ The inspector's **Spawn position** fields edit the saved restart position indepe
 
 The inspector's **Reset parent** control restores the separate legacy **Parent on restart** action: press **Choose in scene…**, click an actor to assign it, or click empty world space to clear it. It changes `spawnTransformParent` without changing the actor's current transform parent and participates in Undo/Redo.
 
+The inspector's **Show offsets (advanced)** checkbox exposes model position and rotation offsets. Editing them affects only the rendered model, not the actor or restart transforms, and supports Undo/Redo. The controls are disabled during play and multi-selection.
+
 
 The **World** editor sets sky type (Day, Space, Overcast, or Solid color), sky color, and scene lighting (Day, Night, or Dark). Changes update the live scene, persist in the original `.voos` stage data, and participate in Undo/Redo and host-authoritative collaborative edits.
 
