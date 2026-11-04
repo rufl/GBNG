@@ -15,8 +15,9 @@ public sealed partial class LegacyControlsWindow : Window
     private const float MacWheelSensitivityMaximum = 0.03f;
     private const float MacWheelSensitivityDefault = 0.020f;
 
-    private readonly System.Action<bool, bool, float, float> _applyPreferences;
+    private readonly System.Action<bool, bool, bool, float, float> _applyPreferences;
     private readonly CheckButton _showTooltips = new();
+    private readonly CheckButton _fullscreenMode = new();
     private readonly CheckButton _invertVerticalLook = new();
     private readonly HSlider _lookSensitivity = new();
     private readonly HSlider _wheelSensitivity = new();
@@ -33,22 +34,23 @@ public sealed partial class LegacyControlsWindow : Window
         }
     }
 
-    public LegacyControlsWindow(System.Action<bool, bool, float, float> applyPreferences)
+    public LegacyControlsWindow(System.Action<bool, bool, bool, float, float> applyPreferences)
     {
         _applyPreferences = applyPreferences;
         Name = "ControlsWindow";
-        Title = "Controls";
-        Size = new Vector2I(560, 380);
+        Title = "Options";
+        Size = new Vector2I(560, 420);
         Hide();
         CloseRequested += () => Hide();
         BuildInterface();
-        SetPreferences(true, false, DefaultMouseLookSensitivity, DefaultWheelSensitivitySliderValue);
+        SetPreferences(true, false, false, DefaultMouseLookSensitivity, DefaultWheelSensitivitySliderValue);
     }
 
-    public void SetPreferences(bool showTooltips, bool invertVerticalLook, float lookSensitivity, float wheelSensitivity)
+    public void SetPreferences(bool showTooltips, bool fullscreen, bool invertVerticalLook, float lookSensitivity, float wheelSensitivity)
     {
         _refreshing = true;
         _showTooltips.ButtonPressed = showTooltips;
+        _fullscreenMode.ButtonPressed = fullscreen;
         _invertVerticalLook.ButtonPressed = invertVerticalLook;
         _lookSensitivity.Value = ClampFinite(
             lookSensitivity,
@@ -81,9 +83,14 @@ public sealed partial class LegacyControlsWindow : Window
         margin.AddChild(layout);
         layout.AddChild(new Label
         {
-            Text = "Adjust camera controls and editor help tooltips. These preferences are saved on this device.",
+            Text = "Adjust display mode, camera controls, and editor help preferences. These settings are saved on this device.",
             AutowrapMode = TextServer.AutowrapMode.Word
         });
+
+        _fullscreenMode.Name = "OptionsFullscreen";
+        _fullscreenMode.Text = "Fullscreen display mode";
+        _fullscreenMode.Toggled += _ => ApplyCurrentPreferences();
+        layout.AddChild(_fullscreenMode);
 
         _showTooltips.Name = "ControlsShowTooltips";
         _showTooltips.Text = "Show editor help tooltips";
@@ -116,7 +123,7 @@ public sealed partial class LegacyControlsWindow : Window
         layout.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
         var footer = new HBoxContainer();
         footer.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
-        var reset = new Button { Name = "ControlsResetDefaults", Text = "Reset to defaults" };
+        var reset = new Button { Name = "ControlsResetDefaults", Text = "Reset camera controls" };
         reset.Pressed += ResetToDefaults;
         footer.AddChild(reset);
         var close = new Button { Name = "ControlsClose", Text = "Close" };
@@ -132,6 +139,7 @@ public sealed partial class LegacyControlsWindow : Window
         RefreshSensitivityLabels();
         _applyPreferences(
             _showTooltips.ButtonPressed,
+            _fullscreenMode.ButtonPressed,
             _invertVerticalLook.ButtonPressed,
             (float)_lookSensitivity.Value,
             (float)_wheelSensitivity.Value);
@@ -139,7 +147,12 @@ public sealed partial class LegacyControlsWindow : Window
 
     private void ResetToDefaults()
     {
-        SetPreferences(_showTooltips.ButtonPressed, false, DefaultMouseLookSensitivity, DefaultWheelSensitivitySliderValue);
+        SetPreferences(
+            _showTooltips.ButtonPressed,
+            _fullscreenMode.ButtonPressed,
+            false,
+            DefaultMouseLookSensitivity,
+            DefaultWheelSensitivitySliderValue);
         ApplyCurrentPreferences();
     }
 
