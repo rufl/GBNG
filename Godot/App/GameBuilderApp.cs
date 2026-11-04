@@ -27,6 +27,10 @@ public partial class GameBuilderApp : Node3D
     private bool _parentOnReset = true;
     private bool _autoSetSpawnOnMove = true;
     private bool _autoSetSpawnOnRotate = true;
+    private bool _invertMouseLook;
+    private float _mouseLookSensitivity = LegacyControlsWindow.DefaultMouseLookSensitivity;
+    private float _mouseWheelSensitivity = LegacyControlsWindow.DefaultWheelSensitivitySliderValue;
+    private LegacyControlsWindow _controlsWindow = null!;
     private const string EditorSettingsPath = "user://editor-settings.cfg";
     private CheckBox _autoSetSpawnOnMoveToggle = null!;
     private CheckBox _autoSetSpawnOnRotateToggle = null!;
@@ -192,6 +196,8 @@ public partial class GameBuilderApp : Node3D
             RunAssetImportSmoke();
         if (commandLineArgs.Contains("--smoke-code-editor", StringComparer.Ordinal))
             RunCodeEditorSmoke();
+        if (commandLineArgs.Contains("--smoke-controls", StringComparer.Ordinal))
+            RunControlsSmoke();
         if (commandLineArgs.Contains("--smoke-world-settings", StringComparer.Ordinal))
             RunWorldSettingsSmoke();
         if (commandLineArgs.Contains("--smoke-world-map-size", StringComparer.Ordinal))
@@ -362,11 +368,8 @@ public partial class GameBuilderApp : Node3D
             {
                 float wheelDelta = 0.1f * mouseButton.Factor;
                 _mouseWheelRaw += mouseButton.ButtonIndex == MouseButton.WheelUp ? wheelDelta : -wheelDelta;
+                _cameraDistance = ApplyMouseWheelZoom(_cameraDistance, mouseButton.ButtonIndex, mouseButton.Factor);
             }
-            if (mouseButton.ButtonIndex == MouseButton.WheelUp)
-                _cameraDistance = Mathf.Max(4f, _cameraDistance * 0.88f);
-            if (mouseButton.ButtonIndex == MouseButton.WheelDown)
-                _cameraDistance = Mathf.Min(220f, _cameraDistance * 1.12f);
             UpdateOrbitCamera();
         }
         else if (@event is InputEventMouseMotion motion)
@@ -394,9 +397,10 @@ public partial class GameBuilderApp : Node3D
                     ApplyTerrainBrush(motion.Position);
                 if (Input.MouseMode == Input.MouseModeEnum.Captured)
                 {
-                    _cameraYaw -= motion.Relative.X * 0.004f;
-                    _cameraPitch = Mathf.Clamp(_cameraPitch - motion.Relative.Y * 0.004f, -1.35f, 0.15f);
-                    _lookAxes += new Vector2(-motion.Relative.X * 0.004f, -motion.Relative.Y * 0.004f);
+                    Vector2 lookDelta = ComputeMouseLookDelta(motion.Relative, _mouseLookSensitivity, _invertMouseLook);
+                    _cameraYaw += lookDelta.X;
+                    _cameraPitch = Mathf.Clamp(_cameraPitch + lookDelta.Y, -1.35f, 0.15f);
+                    _lookAxes += lookDelta;
                     UpdateOrbitCamera();
                 }
             }
@@ -501,6 +505,8 @@ public partial class GameBuilderApp : Node3D
         _networkWindow = new LegacyLanNetworkWindow(_lanSession, PrepareNetworkHostProjectCopy, OpenReceivedNetworkProject);
         _worldSettingsWindow = new LegacyWorldSettingsWindow(UpdateStageProperty, ApplyWorldMapSize);
         _visualEffectsWindow = new LegacyVisualEffectsWindow(_cameraEffects);
+        _controlsWindow = new LegacyControlsWindow(SetControlPreferences);
+        _controlsWindow.SetPreferences(_invertMouseLook, _mouseLookSensitivity, _mouseWheelSensitivity);
         _assetStoreWindow = new LegacyAssetStoreWindow(
             _catalog,
             () => _document is not null && !_playMode && !_lanSession.HasPendingAssetSync,
@@ -511,6 +517,7 @@ public partial class GameBuilderApp : Node3D
         AddChild(_networkWindow);
         AddChild(_worldSettingsWindow);
         AddChild(_visualEffectsWindow);
+        AddChild(_controlsWindow);
 
         var root = new Control
         {
@@ -696,6 +703,7 @@ public partial class GameBuilderApp : Node3D
         toolbar.AddChild(_cameraFollowButton);
         AddToolbarButton(toolbar, "World", OpenWorldSettings);
         AddToolbarButton(toolbar, "Effects", OpenVisualEffects);
+        AddToolbarButton(toolbar, "Controls", OpenControls);
         AddToolbarButton(toolbar, "Terrain", OpenTerrainEditor);
         AddToolbarButton(toolbar, "Reset", ResetActors);
         _undoButton = new Button { Text = "Undo", CustomMinimumSize = new Vector2(70f, 36f), Disabled = true };
@@ -1125,6 +1133,10 @@ public partial class GameBuilderApp : Node3D
     private void OpenVisualEffects()
     {
         _visualEffectsWindow.PopupCentered(new Vector2I(380, 420));
+    }
+    private void OpenControls()
+    {
+        _controlsWindow.PopupCentered(new Vector2I(560, 330));
     }
 
     private void OpenTerrainEditor()
@@ -3009,6 +3021,10 @@ public partial class GameBuilderApp : Node3D
         _parentOnReset = settings.GetValue("editor", "parent_on_reset", true).AsBool();
         _autoSetSpawnOnMove = settings.GetValue("editor", "auto_set_spawn_on_move", true).AsBool();
         _autoSetSpawnOnRotate = settings.GetValue("editor", "auto_set_spawn_on_rotate", true).AsBool();
+        _invertMouseLook = settings.GetValue("controls", "invert_vertical_look", false).AsBool();
+        _mouseLookSensitivity = ReadControlPreference(settings, "mouse_look_sensitivity", LegacyControlsWindow.DefaultMouseLookSensitivity,
+            LegacyControlsWindow.MinimumMouseLookSensitivity, LegacyControlsWindow.MaximumMouseLookSensitivity);
+        _mouseWheelSensitivity = ReadControlPreference(settings, "mouse_wheel_sensitivity", LegacyControlsWindow.DefaultWheelSensitivitySliderValue, 0f, 1f);
     }
 
     private void SetParentOnResetPreference(bool enabled)
@@ -3040,6 +3056,49 @@ public partial class GameBuilderApp : Node3D
             _autoSetSpawnOnRotateToggle.SetPressedNoSignal(enabled);
         SaveEditorPreferences();
     }
+    private void SetControlPreferences(bool invertMouseLook, float mouseLookSensitivity, float mouseWheelSensitivity)
+    {
+        _invertMouseLook = invertMouseLook;
+        _mouseLookSensitivity = ClampControlPreference(
+            mouseLookSensitivity,
+            LegacyControlsWindow.MinimumMouseLookSensitivity,
+            LegacyControlsWindow.MaximumMouseLookSensitivity,
+            LegacyControlsWindow.DefaultMouseLookSensitivity);
+        _mouseWheelSensitivity = ClampControlPreference(
+            mouseWheelSensitivity,
+            0f,
+            1f,
+            LegacyControlsWindow.DefaultWheelSensitivitySliderValue);
+        SaveEditorPreferences();
+    }
+
+    private static float ReadControlPreference(ConfigFile settings, string key, float fallback, float minimum, float maximum)
+    {
+        double value = settings.GetValue("controls", key, fallback).AsDouble();
+        return double.IsFinite(value) ? Mathf.Clamp((float)value, minimum, maximum) : fallback;
+    }
+
+    private static float ClampControlPreference(float value, float minimum, float maximum, float fallback)
+        => float.IsFinite(value) ? Mathf.Clamp(value, minimum, maximum) : fallback;
+
+    private static Vector2 ComputeMouseLookDelta(Vector2 relative, float sensitivity, bool invertVertical)
+    {
+        float scale = 0.004f * sensitivity;
+        return new Vector2(
+            -relative.X * scale,
+            relative.Y * scale * (invertVertical ? 1f : -1f));
+    }
+
+    private float ApplyMouseWheelZoom(float cameraDistance, MouseButton button, float factor)
+    {
+        float steps = factor * LegacyControlsWindow.WheelZoomSensitivityMultiplier(_mouseWheelSensitivity);
+        return button switch
+        {
+            MouseButton.WheelUp => Mathf.Max(4f, cameraDistance * Mathf.Pow(0.88f, steps)),
+            MouseButton.WheelDown => Mathf.Min(220f, cameraDistance * Mathf.Pow(1.12f, steps)),
+            _ => cameraDistance
+        };
+    }
 
     private void SaveEditorPreferences()
     {
@@ -3048,6 +3107,9 @@ public partial class GameBuilderApp : Node3D
         settings.SetValue("editor", "parent_on_reset", _parentOnReset);
         settings.SetValue("editor", "auto_set_spawn_on_move", _autoSetSpawnOnMove);
         settings.SetValue("editor", "auto_set_spawn_on_rotate", _autoSetSpawnOnRotate);
+        settings.SetValue("controls", "invert_vertical_look", _invertMouseLook);
+        settings.SetValue("controls", "mouse_look_sensitivity", _mouseLookSensitivity);
+        settings.SetValue("controls", "mouse_wheel_sensitivity", _mouseWheelSensitivity);
         Error error = settings.Save(EditorSettingsPath);
         if (error != Error.Ok)
         {

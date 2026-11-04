@@ -11,6 +11,94 @@ namespace GBNG.App;
 
 public partial class GameBuilderApp
 {
+    private async void RunControlsSmoke()
+    {
+        int exitCode = 0;
+        string settingsPath = ProjectSettings.GlobalizePath(EditorSettingsPath);
+        byte[]? originalSettings = File.Exists(settingsPath) ? File.ReadAllBytes(settingsPath) : null;
+        try
+        {
+            await WaitForUiFrames(2);
+            LegacyControlsWindow window = _controlsWindow;
+            if (!IsInstanceValid(window))
+                throw new InvalidOperationException("The controls preferences window was not created.");
+            OpenControls();
+            await WaitForUiFrames(2);
+
+            var invertLook = (CheckButton)window.FindChild("ControlsInvertVerticalLook", true, false);
+            var lookSensitivity = (HSlider)window.FindChild("ControlsLookSensitivity", true, false);
+            var wheelSensitivity = (HSlider)window.FindChild("ControlsWheelSensitivity", true, false);
+            var reset = (Button)window.FindChild("ControlsResetDefaults", true, false);
+            if (!window.Visible
+                || !Mathf.IsEqualApprox((float)lookSensitivity.MinValue, 0.1f)
+                || !Mathf.IsEqualApprox((float)lookSensitivity.MaxValue, 3f))
+                throw new InvalidOperationException("The controls window did not expose the legacy mouse-look preferences.");
+
+            invertLook.SetPressedNoSignal(true);
+            invertLook.EmitSignal("toggled", true);
+            lookSensitivity.Value = 2.0;
+            wheelSensitivity.Value = 1.0;
+            var savedPreferences = new ConfigFile();
+            if (!_invertMouseLook
+                || !Mathf.IsEqualApprox(_mouseLookSensitivity, 2f)
+                || !Mathf.IsEqualApprox(_mouseWheelSensitivity, 1f)
+                || savedPreferences.Load(EditorSettingsPath) != Error.Ok
+                || !savedPreferences.GetValue("controls", "invert_vertical_look", false).AsBool()
+                || !Mathf.IsEqualApprox((float)savedPreferences.GetValue("controls", "mouse_look_sensitivity", 0.0).AsDouble(), 2f)
+                || !Mathf.IsEqualApprox((float)savedPreferences.GetValue("controls", "mouse_wheel_sensitivity", 0.0).AsDouble(), 1f))
+                throw new InvalidOperationException("Changing the controls did not apply and persist all three preferences.");
+
+            Vector2 normalLook = ComputeMouseLookDelta(new Vector2(10f, 5f), 1f, false);
+            Vector2 invertedLook = ComputeMouseLookDelta(new Vector2(10f, 5f), 1f, true);
+            Vector2 fasterLook = ComputeMouseLookDelta(new Vector2(10f, 5f), 2f, false);
+            if (!Mathf.IsEqualApprox(normalLook.X, -0.04f)
+                || !Mathf.IsEqualApprox(normalLook.Y, -0.02f)
+                || !Mathf.IsEqualApprox(invertedLook.Y, 0.02f)
+                || !Mathf.IsEqualApprox(fasterLook.X, -0.08f)
+                || !Mathf.IsEqualApprox(fasterLook.Y, -0.04f))
+                throw new InvalidOperationException("Invert look and mouse-look sensitivity did not change camera input as expected.");
+            float maximumWheelMultiplier = LegacyControlsWindow.WheelZoomSensitivityMultiplier(1f);
+            float fastWheelDistance = ApplyMouseWheelZoom(10f, MouseButton.WheelUp, 1f);
+            if (maximumWheelMultiplier <= 1f
+                || !Mathf.IsEqualApprox(fastWheelDistance, 10f * Mathf.Pow(0.88f, maximumWheelMultiplier)))
+                throw new InvalidOperationException("Mouse-wheel sensitivity did not scale camera zoom.");
+
+            reset.EmitSignal("pressed");
+            await WaitForUiFrames(1);
+            if (_invertMouseLook
+                || !Mathf.IsEqualApprox(_mouseLookSensitivity, LegacyControlsWindow.DefaultMouseLookSensitivity)
+                || !Mathf.IsEqualApprox(_mouseWheelSensitivity, LegacyControlsWindow.DefaultWheelSensitivitySliderValue)
+                || !Mathf.IsEqualApprox(ApplyMouseWheelZoom(10f, MouseButton.WheelUp, 1f), 8.8f))
+                throw new InvalidOperationException("Reset to defaults did not restore original camera-control behavior.");
+
+            string screenshot = ProjectSettings.GlobalizePath("res://.godot/controls-preferences-smoke.png");
+            if (window.GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
+                throw new InvalidOperationException("Could not save the controls preferences screenshot.");
+            GD.Print($"CONTROLS_SMOKE_OK invert=true lookSensitivity=true wheelSensitivity=true persistence=true reset=true screenshot={screenshot}");
+        }
+        catch (System.Exception exception)
+        {
+            exitCode = 1;
+            GD.PushError($"CONTROLS_SMOKE_FAILED: {exception}");
+        }
+        finally
+        {
+            try
+            {
+                if (originalSettings is not null)
+                    File.WriteAllBytes(settingsPath, originalSettings);
+                else if (File.Exists(settingsPath))
+                    File.Delete(settingsPath);
+            }
+            catch (System.Exception exception)
+            {
+                exitCode = 1;
+                GD.PushError($"Could not restore control preferences after smoke: {exception}");
+            }
+            GetTree().Quit(exitCode);
+        }
+    }
+
     private async void RunWorldSettingsSmoke()
     {
         int exitCode = 0;
