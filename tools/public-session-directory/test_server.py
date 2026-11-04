@@ -182,6 +182,13 @@ class SessionMigrationHttpTests(unittest.TestCase):
                                      private_registration["MigrationToken"])[0], 409)
 
             state._sessions[private_id]["Updated"] = time.monotonic() - 30
+
+            mismatched_family = make_session(6)
+            status, error_body = request(
+                migrate_path, "POST", mismatched_family,
+                private_registration["MigrationToken"])
+            self.assertEqual(status, 400)
+            self.assertIn(b"family must match", error_body)
             update = make_session()
             update.update({
                 "Name": "Migrated private game",

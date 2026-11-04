@@ -130,6 +130,7 @@ class DirectoryState:
 
     def migrate(self, session_id, token, body, address):
         name, count, capacity, port, address_family, certificate, is_public, thumbnail = validate_session(body)
+        require_address_family(address, address_family)
         token_hash = hashlib.sha256(token.encode("utf-8")).digest()
         now = time.monotonic()
         with self._lock:
