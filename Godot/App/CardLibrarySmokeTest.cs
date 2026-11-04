@@ -17,6 +17,9 @@ public partial class GameBuilderApp
         string settingsPath = ProjectSettings.GlobalizePath(EditorSettingsPath);
         byte[]? originalSettings = File.Exists(settingsPath) ? File.ReadAllBytes(settingsPath) : null;
         Window.ModeEnum originalWindowMode = GetWindow().Mode;
+        Vector2I originalWindowedSize = _windowedSize;
+        Vector2I originalWindowSize = GetWindow().Size;
+        Vector2I originalWindowPosition = GetWindow().Position;
         bool originalFullscreen = _fullscreen;
         try
         {
@@ -30,15 +33,18 @@ public partial class GameBuilderApp
             var invertLook = (CheckButton)window.FindChild("ControlsInvertVerticalLook", true, false);
             var showTooltips = (CheckButton)window.FindChild("ControlsShowTooltips", true, false);
             var fullscreenMode = (CheckButton)window.FindChild("OptionsFullscreen", true, false);
+            var windowedSize = (OptionButton)window.FindChild("OptionsWindowedSize", true, false);
+            var currentDisplaySize = (Label)window.FindChild("OptionsCurrentDisplaySize", true, false);
             var lookSensitivity = (HSlider)window.FindChild("ControlsLookSensitivity", true, false);
             var wheelSensitivity = (HSlider)window.FindChild("ControlsWheelSensitivity", true, false);
             var reset = (Button)window.FindChild("ControlsResetDefaults", true, false);
             if (!window.Visible
                 || showTooltips.ButtonPressed != _showTooltips
                 || fullscreenMode.ButtonPressed != _fullscreen
+                || windowedSize.ItemCount == 0
                 || !Mathf.IsEqualApprox((float)lookSensitivity.MinValue, 0.1f)
                 || !Mathf.IsEqualApprox((float)lookSensitivity.MaxValue, 3f))
-                throw new InvalidOperationException("The controls window did not expose the legacy mouse-look preferences.");
+                throw new InvalidOperationException("The options window did not expose the legacy mouse and display preferences.");
 
             fullscreenMode.SetPressedNoSignal(true);
             fullscreenMode.EmitSignal("toggled", true);
@@ -46,9 +52,11 @@ public partial class GameBuilderApp
             var savedDisplayPreferences = new ConfigFile();
             if (!_fullscreen
                 || !IsFullscreenMode(GetWindow().Mode)
+                || !windowedSize.Disabled
+                || !currentDisplaySize.Text.StartsWith("Fullscreen display:", StringComparison.Ordinal)
                 || savedDisplayPreferences.Load(EditorSettingsPath) != Error.Ok
                 || !savedDisplayPreferences.GetValue("display", "fullscreen", false).AsBool())
-                throw new InvalidOperationException("Enabling fullscreen did not change the window mode and persist the display preference.");
+                throw new InvalidOperationException("Enabling fullscreen did not change the window mode, disable windowed sizes, and persist the display preference.");
 
             fullscreenMode.SetPressedNoSignal(false);
             fullscreenMode.EmitSignal("toggled", false);
@@ -56,9 +64,58 @@ public partial class GameBuilderApp
             savedDisplayPreferences = new ConfigFile();
             if (_fullscreen
                 || IsFullscreenMode(GetWindow().Mode)
+                || windowedSize.Disabled
+                || !currentDisplaySize.Text.StartsWith("Current window size:", StringComparison.Ordinal)
                 || savedDisplayPreferences.Load(EditorSettingsPath) != Error.Ok
                 || savedDisplayPreferences.GetValue("display", "fullscreen", true).AsBool())
                 throw new InvalidOperationException("Disabling fullscreen did not restore windowed mode and persist the preference.");
+            int alternateSizeIndex = -1;
+            Vector2I alternateSize = default;
+            for (int index = 0; index < window.WindowedSizePresetCount; index++)
+            {
+                Vector2I preset = window.GetWindowedSizePreset(index);
+                if (preset == _windowedSize)
+                    continue;
+                alternateSizeIndex = index;
+                alternateSize = preset;
+                break;
+            }
+            if (alternateSizeIndex < 0)
+                throw new InvalidOperationException("The current display did not expose an alternate windowed-size preset.");
+            windowedSize.Select(alternateSizeIndex);
+            windowedSize.EmitSignal("item_selected", (long)alternateSizeIndex);
+            await WaitForUiFrames(2);
+            savedDisplayPreferences = new ConfigFile();
+            if (_windowedSize != alternateSize
+                || GetWindow().Size != alternateSize
+                || currentDisplaySize.Text != $"Current window size: {alternateSize.X} × {alternateSize.Y}"
+                || savedDisplayPreferences.Load(EditorSettingsPath) != Error.Ok
+                || (int)savedDisplayPreferences.GetValue("display", "windowed_width", 0).AsDouble() != alternateSize.X
+                || (int)savedDisplayPreferences.GetValue("display", "windowed_height", 0).AsDouble() != alternateSize.Y)
+                throw new InvalidOperationException("Selecting a windowed-size preset did not resize the window and persist its dimensions.");
+
+            fullscreenMode.SetPressedNoSignal(true);
+            fullscreenMode.EmitSignal("toggled", true);
+            await WaitForUiFrames(2);
+            if (!_fullscreen
+                || !IsFullscreenMode(GetWindow().Mode)
+                || !windowedSize.Disabled
+                || !currentDisplaySize.Text.StartsWith("Fullscreen display:", StringComparison.Ordinal))
+                throw new InvalidOperationException("Fullscreen did not disable the windowed-size selector and report the active display size.");
+
+            fullscreenMode.SetPressedNoSignal(false);
+            fullscreenMode.EmitSignal("toggled", false);
+            await WaitForUiFrames(2);
+            savedDisplayPreferences = new ConfigFile();
+            if (_fullscreen
+                || IsFullscreenMode(GetWindow().Mode)
+                || windowedSize.Disabled
+                || GetWindow().Size != alternateSize
+                || _windowedSize != alternateSize
+                || savedDisplayPreferences.Load(EditorSettingsPath) != Error.Ok
+                || (int)savedDisplayPreferences.GetValue("display", "windowed_width", 0).AsDouble() != alternateSize.X
+                || (int)savedDisplayPreferences.GetValue("display", "windowed_height", 0).AsDouble() != alternateSize.Y)
+                throw new InvalidOperationException("Leaving fullscreen did not restore the selected windowed size.");
 
             showTooltips.SetPressedNoSignal(true);
             showTooltips.EmitSignal("toggled", true);
@@ -139,7 +196,7 @@ public partial class GameBuilderApp
             string screenshot = ProjectSettings.GlobalizePath("res://.godot/controls-preferences-smoke.png");
             if (window.GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
                 throw new InvalidOperationException("Could not save the controls preferences screenshot.");
-            GD.Print($"CONTROLS_SMOKE_OK fullscreenToggle=true windowedRestore=true showTooltips={_showTooltips} tooltipSuppression=true tooltipRestoration=true futureControls=true invert=true lookSensitivity=true wheelSensitivity=true persistence=true reset=true screenshot={screenshot}");
+            GD.Print($"CONTROLS_SMOKE_OK fullscreenToggle=true windowedRestore=true windowedResolution=true fullscreenSizeRestore=true showTooltips={_showTooltips} tooltipSuppression=true tooltipRestoration=true futureControls=true invert=true lookSensitivity=true wheelSensitivity=true persistence=true reset=true screenshot={screenshot}");
         }
         catch (System.Exception exception)
         {
@@ -148,6 +205,7 @@ public partial class GameBuilderApp
         }
         finally
         {
+            _windowedSizeSaveTimer?.Stop();
             try
             {
                 if (originalSettings is not null)
@@ -160,8 +218,30 @@ public partial class GameBuilderApp
                 exitCode = 1;
                 GD.PushError($"Could not restore control preferences after smoke: {exception}");
             }
-            GetWindow().Mode = originalWindowMode;
-            _fullscreen = originalFullscreen;
+
+            bool wasApplyingDisplayChange = _applyingDisplayChange;
+            _applyingDisplayChange = true;
+            try
+            {
+                _windowedSize = originalWindowedSize;
+                _fullscreen = originalFullscreen;
+                Window window = GetWindow();
+                window.Mode = Window.ModeEnum.Windowed;
+                window.Size = originalWindowMode == Window.ModeEnum.Windowed ? originalWindowSize : originalWindowedSize;
+                window.Position = originalWindowPosition;
+                window.Mode = originalWindowMode;
+                await WaitForUiFrames(2);
+                RefreshControlsDisplayState();
+            }
+            catch (System.Exception exception)
+            {
+                exitCode = 1;
+                GD.PushError($"Could not restore display mode after smoke: {exception}");
+            }
+            finally
+            {
+                _applyingDisplayChange = wasApplyingDisplayChange;
+            }
             GetTree().Quit(exitCode);
         }
     }

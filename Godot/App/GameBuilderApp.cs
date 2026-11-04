@@ -185,7 +185,10 @@ public partial class GameBuilderApp : Node3D
         _lanSession.StateChanged += OnLanSessionStateChanged;
         AddChild(_lanSession);
         BuildWorldServices();
+        _windowedSize = GetWindow().Size;
         LoadEditorPreferences();
+        RestoreWindowedSize();
+        InitializeWindowedDisplayTracking();
         _tooltipPolicy = new LegacyTooltipPolicy(GetTree());
         _tooltipPolicy.SetEnabled(_showTooltips);
         ApplyFullscreenMode(_fullscreen);
@@ -532,8 +535,9 @@ public partial class GameBuilderApp : Node3D
         _networkWindow = new LegacyLanNetworkWindow(_lanSession, PrepareNetworkHostProjectCopy, OpenReceivedNetworkProject);
         _worldSettingsWindow = new LegacyWorldSettingsWindow(UpdateStageProperty, ApplyWorldMapSize);
         _visualEffectsWindow = new LegacyVisualEffectsWindow(_cameraEffects);
-        _controlsWindow = new LegacyControlsWindow(SetControlPreferences);
+        _controlsWindow = new LegacyControlsWindow(SetControlPreferences, SetWindowedSizePreference);
         _controlsWindow.SetPreferences(_showTooltips, _fullscreen, _invertMouseLook, _mouseLookSensitivity, _mouseWheelSensitivity);
+        _controlsWindow.SetDisplayOptions(GetWindowedSizePresets(GetWindow()), _windowedSize, GetWindow().Size, _fullscreen);
         _audioSettingsWindow = new LegacyAudioSettingsWindow(SetSfxVolumePreference, SetMusicVolumePreference);
         _audioSettingsWindow.SetSfxVolume(_sfxVolume);
         _audioSettingsWindow.SetMusicVolume(_musicVolume);
@@ -1171,7 +1175,8 @@ public partial class GameBuilderApp : Node3D
     }
     private void OpenControls()
     {
-        _controlsWindow.PopupCentered(new Vector2I(560, 420));
+        _controlsWindow.SetDisplayOptions(GetWindowedSizePresets(GetWindow()), _windowedSize, GetWindow().Size, _fullscreen);
+        _controlsWindow.PopupCentered(new Vector2I(560, 500));
     }
     private void OpenAudioSettings()
     {
@@ -1582,6 +1587,7 @@ public partial class GameBuilderApp : Node3D
     }
     public override void _ExitTree()
     {
+        CleanupWindowedDisplayTracking();
         CleanupApplicationFocusHandling();
         _tooltipPolicy?.Dispose();
         _tooltipPolicy = null;
@@ -3088,6 +3094,9 @@ public partial class GameBuilderApp : Node3D
         _parentOnReset = settings.GetValue("editor", "parent_on_reset", true).AsBool();
         _showTooltips = settings.GetValue("editor", "show_tooltips", true).AsBool();
         _fullscreen = settings.GetValue("display", "fullscreen", false).AsBool();
+        _windowedSize = new Vector2I(
+            ReadDisplayDimension(settings, "windowed_width", _windowedSize.X),
+            ReadDisplayDimension(settings, "windowed_height", _windowedSize.Y));
         _autoSetSpawnOnMove = settings.GetValue("editor", "auto_set_spawn_on_move", true).AsBool();
         _autoSetSpawnOnRotate = settings.GetValue("editor", "auto_set_spawn_on_rotate", true).AsBool();
         _invertMouseLook = settings.GetValue("controls", "invert_vertical_look", false).AsBool();
@@ -3200,6 +3209,8 @@ public partial class GameBuilderApp : Node3D
         settings.SetValue("editor", "parent_on_reset", _parentOnReset);
         settings.SetValue("editor", "show_tooltips", _showTooltips);
         settings.SetValue("display", "fullscreen", _fullscreen);
+        settings.SetValue("display", "windowed_width", _windowedSize.X);
+        settings.SetValue("display", "windowed_height", _windowedSize.Y);
         settings.SetValue("editor", "auto_set_spawn_on_move", _autoSetSpawnOnMove);
         settings.SetValue("editor", "auto_set_spawn_on_rotate", _autoSetSpawnOnRotate);
         settings.SetValue("controls", "invert_vertical_look", _invertMouseLook);
