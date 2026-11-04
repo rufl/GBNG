@@ -347,7 +347,7 @@ public partial class GameBuilderApp : Node3D
         {
             Control? focusedControl = GetViewport().GuiGetFocusOwner();
             bool editingText = focusedControl is LineEdit or TextEdit;
-            if (!_playMode && !editingText && key.Keycode == Key.Delete)
+            if (!_playMode && !editingText && (key.Keycode == Key.Delete || key.Keycode == Key.Backspace))
                 RemoveSelectedActor();
             else if (!_playMode && !editingText && key.Keycode == Key.R && !key.CtrlPressed && !key.MetaPressed)
                 QuickRotateSelectedActors();

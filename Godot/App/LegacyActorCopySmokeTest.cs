@@ -371,6 +371,24 @@ public partial class GameBuilderApp
                 ?? throw new InvalidOperationException("Undo after redo did not restore the independent actor.");
             if (_document.Actors.Count != beforeMultiDelete)
                 throw new InvalidOperationException("Undo after redo did not restore the deleted actors.");
+            SetActorSelection(new[] { source, independent }, source);
+            _actorList.GrabFocus();
+            _UnhandledInput(new InputEventKey { Keycode = Key.Backspace, Pressed = true });
+            await WaitForUiFrames(2);
+            if (_document.Actors.Count != beforeMultiDelete - 2
+                || _actors.Any(actor => actor.LegacyName == sourceName || actor.LegacyName == independentName)
+                || child.State.TransformParent.Length != 0)
+                throw new InvalidOperationException("Backspace did not remove both selected roots while preserving and detaching their unselected child.");
+            UndoEdit();
+            await WaitForUiFrames(2);
+            source = _actors.FirstOrDefault(actor => actor.LegacyName == sourceName)
+                ?? throw new InvalidOperationException("Undo did not restore the Backspace-deleted source actor.");
+            independent = _actors.FirstOrDefault(actor => actor.LegacyName == independentName)
+                ?? throw new InvalidOperationException("Undo did not restore the Backspace-deleted independent actor.");
+            if (_document.Actors.Count != beforeMultiDelete
+                || child.State.TransformParent != sourceName
+                || child.GetParent() != source)
+                throw new InvalidOperationException("Undo did not restore the Backspace-deleted actor hierarchy.");
             ClickActorForSmoke(source);
             AssertActorSelectionForSmoke(source);
             ClearHistory();
@@ -528,7 +546,7 @@ public partial class GameBuilderApp
             if (persistedSource.State.Description != cmdSaveMarker)
                 throw new InvalidOperationException("Cmd+S did not persist the current project state.");
 
-            GD.Print($"ACTOR_COPY_SMOKE_OK selection=shift-toggle-marquee=true marqueeVisual=true quickRotate=R+toolbar=true groupPivot=true undo-redo=true parenting=CtrlH=true transformPreserved=true cycleRejected=true unparent=emptySpace=true undo-redo=true parentPersistence=true actorListToggle=true actorListScreenshot={actorListScreenshot} cameraFollow=F+button=true actorTracking=true cameraFollowScreenshot={cameraFollowScreenshot} reset=CtrlR+undo-redo=true save=CtrlS+CmdS+persistence=true multiCopyRoots=true multiDelete=undo-redo=true preview=true ctrlC=true snap=true descendants=true repeat=true persistence=true marqueeScreenshot={marqueeScreenshot} copyScreenshot={screenshot}");
+            GD.Print($"ACTOR_COPY_SMOKE_OK selection=shift-toggle-marquee=true marqueeVisual=true quickRotate=R+toolbar=true groupPivot=true undo-redo=true parenting=CtrlH=true transformPreserved=true cycleRejected=true unparent=emptySpace=true undo-redo=true parentPersistence=true actorListToggle=true actorListScreenshot={actorListScreenshot} cameraFollow=F+button=true actorTracking=true cameraFollowScreenshot={cameraFollowScreenshot} reset=CtrlR+undo-redo=true save=CtrlS+CmdS+persistence=true delete=Delete+Backspace+undoRedo=true multiCopyRoots=true preview=true ctrlC=true snap=true descendants=true repeat=true persistence=true marqueeScreenshot={marqueeScreenshot} copyScreenshot={screenshot}");
 
         }
         catch (Exception exception)
