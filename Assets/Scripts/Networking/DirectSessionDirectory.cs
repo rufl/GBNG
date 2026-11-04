@@ -34,6 +34,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
   {
     public string SessionId;
     public string Token;
+    public string Name;
     public int Generation;
     public bool IsPublic;
   }
@@ -90,6 +91,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
 
   static string clientMigrationSessionId;
   static string clientMigrationToken;
+  static string clientMigrationName;
   static int clientMigrationGeneration;
   static bool clientMigrationIsPublic;
   public static int Revision { get { return revision; } }
@@ -142,6 +144,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
     {
       SessionId = clientMigrationSessionId,
       Token = clientMigrationToken,
+      Name = clientMigrationName,
       Generation = clientMigrationGeneration,
       IsPublic = clientMigrationIsPublic
     };
@@ -150,12 +153,18 @@ public sealed class DirectSessionDirectory : MonoBehaviour
       && ticket.Generation > 0;
   }
 
-  internal static void SetMigrationTicket(string id, string token, int generation, bool isPublic)
+  internal static void SetMigrationTicket(
+    string id,
+    string token,
+    int generation,
+    bool isPublic,
+    string name)
   {
     if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(token) || generation < 1)
       throw new ArgumentException("A direct-session migration ticket is incomplete.");
     clientMigrationSessionId = id;
     clientMigrationToken = token;
+    clientMigrationName = name;
     clientMigrationGeneration = generation;
     clientMigrationIsPublic = isPublic;
   }
@@ -164,6 +173,7 @@ public sealed class DirectSessionDirectory : MonoBehaviour
   {
     clientMigrationSessionId = null;
     clientMigrationToken = null;
+    clientMigrationName = null;
     clientMigrationGeneration = 0;
     clientMigrationIsPublic = false;
   }
@@ -254,7 +264,9 @@ public sealed class DirectSessionDirectory : MonoBehaviour
           sessionGeneration = options.directHostMigrationGeneration;
           migrationPending = !string.IsNullOrEmpty(migrationToken);
           if (migrationPending)
-            SetMigrationTicket(sessionId, migrationToken, sessionGeneration, playOptions.startAsPublic);
+            SetMigrationTicket(
+              sessionId, migrationToken, sessionGeneration, playOptions.startAsPublic,
+              options.directHostMigrationName);
         }
       }
       if (!string.IsNullOrEmpty(GetEndpoint())
@@ -345,7 +357,8 @@ public sealed class DirectSessionDirectory : MonoBehaviour
         migrationPending = false;
         SetMigrationTicket(
           sessionId, migrationToken, sessionGeneration,
-          GameBuilderApplication.CurrentGameOptions.playOptions.startAsPublic);
+          GameBuilderApplication.CurrentGameOptions.playOptions.startAsPublic,
+          data.Name);
         Debug.Log(migrating
           ? "Migrated direct-host session through the directory."
           : "Registered direct-host session in the directory.");

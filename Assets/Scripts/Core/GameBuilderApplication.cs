@@ -144,9 +144,11 @@ public class GameBuilderApplication
     // Authenticated self-hosted directory state used to migrate direct sessions.
     public string directHostMigrationSessionId;
     public string directHostMigrationToken;
+    public string directHostMigrationName;
     public int directHostMigrationGeneration;
     // Previous local player slot; migration hosts reclaim their actors as player 1.
     public int directHostMigrationPreviousPlayerId;
+    public string directHostMigrationReservedPlayerIds;
 
 
     public PlayOptions playOptions;

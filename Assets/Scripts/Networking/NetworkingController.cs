@@ -39,6 +39,8 @@ public class NetworkingController : Photon.PunBehaviour
   const string DirectHostInitMessageName = "GB_DIRECT_HOST_INIT_V1";
   const string DirectPlayerIdentityMessageName = "GB_DIRECT_PLAYER_IDENTITY_V1";
   const string DirectPlayerAssignmentMessageName = "GB_DIRECT_PLAYER_ASSIGNMENT_V1";
+  const string DirectPlayerReconnectMessageName = "GB_DIRECT_PLAYER_RECONNECT_V1";
+  const string DirectSessionMigrationTicketMessageName = "GB_DIRECT_SESSION_MIGRATION_TICKET_V1";
   const string DirectPlayerInitRequestMessageName = "GB_DIRECT_PLAYER_INIT_REQUEST_V1";
   const string DirectPlayerReadyMessageName = "GB_DIRECT_PLAYER_READY_V1";
   const string DirectPlayerSpawnMessageName = "GB_DIRECT_PLAYER_SPAWN_V1";
@@ -50,7 +52,19 @@ public class NetworkingController : Photon.PunBehaviour
   bool registeredDirectPlayerHandlers;
   bool directClientAssignmentReceived;
   bool directWorldReady;
+  bool directHasMigrationTicket;
+  bool directMigrationCandidate;
+  bool directMigrationAbandoned;
+  bool directMigrationReconnectPending;
+  int directDisconnectedLocalPlayerId;
+  DirectSessionDirectory.MigrationTicket directMigrationTicket;
+  string lastBroadcastMigrationSessionId;
+  string lastBroadcastMigrationToken;
+  string lastBroadcastMigrationName;
+  int lastBroadcastMigrationGeneration;
+  bool lastBroadcastMigrationIsPublic;
   readonly HashSet<ulong> directInitResponseClients = new HashSet<ulong>();
+  readonly HashSet<ulong> directClientsAwaitingReconnect = new HashSet<ulong>();
   readonly DirectHostInitChunkAssembler directHostInitAssembler = new DirectHostInitChunkAssembler();
   string directHostShareAddress;
 
@@ -587,9 +601,25 @@ public class NetworkingController : Photon.PunBehaviour
 #else
     EnsureDirectNetworkManager();
     GameBuilderApplication.GameOptions options = GameBuilderApplication.CurrentGameOptions;
+    if (string.IsNullOrEmpty(options.directHostMigrationSessionId))
+    {
+      DirectSessionDirectory.ClearMigrationTicket();
+      directHasMigrationTicket = false;
+    }
+    else
+    {
+      DirectSessionDirectory.SetMigrationTicket(
+        options.directHostMigrationSessionId,
+        options.directHostMigrationToken,
+        options.directHostMigrationGeneration,
+        options.playOptions.startAsPublic,
+        options.directHostMigrationName);
+      directHasMigrationTicket = true;
+    }
     if (!options.playOptions.isMultiplayer)
     {
       mode = Mode.Offline;
+      DirectSessionDirectory.ClearMigrationTicket();
       PhotonNetwork.ClearDirectSession();
       StartCoroutine(NonPunStartRoutine(false));
       return;
@@ -619,6 +649,11 @@ public class NetworkingController : Photon.PunBehaviour
       directTransport.UseEncryption = true;
       if (options.joinAddress.IsNullOrEmpty())
       {
+        if (!string.IsNullOrEmpty(options.directHostMigrationSessionId))
+        {
+          PhotonNetwork.ClearDirectSession();
+          PhotonNetwork.SetDirectMigrationReservedPlayerIds(options.directHostMigrationReservedPlayerIds);
+        }
         DirectHostTls.HostCredentials credentials = DirectHostTls.GetHostCredentials();
         directTransport.SetServerSecrets(credentials.CertificatePem, credentials.PrivateKeyPem);
         directHostShareAddress = null;
@@ -667,8 +702,8 @@ public class NetworkingController : Photon.PunBehaviour
       PhotonNetwork.offlineMode = false;
       RegisterDirectNetworkHandlers();
     }
-#endif
   }
+#endif
 
   IEnumerator NonPunStartRoutine(bool startHost)
   {
@@ -747,6 +782,8 @@ public class NetworkingController : Photon.PunBehaviour
     if (registeredDirectPlayerHandlers)
     {
       directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerAssignmentMessageName);
+      directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerReconnectMessageName);
+      directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectSessionMigrationTicketMessageName);
       directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerReadyMessageName);
       directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerSpawnMessageName);
       directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerDespawnMessageName);
@@ -755,6 +792,10 @@ public class NetworkingController : Photon.PunBehaviour
     }
     directNetworkManager.CustomMessagingManager.RegisterNamedMessageHandler(
       DirectPlayerAssignmentMessageName, OnDirectPlayerAssignment);
+    directNetworkManager.CustomMessagingManager.RegisterNamedMessageHandler(
+      DirectPlayerReconnectMessageName, OnDirectPlayerReconnectRequest);
+    directNetworkManager.CustomMessagingManager.RegisterNamedMessageHandler(
+      DirectSessionMigrationTicketMessageName, OnDirectSessionMigrationTicket);
     directNetworkManager.CustomMessagingManager.RegisterNamedMessageHandler(DirectPlayerReadyMessageName, OnDirectPlayerReady);
     directNetworkManager.CustomMessagingManager.RegisterNamedMessageHandler(DirectPlayerSpawnMessageName, OnDirectPlayerSpawn);
     directNetworkManager.CustomMessagingManager.RegisterNamedMessageHandler(DirectPlayerDespawnMessageName, OnDirectPlayerDespawn);
@@ -772,11 +813,57 @@ public class NetworkingController : Photon.PunBehaviour
       {
         directClientAssignmentReceived = false;
         PhotonNetwork.ResetDirectPeers();
+        SendDirectPlayerReconnectRequest();
       }
       return;
     }
     if (clientId == directNetworkManager.LocalClientId) return;
-    if (!PhotonNetwork.TryAssignDirectPlayerId(clientId, out int joiningPlayerId))
+    directClientsAwaitingReconnect.Add(clientId);
+    SendDirectMigrationTicket(clientId);
+    StartCoroutine(AssignDirectPlayerAfterReconnectRequest(clientId));
+  }
+
+  void SendDirectPlayerReconnectRequest()
+  {
+    if (directNetworkManager == null || directNetworkManager.IsServer || !directNetworkManager.IsListening) return;
+    int preferredPlayerId = PhotonNetwork.player == null ? 0 : PhotonNetwork.player.ID;
+    using (FastBufferWriter writer = new FastBufferWriter(sizeof(int), Allocator.Temp))
+    {
+      writer.WriteValueSafe(preferredPlayerId);
+      directNetworkManager.CustomMessagingManager.SendNamedMessage(
+        DirectPlayerReconnectMessageName, NetworkManager.ServerClientId, writer, NetworkDelivery.ReliableSequenced);
+    }
+  }
+
+  void OnDirectPlayerReconnectRequest(ulong senderClientId, FastBufferReader reader)
+  {
+    if (directNetworkManager == null || !directNetworkManager.IsServer
+      || !directClientsAwaitingReconnect.Contains(senderClientId)) return;
+    int preferredPlayerId = 0;
+    try { reader.ReadValueSafe(out preferredPlayerId); }
+    catch (Exception e) { Util.LogError($"Invalid direct reconnect request from {senderClientId}: {e.Message}"); }
+    if (string.IsNullOrEmpty(GameBuilderApplication.CurrentGameOptions.directHostMigrationSessionId))
+      preferredPlayerId = 0;
+    directClientsAwaitingReconnect.Remove(senderClientId);
+    InitializeDirectClient(senderClientId, preferredPlayerId);
+  }
+
+  IEnumerator AssignDirectPlayerAfterReconnectRequest(ulong clientId)
+  {
+    yield return new WaitForSecondsRealtime(2f);
+    if (directNetworkManager == null || !directNetworkManager.IsServer
+      || !directClientsAwaitingReconnect.Remove(clientId)) yield break;
+    foreach (ulong connectedClientId in directNetworkManager.ConnectedClientsIds)
+    {
+      if (connectedClientId != clientId) continue;
+      InitializeDirectClient(clientId, 0);
+      yield break;
+    }
+  }
+
+  void InitializeDirectClient(ulong clientId, int preferredPlayerId)
+  {
+    if (!PhotonNetwork.TryAssignDirectPlayerId(clientId, preferredPlayerId, out int joiningPlayerId))
     {
       Util.LogError($"Direct hosting is full ({PhotonNetwork.MaximumDirectPlayers} players).");
       directNetworkManager.DisconnectClient(clientId);
@@ -786,7 +873,9 @@ public class NetworkingController : Photon.PunBehaviour
     try
     {
       PhotonNetwork.SetDirectSession(directNetworkManager, GetLocalDirectPlayerName());
-      SendDirectPlayerAssignment(clientId, joiningPlayerId);
+      if (!string.IsNullOrEmpty(GameBuilderApplication.CurrentGameOptions.directHostMigrationSessionId)
+        && preferredPlayerId > 1 && preferredPlayerId != joiningPlayerId)
+        ReassignDirectPlayerOwnership(preferredPlayerId, joiningPlayerId);
       foreach (PhotonPlayer connectedPlayer in PhotonNetwork.playerList)
       {
         if (connectedPlayer.ID != joiningPlayerId)
@@ -800,6 +889,81 @@ public class NetworkingController : Photon.PunBehaviour
       PhotonNetwork.ForgetDirectPeerName(joiningPlayerId);
       PhotonNetwork.ReleaseDirectPlayerId(clientId);
       directNetworkManager.DisconnectClient(clientId);
+    }
+  }
+  void ReassignDirectPlayerOwnership(int previousPlayerId, int currentPlayerId)
+  {
+    if (previousPlayerId <= 1 || currentPlayerId <= 1 || previousPlayerId == currentPlayerId || voosEngine == null)
+      return;
+    foreach (VoosActor actor in voosEngine.EnumerateActors())
+    {
+      if (actor.reliablePhotonView != null && actor.reliablePhotonView.ownerId == previousPlayerId)
+        actor.reliablePhotonView.ApplyOwnership(currentPlayerId);
+    }
+  }
+
+  void SendDirectMigrationTicket(ulong clientId)
+  {
+    if (directNetworkManager == null || !directNetworkManager.IsServer
+      || !DirectSessionDirectory.TryGetMigrationTicket(out DirectSessionDirectory.MigrationTicket ticket)) return;
+    byte[] sessionIdBytes = Encoding.UTF8.GetBytes(ticket.SessionId);
+    byte[] tokenBytes = Encoding.UTF8.GetBytes(ticket.Token);
+    byte[] nameBytes = Encoding.UTF8.GetBytes(ticket.Name ?? string.Empty);
+    if (sessionIdBytes.Length == 0 || sessionIdBytes.Length > 128
+      || tokenBytes.Length == 0 || tokenBytes.Length > 128 || nameBytes.Length > 128)
+      return;
+    using (FastBufferWriter writer = new FastBufferWriter(
+      sessionIdBytes.Length + tokenBytes.Length + nameBytes.Length + 5 * sizeof(int), Allocator.Temp))
+    {
+      writer.WriteValueSafe(sessionIdBytes.Length);
+      writer.WriteBytesSafe(sessionIdBytes);
+      writer.WriteValueSafe(tokenBytes.Length);
+      writer.WriteBytesSafe(tokenBytes);
+      writer.WriteValueSafe(nameBytes.Length);
+      writer.WriteBytesSafe(nameBytes);
+      writer.WriteValueSafe(ticket.Generation);
+      writer.WriteValueSafe(ticket.IsPublic ? 1 : 0);
+      directNetworkManager.CustomMessagingManager.SendNamedMessage(
+        DirectSessionMigrationTicketMessageName, clientId, writer, NetworkDelivery.ReliableSequenced);
+    }
+  }
+
+  void OnDirectSessionMigrationTicket(ulong senderClientId, FastBufferReader reader)
+  {
+    if (directNetworkManager == null || directNetworkManager.IsServer
+      || senderClientId != NetworkManager.ServerClientId) return;
+    try
+    {
+      reader.ReadValueSafe(out int sessionIdLength);
+      if (sessionIdLength < 1 || sessionIdLength > 128)
+        throw new InvalidDataException("Invalid migration session ID length.");
+      byte[] sessionIdBytes = new byte[sessionIdLength];
+      reader.ReadBytesSafe(ref sessionIdBytes, sessionIdLength);
+      reader.ReadValueSafe(out int tokenLength);
+      if (tokenLength < 1 || tokenLength > 128)
+        throw new InvalidDataException("Invalid migration token length.");
+      byte[] tokenBytes = new byte[tokenLength];
+      reader.ReadBytesSafe(ref tokenBytes, tokenLength);
+      reader.ReadValueSafe(out int nameLength);
+      if (nameLength < 0 || nameLength > 128)
+        throw new InvalidDataException("Invalid migration session name length.");
+      byte[] nameBytes = new byte[nameLength];
+      reader.ReadBytesSafe(ref nameBytes, nameLength);
+      reader.ReadValueSafe(out int generation);
+      reader.ReadValueSafe(out int publicValue);
+      if (generation < 1 || (publicValue != 0 && publicValue != 1))
+        throw new InvalidDataException("Invalid migration ticket metadata.");
+      DirectSessionDirectory.SetMigrationTicket(
+        Encoding.UTF8.GetString(sessionIdBytes),
+        Encoding.UTF8.GetString(tokenBytes),
+        generation,
+        publicValue == 1,
+        Encoding.UTF8.GetString(nameBytes));
+      directHasMigrationTicket = true;
+    }
+    catch (Exception e)
+    {
+      Util.LogError($"Invalid direct-session migration ticket: {e}");
     }
   }
 
@@ -1217,6 +1381,7 @@ public class NetworkingController : Photon.PunBehaviour
     if (directNetworkManager == null) return;
     if (directNetworkManager.IsServer && clientId != directNetworkManager.LocalClientId)
     {
+      directClientsAwaitingReconnect.Remove(clientId);
       int playerId = PhotonNetwork.GetDirectPlayerId(clientId);
       if (playerId <= 1) return;
       directInitResponseClients.Remove(clientId);
@@ -1241,6 +1406,12 @@ public class NetworkingController : Photon.PunBehaviour
     {
       bool wasKicked = wasDirectlyKicked;
       directHostInitAssembler.Reset();
+      directDisconnectedLocalPlayerId = PhotonNetwork.player == null ? 0 : PhotonNetwork.player.ID;
+      directMigrationCandidate = false;
+      directHasMigrationTicket = DirectSessionDirectory.TryGetMigrationTicket(out directMigrationTicket);
+      if (directHasMigrationTicket && !wasKicked)
+        directMigrationCandidate = directDisconnectedLocalPlayerId > 1
+          && PhotonNetwork.GetLowestDirectPlayerId() == directDisconnectedLocalPlayerId;
       PhotonNetwork.MarkDirectSessionDisconnected();
       string disconnectError = receivedPlayerInitPayload
         ? "The host disconnected."
@@ -1284,22 +1455,137 @@ public class NetworkingController : Photon.PunBehaviour
           return;
         }
 
-        string userMessage = error
-          + "\nYour local copy was autosaved. Recover it to continue offline.";
-        Util.LogError(userMessage);
-        popups.ShowTwoButtons(
-          userMessage,
-          "Recover Autosave",
-          () => scenes.RestartAndLoadLibraryBundle(autosave, new GameBuilderApplication.PlayOptions()),
-          "Go to Main Menu",
-          () => scenes.LoadSplashScreen(),
-          800f);
+        if (directHasMigrationTicket)
+        {
+          directMigrationAbandoned = false;
+          if (directMigrationCandidate)
+          {
+            directMigrationReconnectPending = true;
+            scenes.RestartAndLoadLibraryBundle(autosave, hostOptions);
+            return;
+          }
+
+          string migrationMessage = error
+            + "\nYour local copy is saved. Waiting for another player to restore the session.";
+          popups.ShowTwoButtons(
+            migrationMessage,
+            "Recover Offline",
+            () => RecoverDirectAutosave(autosave),
+            "Keep Waiting",
+            () => { },
+            800f);
+          DirectSessionDirectory.BeginMigrationWatch(
+            directMigrationTicket,
+            migrated =>
+            {
+              if (directMigrationAbandoned) return;
+              directMigrationReconnectPending = true;
+              scenes.RestartAndLoadLibraryBundle(autosave, clientOptions);
+            },
+            () =>
+            {
+              if (!directMigrationAbandoned)
+                ShowDirectOfflineRecovery(error, autosave);
+            });
+          return;
+        }
+
+        ShowDirectOfflineRecovery(error, autosave);
       });
     }
     catch (Exception e)
     {
       OnFatalError(error + "\nCould not save the local world: " + e.Message);
     }
+  }
+
+  GameBuilderApplication.GameOptions CreateDirectMigrationOptions(
+    DirectSessionDirectory.MigrationTicket ticket,
+    DirectSessionDirectory.SessionInfo migrated,
+    bool startHost)
+  {
+    GameBuilderApplication.GameOptions current = GameBuilderApplication.CurrentGameOptions;
+    string migrationName = migrated != null && !string.IsNullOrWhiteSpace(migrated.Name)
+      ? migrated.Name
+      : !string.IsNullOrWhiteSpace(ticket.Name) ? ticket.Name : current.displayName;
+    GameBuilderApplication.GameOptions options = new GameBuilderApplication.GameOptions
+    {
+      displayName = migrationName,
+      directHostMigrationName = migrationName,
+      playOptions = new GameBuilderApplication.PlayOptions
+      {
+        isMultiplayer = true,
+        startAsPublic = ticket.IsPublic,
+        startInBuildMode = current.playOptions.startInBuildMode
+      },
+      directHostMigrationSessionId = ticket.SessionId,
+      directHostMigrationToken = ticket.Token,
+      directHostMigrationGeneration = migrated != null ? migrated.Generation : ticket.Generation,
+      directHostMigrationPreviousPlayerId = directDisconnectedLocalPlayerId
+    };
+    if (startHost)
+    {
+      options.directHostUsesIpv6 = current.directHostUsesIpv6;
+      options.joinPort = 0;
+      options.directHostMigrationReservedPlayerIds = BuildDirectMigrationReservedPlayerIds(
+        directDisconnectedLocalPlayerId);
+    }
+    else
+    {
+      options.joinAddress = migrated.Address;
+      options.joinPort = (ushort)migrated.Port;
+      options.directHostUsesIpv6 = migrated.AddressFamily == 6;
+      options.trustedHostCertificatePem = migrated.ServerCertificatePem;
+    }
+    return options;
+  }
+
+  static string BuildDirectMigrationReservedPlayerIds(int localPlayerId)
+  {
+    HashSet<int> uniqueIds = new HashSet<int>();
+    if (PhotonNetwork.playerList != null)
+      foreach (PhotonPlayer peer in PhotonNetwork.playerList)
+        if (peer != null && peer.ID > 1 && peer.ID != localPlayerId)
+          uniqueIds.Add(peer.ID);
+    if (uniqueIds.Count == 0) return string.Empty;
+    List<int> playerIds = new List<int>(uniqueIds);
+    playerIds.Sort();
+    StringBuilder result = new StringBuilder(playerIds.Count * 3);
+    for (int i = 0; i < playerIds.Count; i++)
+    {
+      if (i > 0) result.Append(',');
+      result.Append(playerIds[i]);
+    }
+    return result.ToString();
+  }
+
+  void ShowDirectOfflineRecovery(string error, GameBundleLibrary.Entry autosave)
+  {
+    string userMessage = error + "\nYour local copy was autosaved. Recover it to continue offline.";
+    Util.LogError(userMessage);
+    popups.ShowTwoButtons(
+      userMessage,
+      "Recover Autosave",
+      () => RecoverDirectAutosave(autosave),
+      "Go to Main Menu",
+      () =>
+      {
+        directMigrationAbandoned = true;
+        directMigrationReconnectPending = false;
+        DirectSessionDirectory.ClearMigrationTicket();
+        PhotonNetwork.ClearDirectSession();
+        scenes.LoadSplashScreen();
+      },
+      800f);
+  }
+
+  void RecoverDirectAutosave(GameBundleLibrary.Entry autosave)
+  {
+    directMigrationAbandoned = true;
+    directMigrationReconnectPending = false;
+    DirectSessionDirectory.ClearMigrationTicket();
+    PhotonNetwork.ClearDirectSession();
+    scenes.RestartAndLoadLibraryBundle(autosave, new GameBuilderApplication.PlayOptions());
   }
 
 
@@ -1368,6 +1654,9 @@ public class NetworkingController : Photon.PunBehaviour
           return;
         }
         InitNewPlayerTerrainRPC(terrainBytes);
+        int previousPlayerId = GameBuilderApplication.CurrentGameOptions.directHostMigrationPreviousPlayerId;
+        if (previousPlayerId > 1 && previousPlayerId != PhotonNetwork.player.ID)
+          ReassignDirectPlayerOwnership(previousPlayerId, PhotonNetwork.player.ID);
       }
 
       StartCoroutine(DirectClientInitRoutine());
@@ -1615,13 +1904,19 @@ public class NetworkingController : Photon.PunBehaviour
         return;
     }
 #else
-    bool preserveDirectSession = state == State.SwitchingScene
+    DirectSessionDirectory.MigrationTicket migrationTicket;
+    bool preservePlayerIdentity = directMigrationReconnectPending
+      && DirectSessionDirectory.TryGetMigrationTicket(out migrationTicket)
+      && GameBuilderApplication.CurrentGameOptions.playOptions.isMultiplayer;
+    bool keepDirectConnection = state == State.SwitchingScene
       && directNetworkManager != null
       && directNetworkManager.IsListening;
+    preservePlayerIdentity |= keepDirectConnection;
     if (directNetworkManager != null)
     {
       directNetworkManager.OnClientConnectedCallback -= OnDirectClientConnected;
       directNetworkManager.OnClientDisconnectCallback -= OnDirectClientDisconnected;
+      directClientsAwaitingReconnect.Clear();
       if (registeredDirectInitHandler && directNetworkManager.CustomMessagingManager != null)
       {
         directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectHostInitMessageName);
@@ -1630,6 +1925,8 @@ public class NetworkingController : Photon.PunBehaviour
       if (registeredDirectPlayerHandlers && directNetworkManager.CustomMessagingManager != null)
       {
         directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerAssignmentMessageName);
+        directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerReconnectMessageName);
+        directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectSessionMigrationTicketMessageName);
         directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerReadyMessageName);
         directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerSpawnMessageName);
         directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerDespawnMessageName);
@@ -1637,12 +1934,12 @@ public class NetworkingController : Photon.PunBehaviour
         directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerInitRequestMessageName);
         registeredDirectPlayerHandlers = false;
       }
-      if (directNetworkManager.IsListening && !preserveDirectSession)
+      if (directNetworkManager.IsListening && !keepDirectConnection)
       {
         directNetworkManager.Shutdown();
       }
     }
-    if (!preserveDirectSession) PhotonNetwork.ClearDirectSession();
+    if (!preservePlayerIdentity) PhotonNetwork.ClearDirectSession();
 #endif
   }
 
@@ -1674,6 +1971,21 @@ public class NetworkingController : Photon.PunBehaviour
       SaveLoadController.SaveGame save = SaveLoadController.ReadSaveGame(GameBuilderSceneController.GetMinimalScenePath(mode == Mode.Online));
       saveLoad.Load(save);
     }
+#if !USE_PUN
+    GameBuilderApplication.GameOptions migrationOptions = GameBuilderApplication.CurrentGameOptions;
+    if (migrationOptions.playOptions.isMultiplayer
+      && string.IsNullOrEmpty(migrationOptions.joinAddress)
+      && migrationOptions.directHostMigrationPreviousPlayerId > 1
+      && voosEngine != null)
+    {
+      int previousHostPlayerId = migrationOptions.directHostMigrationPreviousPlayerId;
+      foreach (VoosActor actor in voosEngine.EnumerateActors())
+      {
+        if (actor.reliablePhotonView != null && actor.reliablePhotonView.ownerId == previousHostPlayerId)
+          actor.reliablePhotonView.ApplyOwnership(1);
+      }
+    }
+#endif
 
     using (Util.Profile("SpawnLocalobjects"))
       SpawnLocalObjects();
@@ -2043,10 +2355,18 @@ public class NetworkingController : Photon.PunBehaviour
     GameBuilderApplication.GameOptions currentOptions = GameBuilderApplication.CurrentGameOptions;
     GameBuilderApplication.GameOptions options = new GameBuilderApplication.GameOptions
     {
+      displayName = currentOptions.displayName,
       joinAddress = currentOptions.joinAddress,
       joinPort = currentOptions.joinPort,
       directHostUsesIpv6 = currentOptions.directHostUsesIpv6,
       trustedHostCertificatePem = currentOptions.trustedHostCertificatePem,
+      directHostMigrationSessionId = currentOptions.directHostMigrationSessionId,
+      directHostMigrationToken = currentOptions.directHostMigrationToken,
+      directHostMigrationName = currentOptions.directHostMigrationName,
+      directHostMigrationGeneration = currentOptions.directHostMigrationGeneration,
+      directHostMigrationReservedPlayerIds = currentOptions.directHostMigrationReservedPlayerIds,
+      directHostMigrationPreviousPlayerId = currentOptions.directHostMigrationPreviousPlayerId,
+      playOptions = currentOptions.playOptions
     };
     state = State.SwitchingScene;
     PhotonNetwork.ResetDirectPeers();
@@ -2109,6 +2429,12 @@ public class NetworkingController : Photon.PunBehaviour
       onlineSeconds += Time.unscaledDeltaTime;
     }
 
+#if !USE_PUN
+    PhotonNetwork.ExpireDirectMigrationReservations(Time.realtimeSinceStartup);
+    if (directNetworkManager != null && directNetworkManager.IsListening && directNetworkManager.IsServer)
+      BroadcastDirectMigrationTicketIfChanged();
+#endif
+
     // TEMP TEMP
     if (Input.GetKey(KeyCode.LeftControl) && Input.GetKeyDown(KeyCode.F2))
     {
@@ -2116,6 +2442,26 @@ public class NetworkingController : Photon.PunBehaviour
       Util.Log($"toggled room visible to {PhotonNetwork.room.IsVisible}");
     }
   }
+
+#if !USE_PUN
+  void BroadcastDirectMigrationTicketIfChanged()
+  {
+    if (!DirectSessionDirectory.TryGetMigrationTicket(out DirectSessionDirectory.MigrationTicket ticket)
+      || (ticket.SessionId == lastBroadcastMigrationSessionId
+        && ticket.Token == lastBroadcastMigrationToken
+        && ticket.Name == lastBroadcastMigrationName
+        && ticket.Generation == lastBroadcastMigrationGeneration
+        && ticket.IsPublic == lastBroadcastMigrationIsPublic)) return;
+    foreach (ulong clientId in directNetworkManager.ConnectedClientsIds)
+      if (clientId != directNetworkManager.LocalClientId)
+        SendDirectMigrationTicket(clientId);
+    lastBroadcastMigrationSessionId = ticket.SessionId;
+    lastBroadcastMigrationToken = ticket.Token;
+    lastBroadcastMigrationName = ticket.Name;
+    lastBroadcastMigrationGeneration = ticket.Generation;
+    lastBroadcastMigrationIsPublic = ticket.IsPublic;
+  }
+#endif
 
   public int GetNumOtherPlayers()
   {

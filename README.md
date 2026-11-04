@@ -203,13 +203,15 @@ globally routable IPv6 address is needed outside the local network; a ULA works
 only where its prefix is routed. If no usable IPv6 address is found, the panel
 falls back to `::1`, which is only reachable from the host itself.
 
-- A self-hosted public session directory can provide a global room list. Only
-  hosts started with **Public Multiplayer** register their name and player
-  count; private sessions remain available through local discovery or a shared
-  address but do not appear in the public list. The directory learns a public
-  IPv4 or IPv6 address from the request source and rejects a source family that
-  does not match the advertised game transport. This is discovery only, not a
-  relay or NAT traversal service.
+- A self-hosted session directory lists only **Public Multiplayer** sessions.
+  With the directory configured, both public and private direct-host sessions
+  register their endpoint and certificate so existing peers can migrate after
+  a host loss. Private records stay out of public listings but their endpoint,
+  name, and certificate remain in the directory's memory for up to five minutes.
+  Without the directory, LAN discovery and manual invites still work, but
+  automatic host migration is unavailable. The directory learns the host's
+  IPv4/IPv6 address from the request source and is discovery/coordination only,
+  not a relay or NAT traversal service.
 
 #### Self-hosted public session directory
 
@@ -273,15 +275,16 @@ browser, or pass the matching `--session-directory=` argument. Change
 `DIRECTORY_SUBNET`, `DIRECTORY_PROXY_IP`, and `DIRECTORY_SERVICE_IP` in `.env`
 if the default Docker subnet conflicts with another network.
 
-The service stores active sessions in memory, refreshes host data every 15
-seconds, and expires entries after 60 seconds without a heartbeat. The free
+The service stores session records in memory and refreshes host data every 15
+seconds. Public listings hide entries after 60 seconds without a heartbeat;
+records remain migration-accessible for five minutes before purge. The free
 software does not include hosting, a public hostname, or a reliable always-on
 Internet endpoint. The Compose setup automates TLS certificate provisioning,
 but requires a reachable domain and open ports. The directory limits each
 source IP to eight new registrations per five minutes and supports up to 1,000
-simultaneous sessions. The directory does not authenticate players. Direct UDP
-game traffic is encrypted with Unity Transport's built-in DTLS and pinned server
-certificates; the directory itself still requires HTTPS.
+simultaneous sessions. It does not authenticate players. Direct UDP game
+traffic is encrypted with Unity Transport's built-in DTLS and pinned server
+certificates; directory requests require HTTPS.
 
 The host sends an initial project snapshot (maximum 400 KiB), split into 48 KiB
 reliable chunks to stay below NGO's 64,000-byte per-message limit. The direct
@@ -295,25 +298,30 @@ packets are split into 48 KiB chunks, with a 1 MiB packet cap. Internet
 reachability and router-specific forwarding remain untested; offline smoke
 verifies save/load round-tripping.
 
-If the host disconnects after a client loads the initial snapshot, the client
-autosaves its local copy and can recover it from the Game Library. This
-preserves that client's work only; it does not migrate the host or restore the
-multiplayer session.
+If a direct-host session loses its host after a client loads the initial
+snapshot, every client autosaves its local copy. When the self-hosted directory
+is configured and reachable, the lowest connected player ID deterministically
+starts a replacement host. It can claim the session after the old host heartbeat
+has been stale for 30 seconds; remaining clients poll the authenticated private
+or public session record and rejoin the new endpoint using its new certificate
+pin. The new host serves its local autosave, so changes not present in that
+player's copy cannot be recovered. If migration is unavailable or times out,
+the saved local copy remains recoverable offline.
 
-Direct-host mode implements the core player-hosted flow, not every PUN/cloud
-feature. Host migration is unavailable. The transport accepts at most 16
-players (host plus 15 clients); the host assigns reusable player IDs so
-disconnect/rejoin cycles do not exhaust player slots. IPv4 and IPv6-only hosting
-are available as separate choices. IPv6 hosts are discovered by IPv6 multicast
-on the same LAN and may appear in the public session directory when configured
-and reachable over IPv6. Each direct host keeps an ephemeral 2048-bit RSA
-private key in memory and advertises only its public certificate. LAN discovery
-and the public directory carry that certificate; manual sharing uses a complete
+Direct-host mode implements the core player-hosted flow without PUN or paid
+Unity networking plugins; it does not include every PUN/cloud feature. The
+transport accepts at most 16 players (host plus 15 clients); the host assigns
+reusable player IDs so disconnect/rejoin cycles do not exhaust slots. IPv4 and
+IPv6-only hosting are separate choices. IPv6 hosts use IPv6 multicast for LAN
+discovery and may appear in the public directory when configured and reachable
+over IPv6. Each direct host keeps an ephemeral 2048-bit RSA private key in
+memory and advertises only its public certificate. LAN discovery and the public
+directory carry that certificate; manual sharing uses a complete
 `GBDIRECT1|address|port|certificate` invite and does not require the directory.
-Clients reject raw `IP:port` joins instead of falling back to plaintext. The pin
-authenticates the host and encrypts transport, but does not authenticate players:
-anyone with a public listing or invite may attempt to join. Player authentication
-remains unavailable.
+Clients reject raw `IP:port` joins instead of falling back to plaintext. The
+pin authenticates the host and encrypts transport, but does not authenticate
+players: anyone with a public listing or invite may attempt to join. Player
+authentication and Internet/router-specific reachability remain unverified.
 
 
 * [Crosstales File Browser](https://assetstore.unity.com/packages/tools/utilities/file-browser-standalone-98716) - Enables the system file browser UI for local disk import/export features

@@ -122,6 +122,8 @@ public static class PhotonNetwork
   static readonly Dictionary<ulong, int> directPlayerIdsByClient = new Dictionary<ulong, int>();
   static readonly Dictionary<int, ulong> directClientIdsByPlayer = new Dictionary<int, ulong>();
   static readonly HashSet<int> directPlayersWithIdentity = new HashSet<int>();
+  static readonly HashSet<int> directMigrationReservedPlayerIds = new HashSet<int>();
+  static float directMigrationReservationExpiry;
 
   public static PhotonPlayer masterClient { get { return FindPlayer(1); } }
 
@@ -284,13 +286,27 @@ public static class PhotonNetwork
 
   internal static bool TryAssignDirectPlayerId(ulong clientId, out int playerId)
   {
+    return TryAssignDirectPlayerId(clientId, 0, out playerId);
+  }
+
+  internal static bool TryAssignDirectPlayerId(ulong clientId, int preferredPlayerId, out int playerId)
+  {
+    ExpireDirectMigrationReservations(UnityEngine.Time.realtimeSinceStartup);
     if (directPlayerIdsByClient.TryGetValue(clientId, out playerId))
       return playerId > 1;
+    if (preferredPlayerId > 1 && preferredPlayerId <= MaximumDirectPlayers
+      && MapDirectPlayerId(preferredPlayerId, clientId))
+    {
+      directMigrationReservedPlayerIds.Remove(preferredPlayerId);
+      directPeerNames[preferredPlayerId] = GetDirectPeerName(preferredPlayerId, "Player" + preferredPlayerId);
+      playerId = preferredPlayerId;
+      return true;
+    }
     for (int candidate = 2; candidate <= MaximumDirectPlayers; candidate++)
     {
-      if (directClientIdsByPlayer.ContainsKey(candidate)) continue;
+      if (directClientIdsByPlayer.ContainsKey(candidate) || directMigrationReservedPlayerIds.Contains(candidate)) continue;
       if (!MapDirectPlayerId(candidate, clientId)) continue;
-      directPeerNames[candidate] = "Player" + candidate;
+      directPeerNames[candidate] = GetDirectPeerName(candidate, "Player" + candidate);
       playerId = candidate;
       return true;
     }
@@ -298,12 +314,48 @@ public static class PhotonNetwork
     return false;
   }
 
+  internal static void SetDirectMigrationReservedPlayerIds(string playerIds)
+  {
+    directMigrationReservedPlayerIds.Clear();
+    if (string.IsNullOrEmpty(playerIds)) return;
+    string[] values = playerIds.Split(',');
+    foreach (string value in values)
+      if (int.TryParse(value, out int playerId) && playerId > 1 && playerId <= MaximumDirectPlayers)
+        directMigrationReservedPlayerIds.Add(playerId);
+    directMigrationReservationExpiry = UnityEngine.Time.realtimeSinceStartup + 120f;
+  }
+
+  internal static void ExpireDirectMigrationReservations(float now)
+  {
+    if (directMigrationReservedPlayerIds.Count == 0 || now < directMigrationReservationExpiry) return;
+    directMigrationReservedPlayerIds.Clear();
+    directMigrationReservationExpiry = 0f;
+  }
+
+  internal static int GetLowestDirectPlayerId()
+  {
+    int lowest = 0;
+    foreach (PhotonPlayer candidate in playerList)
+    {
+      if (candidate == null || candidate.ID <= 1) continue;
+      if (lowest == 0 || candidate.ID < lowest) lowest = candidate.ID;
+    }
+    return lowest;
+  }
+
   internal static bool AssignDirectLocalPlayerId(NetworkManager manager, int playerId)
   {
     if (manager == null || !manager.IsListening || manager.IsServer
-      || playerId <= 1 || playerId > MaximumDirectPlayers
-      || (directLocalId > 1 && directLocalId != playerId)
-      || !MapDirectPlayerId(playerId, manager.LocalClientId)) return false;
+      || playerId <= 1 || playerId > MaximumDirectPlayers) return false;
+    if (directPlayerIdsByClient.TryGetValue(manager.LocalClientId, out int previousPlayerId)
+      && previousPlayerId != playerId)
+    {
+      directPlayerIdsByClient.Remove(manager.LocalClientId);
+      directClientIdsByPlayer.Remove(previousPlayerId);
+      directPeerNames.Remove(previousPlayerId);
+      directPlayersWithIdentity.Remove(previousPlayerId);
+    }
+    if (!MapDirectPlayerId(playerId, manager.LocalClientId)) return false;
     if (directLocalId != playerId)
     {
       allocatedViewCount = 0;
@@ -346,6 +398,8 @@ public static class PhotonNetwork
     directPlayerIdsByClient.Clear();
     directClientIdsByPlayer.Clear();
     directPlayersWithIdentity.Clear();
+    directMigrationReservedPlayerIds.Clear();
+    directMigrationReservationExpiry = 0f;
   }
   static string GetDirectPeerName(int playerId, string fallback)
   {
@@ -373,12 +427,26 @@ public static class PhotonNetwork
   internal static void ResetDirectPeers()
   {
     NetworkManager manager = NetworkManager.Singleton;
-    int localId = 0;
+    int localId = directLocalId;
     string localName = null;
-    bool preserveLocalAssignment = manager != null && manager.IsListening && !manager.IsServer
-      && directPlayerIdsByClient.TryGetValue(manager.LocalClientId, out localId);
+    bool preserveLocalAssignment = directLocalId > 1;
+    if (manager != null && manager.IsListening && !manager.IsServer
+      && directPlayerIdsByClient.TryGetValue(manager.LocalClientId, out int mappedLocalId))
+    {
+      localId = mappedLocalId;
+      preserveLocalAssignment = localId > 1;
+    }
+    if (!preserveLocalAssignment && player != null && player.ID > 1)
+    {
+      localId = player.ID;
+      preserveLocalAssignment = true;
+    }
     if (preserveLocalAssignment)
+    {
       directPeerNames.TryGetValue(localId, out localName);
+      if (string.IsNullOrWhiteSpace(localName) && player != null && player.ID == localId)
+        localName = player.NickName;
+    }
 
     directPeers.Clear();
     directPeerNames.Clear();
@@ -386,12 +454,13 @@ public static class PhotonNetwork
     directClientIdsByPlayer.Clear();
     directPlayersWithIdentity.Clear();
     directLocalId = preserveLocalAssignment ? localId : 0;
-    if (preserveLocalAssignment)
+    if (preserveLocalAssignment && manager != null && manager.IsListening && !manager.IsServer)
     {
       MapDirectPlayerId(localId, manager.LocalClientId);
       MapDirectPlayerId(1, NetworkManager.ServerClientId);
       directPeerNames[localId] = string.IsNullOrWhiteSpace(localName) ? "Player" + localId : localName;
       directPlayersWithIdentity.Add(localId);
+      player.ID = localId;
     }
     connected = false;
     inRoom = false;
