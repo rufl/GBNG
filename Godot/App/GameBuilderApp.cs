@@ -20,6 +20,7 @@ public partial class GameBuilderApp : Node3D
     private string? _networkHostProjectPath;
     private LegacyBehaviorRuntime? _behaviorRuntime;
     private LegacyBehaviorUi _behaviorUi = null!;
+    private LegacyActionPrompt _actionPrompt = null!;
     private Node3D _world = null!;
     private Camera3D _camera = null!;
     private ItemList _actorList = null!;
@@ -204,6 +205,12 @@ public partial class GameBuilderApp : Node3D
             RunControlsSmoke();
         if (commandLineArgs.Contains("--smoke-audio", StringComparer.Ordinal))
             RunAudioSmoke();
+        if (commandLineArgs.Contains("--smoke-action-prompts", StringComparer.Ordinal))
+            RunActionPromptSmoke();
+        if (commandLineArgs.Contains("--smoke-action-prompts-lan-host", StringComparer.Ordinal))
+            RunActionPromptLanHostSmoke();
+        if (commandLineArgs.Contains("--smoke-action-prompts-lan-client", StringComparer.Ordinal))
+            RunActionPromptLanClientSmoke();
         if (commandLineArgs.Contains("--smoke-world-settings", StringComparer.Ordinal))
             RunWorldSettingsSmoke();
         if (commandLineArgs.Contains("--smoke-world-map-size", StringComparer.Ordinal))
@@ -546,6 +553,9 @@ public partial class GameBuilderApp : Node3D
         _behaviorUi.SetMessageHandler((actorName, messageName, argumentJson) =>
             _behaviorRuntime?.SendUiMessage(actorName, messageName, argumentJson));
         root.AddChild(_behaviorUi);
+        _actionPrompt = new LegacyActionPrompt();
+        _lanSession.PlayerToolTipsReceived += ApplyNetworkPlayerToolTips;
+        root.AddChild(_actionPrompt);
         var marqueeStyle = new StyleBoxFlat
         {
             BgColor = new Color(0.18f, 0.58f, 1f, 0.14f),
@@ -1209,7 +1219,8 @@ public partial class GameBuilderApp : Node3D
     }
 
     private LegacyBehaviorRuntime CreateBehaviorRuntime(LegacySaveDocument document)
-        => new(
+    {
+        var runtime = new LegacyBehaviorRuntime(
             _actors,
             document,
             _catalog,
@@ -1221,6 +1232,15 @@ public partial class GameBuilderApp : Node3D
             SetTemporaryCameraOffset,
             _lanSession,
             ReportBehaviorRuntimeException);
+        runtime.PlayerToolTipsUpdated += playerToolTips =>
+        {
+            string playerName = GetPlayerActor()?.LegacyName ?? string.Empty;
+            _actionPrompt.SetPrompts(playerToolTips, playerName);
+            if (_lanSession.IsHost)
+                _lanSession.BroadcastPlayerToolTips(playerToolTips.ToJsonString());
+        };
+        return runtime;
+    }
 
     private void ReportBehaviorRuntimeException(int lineNumber, string message)
     {
@@ -2762,6 +2782,9 @@ public partial class GameBuilderApp : Node3D
             CancelTransformParentSelection(showStatus: false);
         }
         _playMode = enabled;
+        _actionPrompt.SetPlayMode(enabled);
+        if (!enabled && _lanSession.IsHost)
+            _lanSession.BroadcastPlayerToolTips("[]");
         _spawnParentButton.Disabled = enabled || _selectedActors.Count != 1;
         _transformParentButton.Disabled = enabled || _selectedActors.Count != 1;
         UpdateCameraFollowButton();
@@ -2876,6 +2899,14 @@ public partial class GameBuilderApp : Node3D
                 actor.SetLoopingAnimation(snapshot.Animation);
             actor.SaveTransform();
         }
+    }
+
+    private void ApplyNetworkPlayerToolTips(JsonArray playerToolTips)
+    {
+        if (!_lanSession.IsClient)
+            return;
+        string playerName = GetPlayerActor()?.LegacyName ?? string.Empty;
+        _actionPrompt.SetPrompts(playerToolTips, playerName);
     }
     private void OpenReceivedNetworkProject(string path)
     {

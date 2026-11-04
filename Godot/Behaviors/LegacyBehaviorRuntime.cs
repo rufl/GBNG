@@ -50,6 +50,7 @@ public sealed partial class LegacyBehaviorRuntime : IDisposable
     private readonly List<string> _keysJustPressedBuffer = new();
     private readonly List<string> _keysJustReleasedBuffer = new();
     private double _gameTime;
+    private JsonArray _lastPlayerToolTips = new();
     private Vector2 _lookAxes;
     private Vector2 _mousePosition;
     private float _mouseWheelRaw;
@@ -105,6 +106,7 @@ public sealed partial class LegacyBehaviorRuntime : IDisposable
         }
 
     }
+    public event Action<JsonArray>? PlayerToolTipsUpdated;
     public void Tick(double deltaSeconds)
     {
         if (deltaSeconds <= 0d)
@@ -892,6 +894,11 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
         string responseJson = GetScriptString("__gbResponseJson");
         if (JsonNode.Parse(responseJson) is JsonObject response)
         {
+            if (response["playerToolTips"] is JsonArray playerToolTips && !JsonNode.DeepEquals(playerToolTips, _lastPlayerToolTips))
+            {
+                _lastPlayerToolTips = (JsonArray)playerToolTips.DeepClone();
+                PlayerToolTipsUpdated?.Invoke(playerToolTips);
+            }
             if (response["velocityChanges"] is JsonArray velocityChanges)
             {
                 foreach (JsonNode? item in velocityChanges)
