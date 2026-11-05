@@ -151,11 +151,12 @@ authored color instead of aborting scene load.
 
 ## Behavior code editor
 
-The full Monaco behavior editor is supported in Windows x64, Linux x64 and
-macOS desktop builds through UnityWebBrowser's CEF engine. UnityWebBrowser is
-MIT-licensed; the CEF engine and native packages are free and do not require
-WebView2, Direct3D 11/12 or a paid Unity plugin. CEF runs in a separate process,
-and its native runtime is automatically included in desktop player builds.
+Unity packages the Monaco assets and free UnityWebBrowser CEF engine in Windows
+x64, Linux x64, macOS x64 and macOS ARM64 standalone builds. Cross-builds for
+Linux x64 and both macOS architectures succeed; this verifies packaging, not
+interactive runtime. The Monaco/CEF player path has been runtime-smoked on
+Windows x64 only. CEF does not require WebView2, Direct3D 11/12 or a paid Unity
+plugin.
 
 It provides syntax highlighting, completions, behavior-system typings and
 source navigation, editing, read-only mode, diagnostics, scroll restoration
@@ -165,10 +166,12 @@ code panel's pixel dimensions; Unity scales that texture after layout changes
 instead of resizing the browser process.
 
 The bundled CEF runtime increases desktop build size and requires the Mono
-scripting backend; UnityWebBrowser does not support IL2CPP. Linux support is
-x64 (upstream tested on Ubuntu 22.04). macOS CEF apps are unsigned and must be
-signed/notarized for public distribution; upstream ARM64 support is provided
-but not tested by its maintainers.
+scripting backend; UnityWebBrowser does not support IL2CPP. Linux x64 is not
+yet a full-function player: the repository has no Linux `v8_in_unity` native
+plugin, and the behavior runtime raises `DllNotFoundException` when it loads
+scripts. The checked-in macOS V8 bundle is x86_64-only, so Apple Silicon players
+also cannot execute behavior scripts yet. macOS CEF apps are unsigned and must
+be signed/notarized for public distribution.
 
 UnityWebBrowser and the CEF engine packages are pinned at 2.2.8. Windows
 players contain `LICENSE.UWB.txt`, `LICENSE.CEF.txt` and `README.CEF.txt`
