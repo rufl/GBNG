@@ -90,6 +90,7 @@ public sealed partial class LegacyLanSession : Node
     public event Action<string>? DocumentPatchReceived;
     public event Action<long>? ClientProjectReadyReceived;
     public event Action<JsonArray>? PlayerToolTipsReceived;
+    public event Action<string, Vector3, Vector3, float>? ParticleEffectReceived;
     public event Action<string, bool>? HostProjectCopyEnding;
     public event Action<string>? DocumentPatchRejected;
 
@@ -389,6 +390,20 @@ public sealed partial class LegacyLanSession : Node
         foreach (long peerId in _projectReadyPeers)
             RpcId(peerId, nameof(ReceivePlayerToolTips), json);
     }
+
+    public void BroadcastParticleEffect(string pfxId, Vector3 position, Vector3 rotation, float scale)
+    {
+        if (!IsHost || !IsValidParticleEffectRequest(pfxId, position, rotation, scale))
+            return;
+        foreach (long peerId in _projectReadyPeers)
+            RpcId(peerId, nameof(ReceiveParticleEffect), pfxId, position, rotation, scale);
+    }
+
+    private static bool IsValidParticleEffectRequest(string pfxId, Vector3 position, Vector3 rotation, float scale)
+        => pfxId.Length is > 0 and <= 256
+            && float.IsFinite(position.X) && float.IsFinite(position.Y) && float.IsFinite(position.Z)
+            && float.IsFinite(rotation.X) && float.IsFinite(rotation.Y) && float.IsFinite(rotation.Z)
+            && float.IsFinite(scale);
 
     public void RejectDocumentPatch(long peerId, string message)
     {
@@ -967,6 +982,14 @@ public sealed partial class LegacyLanSession : Node
         _hasCompletedSnapshot = true;
         SnapshotReceived?.Invoke(snapshotJson);
     }
+    [Rpc(MultiplayerApi.RpcMode.Authority, TransferMode = MultiplayerPeer.TransferModeEnum.Unreliable)]
+    private void ReceiveParticleEffect(string pfxId, Vector3 position, Vector3 rotation, float scale)
+    {
+        if (!IsClient || !IsValidParticleEffectRequest(pfxId, position, rotation, scale))
+            return;
+        ParticleEffectReceived?.Invoke(pfxId, position, rotation, scale);
+    }
+
     [Rpc(MultiplayerApi.RpcMode.Authority, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void ReceivePlayerToolTips(string playerToolTipsJson)
     {

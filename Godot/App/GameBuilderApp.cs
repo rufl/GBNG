@@ -160,6 +160,8 @@ public partial class GameBuilderApp : Node3D
         _catalog = LegacyRenderableCatalog.Load();
         _lanSession = new LegacyLanSession { Name = "LanSession" };
         _lanSession.SnapshotReceived += ApplyNetworkSnapshot;
+        _lanSession.ParticleEffectReceived += (pfxId, position, rotation, scale) =>
+            _behaviorRuntime?.SpawnNetworkParticleEffect(pfxId, position, rotation, scale);
         _lanSession.HostPlayModeChanged += enabled =>
         {
             if (_camera is not null && IsInstanceValid(_camera) && _camera.IsInsideTree())
@@ -229,6 +231,10 @@ public partial class GameBuilderApp : Node3D
             RunActionPromptLanHostSmoke();
         if (commandLineArgs.Contains("--smoke-action-prompts-lan-client", StringComparer.Ordinal))
             RunActionPromptLanClientSmoke();
+        if (commandLineArgs.Contains("--smoke-particles-lan-host", StringComparer.Ordinal))
+            RunParticleLanHostSmoke();
+        if (commandLineArgs.Contains("--smoke-particles-lan-client", StringComparer.Ordinal))
+            RunParticleLanClientSmoke();
         if (commandLineArgs.Contains("--smoke-world-settings", StringComparer.Ordinal))
             RunWorldSettingsSmoke();
         if (commandLineArgs.Contains("--smoke-world-map-size", StringComparer.Ordinal))

@@ -552,10 +552,30 @@ public sealed partial class LegacyBehaviorRuntime
 
     private string SpawnParticleEffect(JsonObject args)
     {
-        JsonObject? sojo = FindSojo(LegacySaveDocument.ReadString(args["pfxId"]), "ParticleEffect");
+        string pfxId = LegacySaveDocument.ReadString(args["pfxId"]);
+        Vector3 position = LegacyActorData.ReadVector(args["position"], Vector3.Zero);
+        Vector3 rotation = LegacyActorData.ReadVector(args["rotation"], Vector3.Zero);
+        float scale = LegacySaveDocument.ReadFloat(args["scale"], 1f);
+        if (!SpawnParticleEffectLocal(pfxId, position, rotation, scale))
+            return "false";
+        _lanSession?.BroadcastParticleEffect(pfxId, position, rotation, scale);
+        return "true";
+    }
+
+    public void SpawnNetworkParticleEffect(string pfxId, Vector3 position, Vector3 rotation, float scale)
+    {
+        if (_lanSession?.IsClient == true)
+            SpawnParticleEffectLocal(pfxId, position, rotation, scale);
+    }
+
+    private bool SpawnParticleEffectLocal(string pfxId, Vector3 legacyPosition, Vector3 legacyRotation, float scale)
+    {
+        if (!IsValidParticleEffectRequest(pfxId, legacyPosition, legacyRotation, scale))
+            return false;
+        JsonObject? sojo = FindSojo(pfxId, "ParticleEffect");
         string content = LegacySaveDocument.ReadString(sojo?["content"]);
         if (content.Length == 0 || JsonNode.Parse(content) is not JsonObject effect)
-            return "false";
+            return false;
 
         float lifetime = Math.Max(0.05f, LegacySaveDocument.ReadFloat(effect["duration"], 1f));
         float speed = Math.Max(0f, LegacySaveDocument.ReadFloat(effect["speed"], 1f));
@@ -581,19 +601,22 @@ public sealed partial class LegacyBehaviorRuntime
             ColorRamp = gradient
         };
 
-        Vector3 position = CoordinateSpace.ToGodot(LegacyActorData.ReadVector(args["position"], Vector3.Zero));
-        Vector3 rotation = CoordinateSpace.ToGodot(LegacyActorData.ReadVector(args["rotation"], Vector3.Zero));
-        float scale = LegacySaveDocument.ReadFloat(args["scale"], 1f);
-        particles.Position = position;
-        particles.Rotation = rotation;
+        particles.Position = CoordinateSpace.ToGodot(legacyPosition);
+        particles.Rotation = CoordinateSpace.ToGodot(legacyRotation);
         particles.Scale = Vector3.One * scale;
         _world.AddChild(particles);
         var timer = new Godot.Timer { OneShot = true, WaitTime = lifetime + 0.5f };
         particles.AddChild(timer);
         timer.Timeout += particles.QueueFree;
         timer.Start();
-        return "true";
+        return true;
     }
+
+    private static bool IsValidParticleEffectRequest(string pfxId, Vector3 position, Vector3 rotation, float scale)
+        => pfxId.Length is > 0 and <= 256
+            && float.IsFinite(position.X) && float.IsFinite(position.Y) && float.IsFinite(position.Z)
+            && float.IsFinite(rotation.X) && float.IsFinite(rotation.Y) && float.IsFinite(rotation.Z)
+            && float.IsFinite(scale);
 
     private JsonObject? FindSojo(string id, string contentType)
     {
@@ -613,26 +636,42 @@ public sealed partial class LegacyBehaviorRuntime
     {
         if (colorStops is null || colorStops.Count == 0)
             return null;
-        var gradient = new Gradient();
-        while (gradient.GetPointCount() > 0)
-            gradient.RemovePoint(gradient.GetPointCount() - 1);
+
+        var stops = new List<(float Offset, Color Color)>(colorStops.Count);
         foreach (JsonNode? node in colorStops)
         {
             if (node is not JsonObject stop || stop["value"] is not JsonObject color)
                 continue;
-            gradient.AddPoint(
+            stops.Add((
                 Mathf.Clamp(LegacySaveDocument.ReadFloat(stop["position"], 0f), 0f, 1f),
                 new Color(
                     LegacySaveDocument.ReadFloat(color["r"], 1f),
                     LegacySaveDocument.ReadFloat(color["g"], 1f),
                     LegacySaveDocument.ReadFloat(color["b"], 1f),
-                    LegacySaveDocument.ReadFloat(color["a"], 1f)));
+                    LegacySaveDocument.ReadFloat(color["a"], 1f))));
         }
-        if (gradient.GetPointCount() == 0)
+        stops.Sort(static (left, right) => left.Offset.CompareTo(right.Offset));
+
+        var gradient = new Gradient();
+        if (stops.Count == 0)
         {
-            gradient.AddPoint(0f, Colors.White);
-            gradient.AddPoint(1f, Colors.Transparent);
+            gradient.SetColor(0, Colors.White);
+            gradient.SetColor(1, Colors.Transparent);
+            return gradient;
         }
+        if (stops.Count == 1)
+        {
+            gradient.SetColor(0, stops[0].Color);
+            gradient.SetColor(1, stops[0].Color);
+            return gradient;
+        }
+
+        gradient.SetOffset(0, stops[0].Offset);
+        gradient.SetColor(0, stops[0].Color);
+        gradient.SetOffset(1, stops[1].Offset);
+        gradient.SetColor(1, stops[1].Color);
+        for (int index = 2; index < stops.Count; index++)
+            gradient.AddPoint(stops[index].Offset, stops[index].Color);
         return gradient;
     }
 
