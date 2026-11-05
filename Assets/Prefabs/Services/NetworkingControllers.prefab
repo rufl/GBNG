@@ -91,10 +91,8 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 4888387890655476}
-  - component: {fileID: 114170493024242280}
   - component: {fileID: 114096452961166030}
   - component: {fileID: 114852496474270412}
-  - component: {fileID: 114695643594325360}
   - component: {fileID: 114643629961940260}
   - component: {fileID: 5039238765802774921}
   - component: {fileID: 3835972633071174402}
@@ -121,18 +119,6 @@ Transform:
   m_Father: {fileID: 0}
   m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &114170493024242280
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1744340459011226}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f5a097d1ab84b464395a16e9a7bb35b1, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
 --- !u!114 &114096452961166030
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -174,30 +160,6 @@ MonoBehaviour:
   autosaves: {fileID: 0}
   assetCache: {fileID: 0}
   mode: 1
---- !u!114 &114695643594325360
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1744340459011226}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d06466c03d263624786afa88b52928b6, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  statsWindowOn: 1
-  statsOn: 1
-  healthStatsVisible: 0
-  trafficStatsOn: 1
-  buttonsOn: 1
-  statsRect:
-    serializedVersion: 2
-    x: 0
-    y: 100
-    width: 200
-    height: 50
-  WindowId: 100
 --- !u!114 &114643629961940260
 MonoBehaviour:
   m_ObjectHideFlags: 0
