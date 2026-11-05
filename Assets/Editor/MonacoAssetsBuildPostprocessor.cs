@@ -35,6 +35,19 @@ public static class MonacoAssetsBuildPostprocessor
       Path.Combine(sourceRoot, "js-editor"),
       Path.Combine(destinationRoot, "js-editor"));
 
+    if (target == BuildTarget.StandaloneOSX)
+    {
+      string resourcesDirectory = Path.Combine(playerPath, "Contents", "Resources");
+      CopyPackageFile(
+        "dev.voltstro.unitywebbrowser.engine.cef",
+        "LICENSE.md",
+        Path.Combine(resourcesDirectory, "LICENSE.UWB.txt"));
+      CopyPackageFile(
+        "dev.voltstro.unitywebbrowser.engine.cef",
+        "thirdpartycredits.txt",
+        Path.Combine(resourcesDirectory, "LICENSE.CEF.txt"));
+    }
+
     string es5Root = Path.Combine(sourceRoot, "es5");
     File.Copy(
       Path.Combine(es5Root, "es5.d.ts.js"),
@@ -44,6 +57,19 @@ public static class MonacoAssetsBuildPostprocessor
       Path.Combine(es5Root, "LICENSE"),
       Path.Combine(destinationRoot, "js-editor", "es5.LICENSE"),
       true);
+  }
+
+  private static void CopyPackageFile(string packageName, string fileName, string destination)
+  {
+    string packagePath = "Packages/" + packageName;
+    UnityEditor.PackageManager.PackageInfo packageInfo =
+      UnityEditor.PackageManager.PackageInfo.FindForAssetPath(packagePath);
+    if (packageInfo == null) throw new DirectoryNotFoundException(packagePath);
+
+    string source = Path.Combine(packageInfo.resolvedPath, fileName);
+    if (!File.Exists(source)) throw new FileNotFoundException(source);
+    Directory.CreateDirectory(Path.GetDirectoryName(destination));
+    File.Copy(source, destination, true);
   }
 
   private static void CopyDirectory(string source, string destination)

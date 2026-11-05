@@ -26,15 +26,16 @@ public class OpenLogByHotKey : MonoBehaviour
   {
     if (Input.GetKeyDown(KeyCode.L) && Util.IsControlOrCommandHeld() && Util.IsShiftHeld())
     {
-#if UNITY_EDITOR_WIN
-      string path = Path.Combine(System.Environment.GetEnvironmentVariable("AppData"), "..", "Local", "Unity", "Editor");
-#elif UNITY_STANDALONE_WIN
-      string path = Path.Combine(System.Environment.GetEnvironmentVariable("AppData"), "..", "LocalLow", Application.companyName, Application.productName);
-#elif UNITY_EDITOR_OSX || UNITY_STANDALONE_OSX
-      string path = Path.Combine(System.Environment.GetEnvironmentVariable("HOME"), "Library", "Logs", "Unity");
-#endif
+      string consoleLogPath = Application.consoleLogPath;
+      string path = string.IsNullOrEmpty(consoleLogPath) ? null : Path.GetDirectoryName(consoleLogPath);
+      if (string.IsNullOrEmpty(path))
+      {
+        Debug.LogWarning("Unity's console log path is unavailable on this platform.");
+        return;
+      }
+
       Util.Log($"opening {path}");
-      Application.OpenURL($"file://{path}");
+      Application.OpenURL(new System.Uri(path, System.UriKind.Absolute).AbsoluteUri);
 
     }
   }

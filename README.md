@@ -170,13 +170,14 @@ x64 (upstream tested on Ubuntu 22.04). macOS CEF apps are unsigned and must be
 signed/notarized for public distribution; upstream ARM64 support is provided
 but not tested by its maintainers.
 
-UnityWebBrowser and the CEF engine packages are pinned at 2.2.8. The verified
-Windows player contains `LICENSE.UWB.txt`, `LICENSE.CEF.txt` and `README.CEF.txt`
-beside the CEF binaries in `GameBuilder_Data/UWB`; CEF's README points to
-`about:credits` for Chromium and other bundled third-party notices. UniTask
-2.5.10 is embedded under `Packages/com.cysharp.unitask`, with its upstream MIT
-license at `LICENSE`. Only the optional Editor task-tracker code is omitted
-because it no longer compiles against the pinned Unity release.
+UnityWebBrowser and the CEF engine packages are pinned at 2.2.8. Windows
+players contain `LICENSE.UWB.txt`, `LICENSE.CEF.txt` and `README.CEF.txt`
+beside the CEF binaries in `GameBuilder_Data/UWB`; macOS apps include the
+UWB license and CEF third-party notices in `Contents/Resources`. CEF's README
+points to `about:credits` for Chromium and other bundled third-party notices.
+UniTask 2.5.10 is embedded under `Packages/com.cysharp.unitask`, with its
+upstream MIT license at `LICENSE`. Only the optional Editor task-tracker code
+is omitted because it no longer compiles against the pinned Unity release.
 
 ## Optional integrations available for free
 
