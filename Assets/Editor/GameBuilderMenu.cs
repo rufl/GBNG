@@ -36,8 +36,48 @@ public class GameBuilderMenu
     BuildInternal(Path.GetFullPath("./build_output"), 0);
   }
 
+#if UNITY_EDITOR_WIN
+  static void CleanupStaleTemporaryBuilds()
+  {
+    string projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+    string cleanupScript = Path.Combine(projectRoot, "tools", "maintenance", "cleanup-temp-builds.ps1");
+    using (var cleanupProcess = new SD.Process())
+    {
+      cleanupProcess.StartInfo.FileName = "pwsh.exe";
+      cleanupProcess.StartInfo.Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{cleanupScript}\"";
+      cleanupProcess.StartInfo.UseShellExecute = false;
+      cleanupProcess.StartInfo.CreateNoWindow = true;
+      cleanupProcess.StartInfo.RedirectStandardOutput = true;
+      cleanupProcess.StartInfo.RedirectStandardError = true;
+      if (!cleanupProcess.Start())
+      {
+        throw new System.Exception("Could not start the temporary-build cleanup process.");
+      }
+      string output = cleanupProcess.StandardOutput.ReadToEnd();
+      string error = cleanupProcess.StandardError.ReadToEnd();
+      cleanupProcess.WaitForExit();
+      if (cleanupProcess.ExitCode != 0)
+      {
+        throw new System.Exception($"Temporary-build cleanup failed with exit code {cleanupProcess.ExitCode}: {error}");
+      }
+      if (!string.IsNullOrWhiteSpace(output))
+      {
+        Debug.Log(output.Trim());
+      }
+      if (!string.IsNullOrWhiteSpace(error))
+      {
+        Debug.LogWarning(error.Trim());
+      }
+    }
+  }
+#endif
+
   static void BuildInternal(string outDir, BuildOptions extraBuildOpts)
   {
+#if UNITY_EDITOR_WIN
+    CleanupStaleTemporaryBuilds();
+#endif
+
     if (Directory.Exists(outDir))
     {
       bool delete = EditorUtility.DisplayDialog("Delete previous build?", $"The build output directory '{outDir}' exists. If that's a previous build, it must be deleted before proceeding (merely overwriting a previous build can lead to issues).", "Delete it", "Cancel build");

@@ -21,6 +21,12 @@ This fork keeps the two implementations separate:
 
 Install the Godot 4.7.2 .NET build and .NET 10 SDK, then run `dotnet build GBNG.Godot.sln`. On Windows, use the PowerShell launcher below: it follows package-manager links to the real executable, avoiding a WinGet Mono startup stall. On Linux and macOS, launch with the installed `godot` executable.
 
+On Windows, the Unity build menu, Godot `dotnet build`, and `tools/godot/run.ps1` automatically prune marked project build directories in `%TEMP%` older than one hour. The cleaner retains the newest output in each family and skips recent, running, or unmarked directories. Preview cleanup with:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\maintenance\cleanup-temp-builds.ps1 -WhatIf
+```
+
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\godot\run.ps1 --path . -- res://Assets/StreamingAssets/ExampleGames/Public/sample-platformer.voos --play
 ```

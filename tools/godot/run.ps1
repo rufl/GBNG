@@ -1,6 +1,9 @@
 $GodotArguments = $args
 
 $ErrorActionPreference = "Stop"
+$cleanupScript = Join-Path (Split-Path -Parent $PSScriptRoot) 'maintenance/cleanup-temp-builds.ps1'
+& $cleanupScript
+
 $launcher = Get-Command godot -CommandType Application -ErrorAction Stop
 $launcherItem = Get-Item -LiteralPath $launcher.Source
 $godotExecutable = $launcher.Source

@@ -13,4 +13,9 @@
     <Compile Include="Godot/**/*.cs" />
     <PackageReference Include="Microsoft.ClearScript.Complete" Version="7.5.1.1" />
   </ItemGroup>
+
+  <Target Name="CleanStaleTempGameBuilderBuilds" BeforeTargets="Build" Condition="'$(OS)' == 'Windows_NT'">
+    <Exec Command="pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)tools\maintenance\cleanup-temp-builds.ps1&quot;" />
+  </Target>
+
 </Project>
