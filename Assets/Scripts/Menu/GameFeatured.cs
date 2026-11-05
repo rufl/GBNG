@@ -63,15 +63,15 @@ public class GameFeatured : MonoBehaviour
 
   void OnButton()
   {
-    if (localVoosFile != null || workshopItem.IsInstalled)
+    if (localVoosFile != null || workshopItem.IsReady)
     {
-      // Local file or already installed workshop item.
+      // Local file or ready Workshop item.
       popups.AskHowToPlay(LoadGame);
     }
-    else if (!workshopItem.IsSubscribed)
+    else if (!workshopItem.IsSubscribed || (workshopItem.IsUpdateNeeded && !workshopItem.IsDownloading))
     {
-      // Not yet installed workshop item.
-      SteamWorkshopService.Instance.Subscribe(workshopItem, (args) => { }) /* empty callback */;
+      // Subscribe or explicitly request an available Workshop update.
+      SteamWorkshopService.Instance.Subscribe(workshopItem, (args) => { });
     }
   }
 
@@ -148,7 +148,7 @@ public class GameFeatured : MonoBehaviour
   {
     if (workshopItem.IsSubscribed)
     {
-      if (workshopItem.IsInstalled)
+      if (workshopItem.IsReady)
       {
         downloadTextObject.SetActive(false);
         playObject.SetActive(true);
@@ -160,13 +160,9 @@ public class GameFeatured : MonoBehaviour
         subscribeObject.SetActive(false);
         downloadTextObject.SetActive(true);
         if (workshopItem.IsDownloading)
-        {
           downloadText.text = $"{Mathf.FloorToInt(100 * SteamWorkshopService.Instance.GetDownloadProgress(workshopItem))}%";
-        }
         else
-        {
-          downloadText.text = $"...";
-        }
+          downloadText.text = workshopItem.IsUpdateNeeded ? "Update available..." : "...";
       }
     }
     else

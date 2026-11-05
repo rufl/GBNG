@@ -78,15 +78,16 @@ public abstract class AssetDetail : MonoBehaviour
   private void OnImportButtonClicked()
   {
     if (workshopItemInProgress) return;
-    if (!workshopItem.IsSubscribed)
-    {
-      workshopItemInProgress = true;
-      SteamWorkshopService.Instance.Subscribe(workshopItem, OnSubscribed);
-    }
-    else
+    if (workshopItem.IsReady)
     {
       ImportAsset(workshopItem);
+      return;
     }
+
+    workshopItemInProgress = true;
+    if (!workshopItem.IsSubscribed ||
+      (!workshopItem.IsDownloading && (workshopItem.IsUpdateNeeded || !workshopItem.IsInstalled)))
+      SteamWorkshopService.Instance.Subscribe(workshopItem, OnSubscribed);
   }
 
   void Update()
@@ -98,20 +99,32 @@ public abstract class AssetDetail : MonoBehaviour
       {
         importButtonText.text = $"Downloading...{Mathf.FloorToInt(100 * SteamWorkshopService.Instance.GetDownloadProgress(workshopItem))}%";
       }
-      else if (!workshopItem.IsInstalled)
+      else if (workshopItem.IsUpdateNeeded)
       {
-        importButtonText.text = $"Installing...";
+        importButtonText.text = "Update available...";
+      }
+      else if (!workshopItem.IsReady)
+      {
+        importButtonText.text = "Installing...";
       }
     }
-    if (workshopItemInProgress && workshopItem.IsInstalled)
+    if (workshopItemInProgress && workshopItem.IsReady)
     {
       workshopItemInProgress = false;
       ImportAsset(workshopItem);
     }
   }
 
+
   private void OnSubscribed(WorkshopItemEventArgs args)
   {
+    if (args.IsError)
+    {
+      workshopItemInProgress = false;
+      Debug.LogError(args.ErrorMessage);
+      return;
+    }
+
     if (args.Item.PublishedFileId == workshopItem.PublishedFileId)
     {
       workshopItem = args.Item;
@@ -133,7 +146,7 @@ public abstract class AssetDetail : MonoBehaviour
 
   private void WorkshopItemUpdate()
   {
-    if (workshopItemInProgress && workshopItem.IsInstalled)
+    if (workshopItemInProgress && workshopItem.IsReady)
     {
       workshopItemInProgress = false;
       ImportAsset(workshopItem);

@@ -1,5 +1,6 @@
 #if USE_STEAMWORKS
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -21,9 +22,13 @@ namespace GameBuilder.Workshop
     public int VotesUp;
     public int VotesDown;
     public int Subscriptions;
+    public ulong Favorites;
     public bool IsSubscribed;
     public bool IsDownloading;
     public bool IsInstalled;
+    public bool IsUpdateNeeded;
+    public bool IsFavorited;
+    public bool IsReady { get { return IsInstalled && !IsDownloading && !IsUpdateNeeded; } }
     public bool IsVotedUp;
     public bool IsVotedDown;
     public DateTime InstalledTimestamp;
@@ -37,6 +42,7 @@ namespace GameBuilder.Workshop
     public string ContentPath;
     public string IconPath;
     public readonly List<string> Tags = new List<string>();
+    internal EItemUpdateStatus LastValidUpdateStatus;
     internal bool IsNewItem;
   }
 
@@ -184,8 +190,10 @@ namespace GameBuilder.Workshop
     const uint QueryPageSize = 50;
     const uint InstallPathBufferSize = 4096;
     const uint PreviewUrlBufferSize = 4096;
+    const string WorkshopLegalAgreementUrl = "https://steamcommunity.com/workshop/workshoplegalagreement/";
 
     static SteamWorkshopService instance;
+    Texture2D renderedTexture;
     readonly List<IDisposable> callResults = new List<IDisposable>();
     readonly Dictionary<ulong, WorkshopItem> itemsById = new Dictionary<ulong, WorkshopItem>();
     readonly Dictionary<WorkshopItemUpdate, UGCUpdateHandle_t> updates = new Dictionary<WorkshopItemUpdate, UGCUpdateHandle_t>();
@@ -198,6 +206,8 @@ namespace GameBuilder.Workshop
     public bool SearchMatchAnyTag { get; set; } = true;
     public bool IsSteamCacheEnabled { get; set; }
     public WorkshopSortMode Sorting { get; set; } = new WorkshopSortMode(EUGCQuery.k_EUGCQuery_RankedByTrend);
+    public event Action<WorkshopItemEventArgs> OnAddedFavorite;
+    public event Action<WorkshopItemEventArgs> OnRemovedFavorite;
 
     void Awake()
     {
@@ -221,6 +231,7 @@ namespace GameBuilder.Workshop
       if (instance == this) instance = null;
       foreach (IDisposable result in callResults) result.Dispose();
       callResults.Clear();
+      if (renderedTexture != null) Destroy(renderedTexture);
     }
 
     public void ResetItemSearch()
@@ -274,7 +285,8 @@ namespace GameBuilder.Workshop
           callback?.Invoke(ErrorList($"Workshop query failed: {result.m_eResult}"));
           return;
         }
-        callback?.Invoke(ReadQueryResults(result, result.m_unTotalMatchingResults));
+        WorkshopItemListEventArgs list = ReadQueryResults(result, result.m_unTotalMatchingResults);
+        WithFavoriteFlags(list, callback);
       });
     }
 
@@ -303,7 +315,8 @@ namespace GameBuilder.Workshop
           callback?.Invoke(ErrorList($"Workshop details query failed: {result.m_eResult}"));
           return;
         }
-        callback?.Invoke(ReadQueryResults(result, result.m_unTotalMatchingResults));
+        WorkshopItemListEventArgs list = ReadQueryResults(result, result.m_unTotalMatchingResults);
+        WithFavoriteFlags(list, callback);
       });
     }
 
@@ -334,6 +347,9 @@ namespace GameBuilder.Workshop
           ulong subscriptions;
           if (SteamUGC.GetQueryUGCStatistic(result.m_handle, i, EItemStatistic.k_EItemStatistic_NumSubscriptions, out subscriptions))
             item.Subscriptions = subscriptions > int.MaxValue ? int.MaxValue : (int)subscriptions;
+          ulong favorites;
+          if (SteamUGC.GetQueryUGCStatistic(result.m_handle, i, EItemStatistic.k_EItemStatistic_NumFavorites, out favorites))
+            item.Favorites = favorites;
           RefreshItemState(item);
           itemsById[item.PublishedFileId] = item;
           items.Add(item);
@@ -344,6 +360,70 @@ namespace GameBuilder.Workshop
 
       uint pages = totalMatches == 0 ? 1 : (uint)Math.Ceiling(totalMatches / (double)QueryPageSize);
       return new WorkshopItemListEventArgs(new WorkshopItemList(items, pages));
+    }
+    void WithFavoriteFlags(WorkshopItemListEventArgs result, Action<WorkshopItemListEventArgs> callback)
+    {
+      QueryFavoriteIds((favoriteIds, error) =>
+      {
+        if (error != null)
+        {
+          callback?.Invoke(ErrorList(error));
+          return;
+        }
+        ApplyFavoriteFlags(result.ItemList.Items, favoriteIds);
+        callback?.Invoke(result);
+      });
+    }
+
+    void QueryFavoriteIds(Action<HashSet<ulong>, string> callback)
+    {
+      QueryFavoritePage(1, new HashSet<ulong>(), callback);
+    }
+
+    void QueryFavoritePage(uint page, HashSet<ulong> favoriteIds, Action<HashSet<ulong>, string> callback)
+    {
+      UGCQueryHandle_t query = SteamUGC.CreateQueryUserUGCRequest(
+        SteamUser.GetSteamID().GetAccountID(),
+        EUserUGCList.k_EUserUGCList_Favorited,
+        EUGCMatchingUGCType.k_EUGCMatchingUGCType_Items,
+        EUserUGCListSortOrder.k_EUserUGCListSortOrder_CreationOrderDesc,
+        AppId_t.Invalid,
+        SteamUtils.GetAppID(),
+        page);
+      if (query == UGCQueryHandle_t.Invalid)
+      {
+        callback?.Invoke(null, "Steam rejected the Workshop favorites query.");
+        return;
+      }
+      if (!IsSteamCacheEnabled) SteamUGC.SetAllowCachedResponse(query, 0);
+      Track<SteamUGCQueryCompleted_t>(SteamUGC.SendQueryUGCRequest(query), (result, ioFailure) =>
+      {
+        try
+        {
+          if (ioFailure || result.m_eResult != EResult.k_EResultOK)
+          {
+            callback?.Invoke(null, $"Workshop favorites query failed: {result.m_eResult}");
+            return;
+          }
+          for (uint i = 0; i < result.m_unNumResultsReturned; i++)
+          {
+            SteamUGCDetails_t details;
+            if (SteamUGC.GetQueryUGCResult(query, i, out details) && details.m_eResult == EResult.k_EResultOK)
+              favoriteIds.Add(details.m_nPublishedFileId.m_PublishedFileId);
+          }
+          uint pages = result.m_unTotalMatchingResults == 0
+            ? 1
+            : (uint)Math.Ceiling(result.m_unTotalMatchingResults / (double)QueryPageSize);
+          if (page < pages) QueryFavoritePage(page + 1, favoriteIds, callback);
+          else callback?.Invoke(favoriteIds, null);
+        }
+        finally { SteamUGC.ReleaseQueryUGCRequest(query); }
+      });
+    }
+
+    static void ApplyFavoriteFlags(IEnumerable<WorkshopItem> items, HashSet<ulong> favoriteIds)
+    {
+      foreach (WorkshopItem item in items) item.IsFavorited = favoriteIds.Contains(item.PublishedFileId);
     }
 
     void GetUserVote(WorkshopItem item)
@@ -365,6 +445,7 @@ namespace GameBuilder.Workshop
       uint state = SteamUGC.GetItemState(id);
       item.IsSubscribed = (state & (uint)EItemState.k_EItemStateSubscribed) != 0;
       item.IsInstalled = (state & (uint)EItemState.k_EItemStateInstalled) != 0;
+      item.IsUpdateNeeded = (state & (uint)EItemState.k_EItemStateNeedsUpdate) != 0;
       item.IsDownloading = (state & (uint)EItemState.k_EItemStateDownloading) != 0 ||
         (state & (uint)EItemState.k_EItemStateDownloadPending) != 0;
       if (item.IsInstalled && SteamUGC.GetItemInstallInfo(id, out _, out string folder, InstallPathBufferSize, out uint timestamp))
@@ -378,7 +459,7 @@ namespace GameBuilder.Workshop
     public float GetDownloadProgress(WorkshopItem item)
     {
       if (item == null || !SteamRuntime.Initialized) return 0;
-      if (item.IsInstalled && !item.IsDownloading) return 1;
+      if (item.IsReady) return 1;
       ulong downloaded, total;
       if (!SteamUGC.GetItemDownloadInfo(new PublishedFileId_t(item.PublishedFileId), out downloaded, out total) || total == 0) return 0;
       return Mathf.Clamp01((float)((double)downloaded / total));
@@ -391,10 +472,27 @@ namespace GameBuilder.Workshop
         callback?.Invoke(ErrorItem(item, "Steam Workshop is unavailable."));
         return;
       }
-      Track<RemoteStorageSubscribePublishedFileResult_t>(SteamUGC.SubscribeItem(new PublishedFileId_t(item.PublishedFileId)), (result, ioFailure) =>
+      PublishedFileId_t id = new PublishedFileId_t(item.PublishedFileId);
+      Track<RemoteStorageSubscribePublishedFileResult_t>(SteamUGC.SubscribeItem(id), (result, ioFailure) =>
       {
         bool error = ioFailure || result.m_eResult != EResult.k_EResultOK;
-        RefreshItemState(item);
+        if (!error)
+        {
+          RefreshItemState(item);
+          if ((item.IsUpdateNeeded || !item.IsInstalled) && !item.IsDownloading)
+          {
+            if (!SteamUGC.DownloadItem(id, true))
+            {
+              RefreshItemState(item);
+              if (!item.IsDownloading && (item.IsUpdateNeeded || !item.IsInstalled))
+              {
+                callback?.Invoke(ErrorItem(item, "Subscribed to the Workshop item, but Steam could not start its download."));
+                return;
+              }
+            }
+            RefreshItemState(item);
+          }
+        }
         callback?.Invoke(new WorkshopItemEventArgs(item, error, error ? $"Subscribe failed: {result.m_eResult}" : null));
       });
     }
@@ -414,6 +512,87 @@ namespace GameBuilder.Workshop
       });
     }
 
+    public bool AddFavorite(WorkshopItem item, Action<WorkshopItemEventArgs> callback)
+    {
+      if (item == null)
+      {
+        NotifyFavoriteResult(true, ErrorItem(null, "Workshop item was not found."), callback);
+        return false;
+      }
+      return ChangeFavorite(new PublishedFileId_t(item.PublishedFileId), item, true, callback);
+    }
+
+    public bool AddFavorite(PublishedFileId_t id, Action<WorkshopItemEventArgs> callback)
+    {
+      return ChangeFavorite(id, null, true, callback);
+    }
+
+    public bool RemoveFavorite(WorkshopItem item, Action<WorkshopItemEventArgs> callback)
+    {
+      if (item == null)
+      {
+        NotifyFavoriteResult(false, ErrorItem(null, "Workshop item was not found."), callback);
+        return false;
+      }
+      return ChangeFavorite(new PublishedFileId_t(item.PublishedFileId), item, false, callback);
+    }
+
+    public bool RemoveFavorite(PublishedFileId_t id, Action<WorkshopItemEventArgs> callback)
+    {
+      return ChangeFavorite(id, null, false, callback);
+    }
+
+    bool ChangeFavorite(PublishedFileId_t id, WorkshopItem item, bool add, Action<WorkshopItemEventArgs> callback)
+    {
+      if (id.m_PublishedFileId == 0)
+      {
+        if (item == null) itemsById.TryGetValue(id.m_PublishedFileId, out item);
+        NotifyFavoriteResult(add, ErrorItem(item, "Workshop item ID is invalid."), callback);
+        return false;
+      }
+      if (item == null && !itemsById.TryGetValue(id.m_PublishedFileId, out item))
+      {
+        item = new WorkshopItem { PublishedFileId = id.m_PublishedFileId };
+        itemsById[id.m_PublishedFileId] = item;
+      }
+      else if (item != null)
+      {
+        itemsById[id.m_PublishedFileId] = item;
+      }
+      if (!SteamRuntime.Initialized)
+      {
+        NotifyFavoriteResult(add, ErrorItem(item, "Steam Workshop is unavailable."), callback);
+        return false;
+      }
+      SteamAPICall_t call = add
+        ? SteamUGC.AddItemToFavorites(SteamUtils.GetAppID(), id)
+        : SteamUGC.RemoveItemFromFavorites(SteamUtils.GetAppID(), id);
+      if (call == SteamAPICall_t.Invalid)
+      {
+        NotifyFavoriteResult(add, ErrorItem(item, $"Steam could not {(add ? "add" : "remove")} the Workshop favorite."), callback);
+        return false;
+      }
+      Track<UserFavoriteItemsListChanged_t>(call, (result, ioFailure) =>
+      {
+        bool error = ioFailure || result.m_eResult != EResult.k_EResultOK;
+        if (!error) ApplyFavoriteChange(item, result.m_bWasAddRequest);
+        string message = error ? $"Workshop favorite update failed: {result.m_eResult}" : null;
+        NotifyFavoriteResult(add, new WorkshopItemEventArgs(item, error, message), callback);
+      });
+      return true;
+    }
+
+    static void ApplyFavoriteChange(WorkshopItem item, bool wasAddRequest)
+    {
+      item.IsFavorited = wasAddRequest;
+    }
+
+    void NotifyFavoriteResult(bool add, WorkshopItemEventArgs args, Action<WorkshopItemEventArgs> callback)
+    {
+      if (add) OnAddedFavorite?.Invoke(args);
+      else OnRemovedFavorite?.Invoke(args);
+      callback?.Invoke(args);
+    }
     public void Vote(WorkshopItem item, bool up, Action<WorkshopItemEventArgs> callback)
     {
       if (item == null || !SteamRuntime.Initialized)
@@ -499,11 +678,6 @@ namespace GameBuilder.Workshop
         callback?.Invoke(ErrorUpload(update, "Steam Workshop is unavailable."));
         return;
       }
-      if (update.Tags.Count == 0)
-      {
-        callback?.Invoke(ErrorUpload(update, "Workshop item must have at least one tag."));
-        return;
-      }
       if (update.PublishedFileId.HasValue)
       {
         BeginUpdate(update, update.PublishedFileId.Value, callback);
@@ -512,6 +686,12 @@ namespace GameBuilder.Workshop
 
       Track<CreateItemResult_t>(SteamUGC.CreateItem(SteamUtils.GetAppID(), EWorkshopFileType.k_EWorkshopFileTypeCommunity), (result, ioFailure) =>
       {
+        if (result.m_bUserNeedsToAcceptWorkshopLegalAgreement)
+        {
+          Application.OpenURL(WorkshopLegalAgreementUrl);
+          callback?.Invoke(ErrorUpload(update, "Accept the Steam Workshop legal agreement, then retry the upload."));
+          return;
+        }
         if (ioFailure || result.m_eResult != EResult.k_EResultOK || result.m_nPublishedFileId.m_PublishedFileId == 0)
         {
           callback?.Invoke(ErrorUpload(update, $"Creating Workshop item failed: {result.m_eResult}"));
@@ -531,9 +711,10 @@ namespace GameBuilder.Workshop
         callback?.Invoke(ErrorUpload(update, "Steam could not start the Workshop item update."));
         return;
       }
-      bool ok = SteamUGC.SetItemTitle(handle, update.Name ?? string.Empty) &&
-        SteamUGC.SetItemDescription(handle, update.Description ?? string.Empty) &&
-        SteamUGC.SetItemTags(handle, update.Tags);
+      update.LastValidUpdateStatus = EItemUpdateStatus.k_EItemUpdateStatusInvalid;
+      bool ok = (string.IsNullOrEmpty(update.Name) || SteamUGC.SetItemTitle(handle, update.Name)) &&
+        (string.IsNullOrEmpty(update.Description) || SteamUGC.SetItemDescription(handle, update.Description)) &&
+        (update.Tags.Count == 0 || SteamUGC.SetItemTags(handle, update.Tags));
       if (ok)
       {
         update.PublishedFileId = id;
@@ -558,6 +739,12 @@ namespace GameBuilder.Workshop
       Track<SubmitItemUpdateResult_t>(SteamUGC.SubmitItemUpdate(handle, string.Empty), (result, ioFailure) =>
       {
         updates.Remove(update);
+        if (result.m_bUserNeedsToAcceptWorkshopLegalAgreement)
+        {
+          Application.OpenURL(WorkshopLegalAgreementUrl);
+          callback?.Invoke(ErrorUpload(update, "Accept the Steam Workshop legal agreement, then retry the upload."));
+          return;
+        }
         if (ioFailure || result.m_eResult != EResult.k_EResultOK)
         {
           callback?.Invoke(ErrorUpload(update, $"Uploading Workshop item failed: {result.m_eResult}"));
@@ -605,11 +792,106 @@ namespace GameBuilder.Workshop
       if (update == null || !updates.TryGetValue(update, out UGCUpdateHandle_t handle) || !SteamRuntime.Initialized) return 0;
       ulong processed, total;
       EItemUpdateStatus state = SteamUGC.GetItemUpdateProgress(handle, out processed, out total);
-      if (state == EItemUpdateStatus.k_EItemUpdateStatusInvalid) return 0;
-      if (state == EItemUpdateStatus.k_EItemUpdateStatusCommittingChanges) return 0.99f;
-      return total == 0 ? 0 : Mathf.Clamp01((float)((double)processed / total));
+      if (state != EItemUpdateStatus.k_EItemUpdateStatusInvalid) update.LastValidUpdateStatus = state;
+      return MapUploadProgress(state, processed, total, update.LastValidUpdateStatus);
     }
 
+    static float MapUploadProgress(EItemUpdateStatus state, ulong processed, ulong total, EItemUpdateStatus lastValidState)
+    {
+      if (state == EItemUpdateStatus.k_EItemUpdateStatusInvalid)
+        return lastValidState == EItemUpdateStatus.k_EItemUpdateStatusInvalid ? 0 : 1;
+      if (state == EItemUpdateStatus.k_EItemUpdateStatusPreparingConfig) return 0;
+
+      float fraction = total == 0 ? 0 : Mathf.Clamp01((float)((double)processed / total));
+      switch (state)
+      {
+        case EItemUpdateStatus.k_EItemUpdateStatusPreparingContent: return fraction * 0.1f;
+        case EItemUpdateStatus.k_EItemUpdateStatusUploadingContent: return fraction * 0.65f + 0.1f;
+        case EItemUpdateStatus.k_EItemUpdateStatusUploadingPreviewFile: return fraction * 0.15f + 0.75f;
+        case EItemUpdateStatus.k_EItemUpdateStatusCommittingChanges: return fraction * 0.1f + 0.9f;
+        default: return 0;
+      }
+    }
+
+    public void RenderIcon(Camera camera, int width, int height, string saveToFilePath, Action<Texture2D> callback)
+    {
+      RenderIcon(camera, width, height, saveToFilePath, true, callback);
+    }
+
+    public void RenderIcon(Camera camera, int width, int height, string saveToFilePath, bool keepTextureReference, Action<Texture2D> callback)
+    {
+      StartCoroutine(RenderIconRoutine(camera, width, height, saveToFilePath, keepTextureReference, callback));
+    }
+
+    static Vector2Int ClampIconSize(int width, int height, Rect cameraRect)
+    {
+      return new Vector2Int(
+        width > cameraRect.width ? Mathf.FloorToInt(cameraRect.width) : width,
+        height > cameraRect.height ? Mathf.FloorToInt(cameraRect.height) : height);
+    }
+
+    IEnumerator RenderIconRoutine(Camera camera, int width, int height, string saveToFilePath, bool keepTextureReference, Action<Texture2D> callback)
+    {
+      yield return new WaitForEndOfFrame();
+      if (camera == null)
+      {
+        callback?.Invoke(null);
+        yield break;
+      }
+      Vector2Int size = ClampIconSize(width, height, camera.pixelRect);
+      if (size.x <= 0 || size.y <= 0)
+      {
+        Util.LogError("Workshop icon size must be positive and fit within the camera view.");
+        callback?.Invoke(null);
+        yield break;
+      }
+
+      Rect originalPixelRect = camera.pixelRect;
+      RenderTexture originalTarget = camera.targetTexture;
+      RenderTexture originalActive = RenderTexture.active;
+      RenderTexture target = null;
+      Texture2D texture = null;
+      Exception error = null;
+      try
+      {
+        target = RenderTexture.GetTemporary(size.x, size.y, 24, RenderTextureFormat.ARGB32);
+        camera.pixelRect = new Rect(0, 0, size.x, size.y);
+        camera.targetTexture = target;
+        camera.Render();
+        RenderTexture.active = target;
+        texture = new Texture2D(size.x, size.y, TextureFormat.RGB24, false, true);
+        texture.ReadPixels(new Rect(0, 0, size.x, size.y), 0, 0, false);
+        texture.Apply(false, false);
+        if (!string.IsNullOrEmpty(saveToFilePath))
+        {
+          string directory = Path.GetDirectoryName(saveToFilePath);
+          if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory)) Directory.CreateDirectory(directory);
+          File.WriteAllBytes(saveToFilePath, ImageConversion.EncodeToPNG(texture));
+        }
+      }
+      catch (Exception e) { error = e; }
+      finally
+      {
+        if (camera != null)
+        {
+          camera.targetTexture = originalTarget;
+          camera.pixelRect = originalPixelRect;
+        }
+        RenderTexture.active = originalActive;
+        if (target != null) RenderTexture.ReleaseTemporary(target);
+      }
+
+      if (error != null)
+      {
+        if (texture != null) Destroy(texture);
+        Util.LogError($"Could not render Workshop icon: {error.Message}");
+        callback?.Invoke(null);
+        yield break;
+      }
+      if (renderedTexture != null) Destroy(renderedTexture);
+      renderedTexture = keepTextureReference ? texture : null;
+      callback?.Invoke(texture);
+    }
     public void QueryVisibility(ulong id, Action<Util.Maybe<bool>> callback)
     {
       if (!SteamRuntime.Initialized)

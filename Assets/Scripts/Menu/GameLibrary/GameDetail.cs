@@ -50,6 +50,8 @@ public class GameDetail : MonoBehaviour
   const string SUBSCRIBING_TEXT = "SUBBING";
   const string UNSUBSCRIBE_TEXT = "UNSUBSCRIBE";
   const string UNSUBSCRIBING_TEXT = "UNSUBBING";
+  const string UPDATE_TEXT = "UPDATE";
+  const string UPDATING_TEXT = "UPDATING";
 
   System.Action playAction;
   System.Action buildAction;
@@ -144,7 +146,7 @@ public class GameDetail : MonoBehaviour
     }
     playAction = () => OnPlayTriggered(playOpts => LoadByWorkshopItem(workshopItem, playOpts));
     buildAction = () => popups.Show("Not implemented", "OK", () => { });
-    subscribeButtonText.text = workshopItem.IsSubscribed ? UNSUBSCRIBE_TEXT : SUBSCRIBE_TEXT;
+    subscribeButtonText.text = GetSubscribeButtonText(workshopItem);
   }
 #endif
 
@@ -180,8 +182,9 @@ public class GameDetail : MonoBehaviour
   {
     subscribeButton.gameObject.SetActive(true);
     // Debug.Log(workshopItem.Name + ": " + workshopItem.IsSubscribed + " : " + workshopItem.IsInstalled + " : " + workshopItem.IsDownloading);
-
 #if USE_STEAMWORKS
+    if (workshopItem.IsSubscribed)
+      subscribeButtonText.text = GetSubscribeButtonText(workshopItem);
     if (workshopItem.IsSubscribed)
     {
       if (workshopItem.IsDownloading)
@@ -190,11 +193,11 @@ public class GameDetail : MonoBehaviour
         openButtonsParentObject.SetActive(false);
         downloadText.text = $"Downloading...{Mathf.FloorToInt(100 * SteamWorkshopService.Instance.GetDownloadProgress(workshopItem))}%";
       }
-      else if (!workshopItem.IsInstalled)
+      else if (!workshopItem.IsReady)
       {
         downloadTextObject.SetActive(true);
         openButtonsParentObject.SetActive(false);
-        downloadText.text = $"Installing...";
+        downloadText.text = workshopItem.IsUpdateNeeded ? "Update available..." : "Installing...";
       }
       else
       {
@@ -211,18 +214,25 @@ public class GameDetail : MonoBehaviour
   }
 
 #if USE_STEAMWORKS
+  string GetSubscribeButtonText(WorkshopItem item)
+  {
+    if (!item.IsSubscribed) return SUBSCRIBE_TEXT;
+    if (!item.IsUpdateNeeded) return UNSUBSCRIBE_TEXT;
+    return item.IsDownloading ? UPDATING_TEXT : UPDATE_TEXT;
+  }
+
   void OnSubscribeButton()
   {
 
-    if (workshopItem.IsSubscribed)
+    if (workshopItem.IsSubscribed && !workshopItem.IsUpdateNeeded)
     {
       SteamWorkshopService.Instance.Unsubscribe(workshopItem, OnUnsubscribed);
       subscribeButtonText.text = UNSUBSCRIBING_TEXT;
     }
-    else
+    else if (!workshopItem.IsDownloading)
     {
       SteamWorkshopService.Instance.Subscribe(workshopItem, OnSubscribed);
-      subscribeButtonText.text = SUBSCRIBING_TEXT;
+      subscribeButtonText.text = workshopItem.IsSubscribed ? UPDATING_TEXT : SUBSCRIBING_TEXT;
     }
   }
 
@@ -231,8 +241,10 @@ public class GameDetail : MonoBehaviour
     // Debug.Log(args.ErrorMessage);
     // if (args.IsError) Debug.Log(args.ErrorMessage);
     // else Debug.Log("subbed " + args.Item.Name + " " + args.Item.IsSubscribed);
+    if (args.IsError) Debug.LogError(args.ErrorMessage);
+
     workshopItem = args.Item;
-    subscribeButtonText.text = UNSUBSCRIBE_TEXT;
+    subscribeButtonText.text = GetSubscribeButtonText(workshopItem);
   }
 
   void OnUnsubscribed(WorkshopItemEventArgs args)

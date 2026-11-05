@@ -105,7 +105,7 @@ public class WorkshopAssetSource : MonoBehaviour
       //  yield break;
       // }
 
-      if (item.IsInstalled)
+      if (item.IsReady)
       {
         if (item.InstalledLocalFolder == null)
         {
@@ -125,8 +125,7 @@ public class WorkshopAssetSource : MonoBehaviour
         yield break;
       }
 
-      // IMPORTANT: IsInstalled and IsDownloading can be set at the same time so we should always check
-      // IsInstalled first before deciding that we failed.
+      // Steam can keep IsInstalled set while an update downloads; wait for IsReady.
       if (!item.IsDownloading)
       {
         // OK we failed some how.
@@ -147,7 +146,7 @@ public class WorkshopAssetSource : MonoBehaviour
     else
     {
       var item = maybeItem.Value;
-      if (!item.IsInstalled)
+      if (!item.IsReady)
       {
         // The only way we know how to install something is to subscribe to it..
         SteamWorkshopService.Instance.Subscribe(item, args =>
@@ -163,7 +162,7 @@ public class WorkshopAssetSource : MonoBehaviour
       }
       else
       {
-        Debug.Assert(item.InstalledLocalFolder != null, $"Workshop item was IsInstalled but LocalFolder was null?");
+        Debug.Assert(maybeItem.Value.InstalledLocalFolder != null, $"Workshop item was IsReady but LocalFolder was null?");
         onComplete(Util.Maybe<string>.CreateWith(maybeItem.Value.InstalledLocalFolder));
       }
     }

@@ -539,6 +539,14 @@ the `renderuri` command above. No Poly API key or SDK setup is available.
 * Workshop queries default to fresh Steam results (`IsSteamCacheEnabled` is
   false); set it to opt into Steam's cached responses. Tag searches default to
   matching any required tag (`SearchMatchAnyTag`), consistent with LapinerTools.
+* Subscribing requests downloads for missing or outdated items. Import and play
+  actions wait until the item is installed, not downloading, and current.
+* When Steam requires Workshop legal-agreement acceptance, uploading opens the
+  agreement page and returns an explicit error; accept it, then retry.
+* Upload progress follows LapinerTools' preparation, content, preview, and commit
+  stage weights instead of restarting at each Steam upload phase.
+* Workshop results include Steam favorite counts and the user's favorite state.
+  The adapter exposes add/remove favorite callbacks and camera-to-PNG icon capture.
 
 
 * Without Steam initialization, Workshop search and upload are unavailable;
