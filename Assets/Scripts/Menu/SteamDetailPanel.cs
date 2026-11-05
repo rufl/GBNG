@@ -17,8 +17,7 @@
 using System.Collections;
 using System.Collections.Generic;
 #if USE_STEAMWORKS
-using LapinerTools.Steam.Data;
-using LapinerTools.Steam;
+using GameBuilder.Workshop;
 #endif
 using UnityEngine;
 
@@ -68,17 +67,17 @@ public class SteamDetailPanel : MonoBehaviour
   void VoteUp()
   {
     Debug.Log(workshopItem.Name);
-    SteamWorkshopMain.Instance.Vote(workshopItem, true, (args) => { }/*empty callback*/);
+    SteamWorkshopService.Instance.Vote(workshopItem, true, (args) => { }/*empty callback*/);
   }
 
   void VoteDown()
   {
-    SteamWorkshopMain.Instance.Vote(workshopItem, false, (args) => { }/*empty callback*/);
+    SteamWorkshopService.Instance.Vote(workshopItem, false, (args) => { }/*empty callback*/);
   }
 
   void OpenOnWorkshop()
   {
-    Application.OpenURL($"https://steamcommunity.com/sharedfiles/filedetails/?id={workshopItem.SteamNative.m_nPublishedFileId.ToString()}");
+    Application.OpenURL($"https://steamcommunity.com/sharedfiles/filedetails/?id={workshopItem.PublishedFileId}");
   }
 
   void Update()

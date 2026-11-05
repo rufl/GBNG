@@ -19,8 +19,7 @@ using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 #if USE_STEAMWORKS
-using LapinerTools.Steam;
-using LapinerTools.Steam.Data;
+using GameBuilder.Workshop;
 #endif
 using ExitGames.UtilityScripts;
 using GameBuilder;
@@ -265,7 +264,7 @@ public class MainMenu : MonoBehaviour
     }
     else
     {
-      SteamUtil.GetWorkShopItem(steamLoadedItemId, maybeItem =>
+      SteamUtil.GetWorkshopItem(steamLoadedItemId, maybeItem =>
       {
         if (!maybeItem.IsEmpty())
         {

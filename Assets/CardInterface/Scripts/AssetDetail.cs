@@ -19,8 +19,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 #if USE_STEAMWORKS
-using LapinerTools.Steam;
-using LapinerTools.Steam.Data;
+using GameBuilder.Workshop;
 #endif
 
 public abstract class AssetDetail : MonoBehaviour
@@ -82,7 +81,7 @@ public abstract class AssetDetail : MonoBehaviour
     if (!workshopItem.IsSubscribed)
     {
       workshopItemInProgress = true;
-      SteamWorkshopMain.Instance.Subscribe(workshopItem, OnSubscribed);
+      SteamWorkshopService.Instance.Subscribe(workshopItem, OnSubscribed);
     }
     else
     {
@@ -97,7 +96,7 @@ public abstract class AssetDetail : MonoBehaviour
     {
       if (workshopItem.IsDownloading)
       {
-        importButtonText.text = $"Downloading...{Mathf.FloorToInt(100 * SteamWorkshopMain.Instance.GetDownloadProgress(workshopItem))}%";
+        importButtonText.text = $"Downloading...{Mathf.FloorToInt(100 * SteamWorkshopService.Instance.GetDownloadProgress(workshopItem))}%";
       }
       else if (!workshopItem.IsInstalled)
       {
@@ -113,7 +112,7 @@ public abstract class AssetDetail : MonoBehaviour
 
   private void OnSubscribed(WorkshopItemEventArgs args)
   {
-    if (args.Item.SteamNative.m_nPublishedFileId == workshopItem.SteamNative.m_nPublishedFileId)
+    if (args.Item.PublishedFileId == workshopItem.PublishedFileId)
     {
       workshopItem = args.Item;
       unsubscribeButton.gameObject.SetActive(true);
@@ -143,9 +142,9 @@ public abstract class AssetDetail : MonoBehaviour
 
   private void OnUnsubscribeButtonClicked()
   {
-    SteamWorkshopMain.Instance.Unsubscribe(workshopItem, (args) =>
+    SteamWorkshopService.Instance.Unsubscribe(workshopItem, (args) =>
       {
-        if (args.Item.SteamNative.m_nPublishedFileId == workshopItem.SteamNative.m_nPublishedFileId)
+        if (args.Item.PublishedFileId == workshopItem.PublishedFileId)
         {
           workshopItem = args.Item;
           unsubscribeButton.gameObject.SetActive(false);

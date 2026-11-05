@@ -16,9 +16,7 @@
 
 using System.Collections.Generic;
 #if USE_STEAMWORKS
-using Steamworks;
-using LapinerTools.Steam;
-using LapinerTools.Steam.Data;
+using GameBuilder.Workshop;
 #endif
 using UnityEngine;
 
@@ -47,101 +45,29 @@ namespace GameBuilder
 
     public static ulong GetId(this WorkshopItem item)
     {
-      return item.SteamNative.m_nPublishedFileId.m_PublishedFileId;
+      return item.PublishedFileId;
     }
 
-    // TODO make this share code with FeaturedWorkshopItems
-    public static void GetWorkShopItem(ulong publishedFileId, WorkShopItemHandler handleItem)
+    public static void GetWorkshopItem(ulong publishedFileId, WorkShopItemHandler handleItem)
     {
-      PublishedFileId_t[] fileIds = new PublishedFileId_t[] { new PublishedFileId_t(publishedFileId) };
-      UGCQueryHandle_t queryHandle = SteamUGC.CreateQueryUGCDetailsRequest(fileIds, (uint)fileIds.Length);
-
-      Steamworks.CallResult<Steamworks.SteamUGCQueryCompleted_t>.APIDispatchDelegate onQueryCompleted = (SteamUGCQueryCompleted_t p_callback, bool p_bIOFailure) =>
+      SteamWorkshopService.Instance.GetItemsByIds(new[] { publishedFileId }, args =>
       {
-        OnQueryCompleted(p_callback, p_bIOFailure, handleItem, publishedFileId);
-      };
-      SteamWorkshopMain.Instance.Execute<SteamUGCQueryCompleted_t>(SteamUGC.SendQueryUGCRequest(queryHandle), onQueryCompleted);
-    }
-
-    private static void OnQueryCompleted(SteamUGCQueryCompleted_t p_callback, bool p_bIOFailure, WorkShopItemHandler handleItem, ulong requestedFileId)
-    {
-      if (p_bIOFailure || p_callback.m_eResult != EResult.k_EResultOK)
-      {
-        Util.LogError($"Failed to query workshop item {requestedFileId}. Result code: {p_callback.m_eResult}");
-        handleItem(Util.Maybe<WorkshopItem>.CreateEmpty());
-        return;
-      }
-
-      // There should just be 1..but doesn't hurt.
-      for (uint i = 0; i < p_callback.m_unNumResultsReturned; i++)
-      {
-        SteamUGCDetails_t itemDetails;
-        if (SteamUGC.GetQueryUGCResult(p_callback.m_handle, i, out itemDetails))
+        if (args.IsError)
         {
-          if (itemDetails.m_eResult != Steamworks.EResult.k_EResultOK)
-          {
-            Util.LogError($"Something is wrong with workshop item {requestedFileId} - returning empty. Result code: {itemDetails.m_eResult}");
-            handleItem(Util.Maybe<WorkshopItem>.CreateEmpty());
-          }
-          else
-          {
-            WorkshopItem item = SteamWorkshopMain.Instance.RegisterQueryResultItem(p_callback.m_handle, i, itemDetails);
-            handleItem(Util.Maybe<WorkshopItem>.CreateWith(item));
-          }
-        }
-        else
-        {
-          Util.LogError($"Could not query details of workshop item {requestedFileId} - returning empty. Result code: {itemDetails.m_eResult}");
+          Util.LogError(args.ErrorMessage);
           handleItem(Util.Maybe<WorkshopItem>.CreateEmpty());
+          return;
         }
-      }
+
+        WorkshopItem item = args.ItemList.Items.Find(candidate => candidate.PublishedFileId == publishedFileId);
+        if (item == null) handleItem(Util.Maybe<WorkshopItem>.CreateEmpty());
+        else handleItem(Util.Maybe<WorkshopItem>.CreateWith(item));
+      });
     }
 
     public static void QueryWorkShopItemVisibility(ulong publishedFileId, System.Action<Util.Maybe<bool>> handleResult)
     {
-      PublishedFileId_t[] fileIds = new PublishedFileId_t[] { new PublishedFileId_t(publishedFileId) };
-      UGCQueryHandle_t queryHandle = SteamUGC.CreateQueryUGCDetailsRequest(fileIds, (uint)fileIds.Length);
-
-      Steamworks.CallResult<Steamworks.SteamUGCQueryCompleted_t>.APIDispatchDelegate onQueryCompleted = (SteamUGCQueryCompleted_t p_callback, bool p_bIOFailure) =>
-      {
-        OnVisibilityQueryCompleted(p_callback, p_bIOFailure, handleResult, publishedFileId);
-      };
-      SteamWorkshopMain.Instance.Execute<SteamUGCQueryCompleted_t>(SteamUGC.SendQueryUGCRequest(queryHandle), onQueryCompleted);
-    }
-
-
-    private static void OnVisibilityQueryCompleted(SteamUGCQueryCompleted_t p_callback, bool p_bIOFailure, System.Action<Util.Maybe<bool>> handleResult, ulong requestedFileId)
-    {
-      if (p_bIOFailure || p_callback.m_eResult != EResult.k_EResultOK)
-      {
-        Util.LogError($"Failed to query workshop item {requestedFileId}. Result code: {p_callback.m_eResult}");
-        handleResult(Util.Maybe<bool>.CreateEmpty());
-        return;
-      }
-
-      // There should just be 1..but doesn't hurt.
-      for (uint i = 0; i < p_callback.m_unNumResultsReturned; i++)
-      {
-        SteamUGCDetails_t itemDetails;
-        if (SteamUGC.GetQueryUGCResult(p_callback.m_handle, i, out itemDetails))
-        {
-          if (itemDetails.m_eResult != Steamworks.EResult.k_EResultOK)
-          {
-            Util.LogError($"Something is wrong with workshop item {requestedFileId} - returning empty. Result code: {itemDetails.m_eResult}");
-            handleResult(Util.Maybe<bool>.CreateEmpty());
-          }
-          else
-          {
-            bool isPublicyVisible = itemDetails.m_eVisibility == Steamworks.ERemoteStoragePublishedFileVisibility.k_ERemoteStoragePublishedFileVisibilityPublic;
-            handleResult(Util.Maybe<bool>.CreateWith(isPublicyVisible));
-          }
-        }
-        else
-        {
-          Util.LogError($"Could not query details of workshop item {requestedFileId} - returning empty. Result code: {itemDetails.m_eResult}");
-          handleResult(Util.Maybe<bool>.CreateEmpty());
-        }
-      }
+      SteamWorkshopService.Instance.QueryVisibility(publishedFileId, handleResult);
     }
 #endif
   }

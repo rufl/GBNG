@@ -19,8 +19,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 #if USE_STEAMWORKS
-using LapinerTools.Steam;
-using LapinerTools.Steam.Data;
+using GameBuilder.Workshop;
 #endif
 
 using GameBuilder;
@@ -189,7 +188,7 @@ public class GameDetail : MonoBehaviour
       {
         downloadTextObject.SetActive(true);
         openButtonsParentObject.SetActive(false);
-        downloadText.text = $"Downloading...{Mathf.FloorToInt(100 * SteamWorkshopMain.Instance.GetDownloadProgress(workshopItem))}%";
+        downloadText.text = $"Downloading...{Mathf.FloorToInt(100 * SteamWorkshopService.Instance.GetDownloadProgress(workshopItem))}%";
       }
       else if (!workshopItem.IsInstalled)
       {
@@ -217,12 +216,12 @@ public class GameDetail : MonoBehaviour
 
     if (workshopItem.IsSubscribed)
     {
-      SteamWorkshopMain.Instance.Unsubscribe(workshopItem, OnUnsubscribed);
+      SteamWorkshopService.Instance.Unsubscribe(workshopItem, OnUnsubscribed);
       subscribeButtonText.text = UNSUBSCRIBING_TEXT;
     }
     else
     {
-      SteamWorkshopMain.Instance.Subscribe(workshopItem, OnSubscribed);
+      SteamWorkshopService.Instance.Subscribe(workshopItem, OnSubscribed);
       subscribeButtonText.text = SUBSCRIBING_TEXT;
     }
   }

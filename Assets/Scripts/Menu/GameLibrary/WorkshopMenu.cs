@@ -19,8 +19,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 #if USE_STEAMWORKS
-using LapinerTools.Steam;
-using LapinerTools.Steam.Data;
+using GameBuilder.Workshop;
 using Steamworks;
 #endif
 
@@ -132,7 +131,7 @@ public class WorkshopMenu : ThumbnailMenu
 
     if (gettingItemList) return;
 
-    if (!SteamManager.Initialized)
+    if (!SteamRuntime.Initialized)
     {
       Debug.Log($"Steam Workshop is not available right now. Did you launch from Steam?");
       return;
@@ -141,12 +140,12 @@ public class WorkshopMenu : ThumbnailMenu
     workingFeedback.SetActive(true);
     noResultsFeedback.SetActive(false);
 
-    // TODO need to edit SteamWorkshopMain to use SetExcludeTags and exclude Assets
+  
 
-    SteamWorkshopMain.Instance.ResetItemSearch();
-    SteamWorkshopMain.Instance.SearchText = currentSearchString;
-    SteamWorkshopMain.Instance.m_excludeTags.Add(SteamUtil.GameBuilderTags.Asset.ToString());
-    SteamWorkshopMain.Instance.Sorting = new WorkshopSortMode(GetSortMode());
+    SteamWorkshopService.Instance.ResetItemSearch();
+    SteamWorkshopService.Instance.SearchText = currentSearchString;
+    SteamWorkshopService.Instance.ExcludedTags.Add(SteamUtil.GameBuilderTags.Asset.ToString());
+    SteamWorkshopService.Instance.Sorting = new WorkshopSortMode(GetSortMode());
 
     itemListData = new ItemListData()
     {
@@ -158,7 +157,7 @@ public class WorkshopMenu : ThumbnailMenu
     ItemListData data = itemListData;
 
     gettingItemList = true;
-    SteamWorkshopMain.Instance.GetItemList(curPage, (args) => OnWorkshopListLoaded(args, data));
+    SteamWorkshopService.Instance.GetItemList(curPage, (args) => OnWorkshopListLoaded(args, data));
   }
   bool gettingItemList = false;
   struct ItemListData

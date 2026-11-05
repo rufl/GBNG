@@ -12,6 +12,7 @@
   ],
   "dependencies": {
     "com.donghok.meshimporter": "https://github.com/eastskykang/UnityMeshImporter.git#d3b2be29d6eec3a8a05799001acaa38c37e6a596",
+    "com.rlabrecque.steamworks.net": "https://github.com/rlabrecque/Steamworks.NET.git?path=/com.rlabrecque.steamworks.net#2025.165.0",
     "dev.voltstro.unitywebbrowser": "2.2.8",
     "dev.voltstro.unitywebbrowser.engine.cef": "2.2.8",
     "dev.voltstro.unitywebbrowser.engine.cef.linux.x64": "2.2.8",

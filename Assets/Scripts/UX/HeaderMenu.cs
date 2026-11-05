@@ -334,11 +334,10 @@ public class HeaderMenu : MonoBehaviour
     else
     {
 #if USE_STEAMWORKS
-      SteamUtil.GetWorkShopItem(GetWorkshopFileID(), maybeItem =>
+      SteamUtil.GetWorkshopItem(GetWorkshopFileID(), maybeItem =>
       {
         if (!maybeItem.IsEmpty())
         {
-          LapinerTools.Steam.Data.WorkshopItem item = maybeItem.Value;
           workshopInfo.Open(maybeItem.Value);
         }
       });

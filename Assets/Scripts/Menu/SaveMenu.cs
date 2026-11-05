@@ -18,8 +18,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 #if USE_STEAMWORKS
-using LapinerTools.Steam;
-using LapinerTools.Steam.Data;
+using GameBuilder.Workshop;
 #endif
 using URP = UnityEngine.Rendering.PostProcessing;
 
@@ -270,16 +269,22 @@ public class SaveMenu : MonoBehaviour
     uploading = true;
 
     string contentPath = gameBundleLibrary.GetBundleDirectory(bundleId);
+    string metadataPath = Path.Combine(contentPath, SteamUtil.WorkshopItemInfoFileName);
     WorkshopItemUpdate uploadItem = null;
-    if (File.Exists(Path.Combine(contentPath, SteamUtil.WorkshopItemInfoFileName)))
+    if (!newUpload && File.Exists(metadataPath))
     {
-      uploadItem = SteamWorkshopMain.Instance.GetItemUpdateFromFolder(contentPath);
+      uploadItem = SteamWorkshopService.Instance.GetItemUpdateFromFolder(contentPath);
+      if (uploadItem == null)
+      {
+        uploading = false;
+        saveUI.feedbackTextPrimary.gameObject.SetActive(false);
+        saveUI.feedbackTextSecondary.gameObject.SetActive(true);
+        saveUI.feedbackTextSecondary.SetText("Could not read the existing Workshop metadata. Upload stopped to avoid creating a duplicate Workshop item.");
+        saveUI.feedbackTextSecondaryButton.onClick.RemoveAllListeners();
+        return;
+      }
     }
-
-    if (uploadItem == null || newUpload)
-    {
-      uploadItem = new WorkshopItemUpdate();
-    }
+    if (uploadItem == null || newUpload) uploadItem = new WorkshopItemUpdate();
 
     GameBundle.Metadata metadata = GetMetadataFromUI();
     uploadItem.Name = metadata.name;
@@ -289,8 +294,9 @@ public class SaveMenu : MonoBehaviour
     {
       uploadItem.IconPath = gameBundleLibrary.GetBundle(bundleId).GetThumbnailPath();
     }
-    uploadItem.Tags.Add(SteamUtil.GameBuilderTags.Project.ToString());
-    SteamWorkshopMain.Instance.Upload(uploadItem, (args) => UploadCallback(args, uploadItem));
+    if (!uploadItem.Tags.Contains(SteamUtil.GameBuilderTags.Project.ToString()))
+      uploadItem.Tags.Add(SteamUtil.GameBuilderTags.Project.ToString());
+    SteamWorkshopService.Instance.Upload(uploadItem, (args) => UploadCallback(args, uploadItem));
     currentUploadItem = uploadItem;
   }
 
@@ -303,21 +309,27 @@ public class SaveMenu : MonoBehaviour
 
     if (args.IsError)
     {
-      if (args.ErrorMessage == "File was not found!")
+      if (args.ErrorMessage == "File was not found!" ||
+        (args.ErrorMessage != null && args.ErrorMessage.Contains("k_EResultFileNotFound")))
       {
         saveUI.feedbackTextSecondary.SetText($"No workshop file found - attempting new upload...");
         saveUI.feedbackTextSecondaryButton.onClick.RemoveAllListeners();
         UploadActiveSaveToWorkshop(true /* forcing new upload */);
       }
+      else
+      {
+        saveUI.feedbackTextSecondaryButton.onClick.RemoveAllListeners();
+        saveUI.feedbackTextSecondary.SetText($"Workshop upload failed: {args.ErrorMessage}");
+      }
     }
     else
     {
-      string url = $"https://steamcommunity.com/sharedfiles/filedetails/?id={uploadItem.SteamNative.m_nPublishedFileId.ToString()}";
+      string url = $"https://steamcommunity.com/sharedfiles/filedetails/?id={uploadItem.PublishedFileId.Value}";
       saveUI.feedbackTextSecondary.SetText($"Workshop URL (must be logged in):\n{url}");
       saveUI.feedbackTextSecondaryButton.onClick.AddListener(() => Application.OpenURL(url));
       fileOnSteamWorkshop = true;
 
-      PerformWorkshopVisibilityCheck(uploadItem.SteamNative.m_nPublishedFileId.m_PublishedFileId);
+      PerformWorkshopVisibilityCheck(uploadItem.PublishedFileId.Value);
     }
   }
 #endif
@@ -453,12 +465,12 @@ public class SaveMenu : MonoBehaviour
       //see if the xml file is there
       if (File.Exists(Path.Combine(gameBundleLibrary.GetBundleDirectory(existingBundleId), SteamUtil.WorkshopItemInfoFileName)))
       {
-        uploadItem = SteamWorkshopMain.Instance.GetItemUpdateFromFolder(gameBundleLibrary.GetBundleDirectory(existingBundleId));
+        uploadItem = SteamWorkshopService.Instance.GetItemUpdateFromFolder(gameBundleLibrary.GetBundleDirectory(existingBundleId));
       }
 
       if (uploadItem != null)
       {
-        string url = $"https://steamcommunity.com/sharedfiles/filedetails/?id={uploadItem.SteamNative.m_nPublishedFileId.ToString()}";
+        string url = $"https://steamcommunity.com/sharedfiles/filedetails/?id={uploadItem.PublishedFileId.Value}";
         saveUI.feedbackTextSecondary.SetText($"Workshop URL (must be logged in):\n{url}");
         saveUI.feedbackTextSecondaryButton.onClick.AddListener(() => Application.OpenURL(url));
         saveUI.feedbackTextSecondary.gameObject.SetActive(true);
@@ -508,7 +520,7 @@ public class SaveMenu : MonoBehaviour
   {
     if (currentUploadItem != null)
     {
-      return $"uploading...{Mathf.FloorToInt(100 * SteamWorkshopMain.Instance.GetUploadProgress(currentUploadItem))}%";
+      return $"uploading...{Mathf.FloorToInt(100 * SteamWorkshopService.Instance.GetUploadProgress(currentUploadItem))}%";
     }
     else
     {

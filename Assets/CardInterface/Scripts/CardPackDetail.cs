@@ -19,8 +19,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 #if USE_STEAMWORKS
-using LapinerTools.Steam;
-using LapinerTools.Steam.Data;
+using GameBuilder.Workshop;
 #endif
 
 public class CardPackDetail : AssetDetail

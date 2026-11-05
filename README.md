@@ -523,10 +523,24 @@ renderable URIs, but those remote models cannot be fetched and show a
 conspicuous missing-asset placeholder. Replace them with a local OBJ using
 the `renderuri` command above. No Poly API key or SDK setup is available.
 
-## Optional integrations that still need plugins
+## Optional integrations
 
-* Steam Workshop requires the Steam Workshop integration. Local model import
-  uses the free runtime importer and does not require TriLib.
+* Steam Workshop uses Steamworks.NET (`com.rlabrecque.steamworks.net`, MIT),
+  pinned in `Packages/manifest.json`; it replaces the former LapinerTools code.
+* `USE_STEAMWORKS` is enabled for Standalone builds (Windows, macOS, Linux).
+* Steam Workshop requires the Steam client, a logged-in account, and a valid
+  App ID. For local development, create `steam_appid.txt` next to the executable
+  with that App ID; keep the file out of version control.
+* `WorkshopItemInfo.xml` keeps LapinerTools' XML schema (`PublishedFileId`,
+  `IconFileName`, and `Tags/string`) and is written before upload, preserving the
+  published ID in the content folder for later updates.
+* If an existing `WorkshopItemInfo.xml` has no readable published ID, its
+  upload stops rather than silently creating a duplicate Workshop item.
+
+
+* Without Steam initialization, Workshop search and upload are unavailable;
+  the saved local Workshop asset cache still works. Editor builds retain the
+  disk-backed local Workshop source. Local model import needs no TriLib.
 
 
 ## Archival Build
@@ -535,6 +549,16 @@ The `builds` directory contains the last build published to Steam
 (`gamebuilder-ARCHIVE.7z.*`). It predates the plugin-free 2D renderer and
 includes optional integrations such as Shaper-based 2D UI and the rich JS
 editor.
+
+`gamebuilder-OSS.7z` is a runtime build, not a source archive. The Steam
+archive's compiled `Assembly-CSharp.dll` contains the former `SteamManager`,
+`Steamworks`, and `LapinerTools` integration; it does not establish the source
+contract used by this replacement.
+The missing component GUID `62efa415090464f4d83ec1b8a5a5fadc` on `MC` was only a
+plausible Workshop bootstrap; the archived binary did not map it to a class.
+The orphaned missing-script entry has been removed from `Assets/Prefabs/MC.prefab`.
+The current Standalone build uses Steamworks.NET for UGC and Steam identity;
+the Steam client and a valid App ID remain runtime prerequisites.
 
 ## License
 

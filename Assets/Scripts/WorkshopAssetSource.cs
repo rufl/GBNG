@@ -22,8 +22,7 @@ using System.IO;
 using System.Linq;
 using System;
 #if USE_STEAMWORKS
-using LapinerTools.Steam;
-using LapinerTools.Steam.Data;
+using GameBuilder.Workshop;
 using Steamworks;
 #endif
 using CT = CommandTerminal;
@@ -51,25 +50,13 @@ public class WorkshopAssetSource : MonoBehaviour
 
   void Awake()
   {
-    // MUST do this regardless of SteamManager.Initialized - the whole point is
-    // for this to work without it.
+    // Keep the disk cache available even when Steam is not running.
     cacheDirectory = GameBuilderApplication.CurrentGameOptions.workshopAssetCacheDir;
-
-    // SteamManager needs to be kicked to be initialized...
-    if (!SteamManager.Initialized)
-    {
-      Util.Log($"SteamWorkshop not available.");
-      return;
-    }
-
-    SteamWorkshopMain.Instance.OnError += HandleWorkshopError;
+    if (!SteamRuntime.Initialized) Util.Log("Steam Workshop not available.");
 
   }
 
-  void HandleWorkshopError(LapinerTools.Steam.Data.ErrorEventArgs args)
-  {
-    Util.LogError($"Steam Workshop error: {args.ErrorMessage}");
-  }
+  
 
   IEnumerator GetRoutine(ulong fileId, System.Action<Util.Maybe<string>> onComplete, System.Action<float> onProgress, System.Action<WorkshopItem> handleItem)
   {
@@ -85,12 +72,12 @@ public class WorkshopAssetSource : MonoBehaviour
       yield break;
     }
 
-    if (!SteamManager.Initialized)
+    if (!SteamRuntime.Initialized)
     {
       onComplete(Util.Maybe<string>.CreateError("Steam Workshop not available. Are you logged in? Maybe it's down?"));
       yield break;
     }
-    SteamUtil.GetWorkShopItem(fileId, maybeItem => GetWorkshopHandler(maybeItem, onComplete, onProgress, handleItem));
+    SteamUtil.GetWorkshopItem(fileId, maybeItem => GetWorkshopHandler(maybeItem, onComplete, onProgress, handleItem));
   }
 
   // 'onComplete' will be called with the local directory path of the downloaded
@@ -108,9 +95,9 @@ public class WorkshopAssetSource : MonoBehaviour
     float t0 = Time.realtimeSinceStartup;
     while (true)
     {
-      onProgress?.Invoke(SteamWorkshopMain.Instance.GetDownloadProgress(item));
+      onProgress?.Invoke(SteamWorkshopService.Instance.GetDownloadProgress(item));
 
-      Util.Log($"Downloading work shop item {item.GetId()}.. progress: {SteamWorkshopMain.Instance.GetDownloadProgress(item)}. Still downloading? {item.IsDownloading}");
+      Util.Log($"Downloading work shop item {item.GetId()}.. progress: {SteamWorkshopService.Instance.GetDownloadProgress(item)}. Still downloading? {item.IsDownloading}");
 
       //if (!item.IsSubscribed)
       //{
@@ -135,6 +122,7 @@ public class WorkshopAssetSource : MonoBehaviour
       if (Time.realtimeSinceStartup - t0 > 300f)
       {
         onComplete(Util.Maybe<string>.CreateError($"Workshop item {item.GetId()} has been downloading for over 5 minutes - giving up."));
+        yield break;
       }
 
       // IMPORTANT: IsInstalled and IsDownloading can be set at the same time so we should always check
@@ -162,8 +150,13 @@ public class WorkshopAssetSource : MonoBehaviour
       if (!item.IsInstalled)
       {
         // The only way we know how to install something is to subscribe to it..
-        SteamWorkshopMain.Instance.Subscribe(item, args =>
+        SteamWorkshopService.Instance.Subscribe(item, args =>
         {
+          if (args.IsError)
+          {
+            onComplete(Util.Maybe<string>.CreateError(args.ErrorMessage));
+            return;
+          }
           handleItem?.Invoke(item);
           StartCoroutine(DownloadRoutine(item, onComplete, onProgress));
         });
@@ -188,21 +181,13 @@ public class WorkshopAssetSource : MonoBehaviour
   {
     yield return null;
 
-    if (!SteamManager.Initialized)
+    if (!SteamRuntime.Initialized)
     {
       onComplete(Util.Maybe<ulong>.CreateError("Steam Workshop not available. Are you logged in? Maybe it's down?"));
       yield break;
     }
 
-    WorkshopItemUpdate updateInfo = null;
-
-    // NOTE: If we want to update the item, we can just remember the old file ID. Not sure how best to do this...we'd have to remember who the item belongs to..?
-    // if (File.Exists(Path.Combine(contentPath, SteamUtil.WorkshopItemInfoFileName)))
-    // {
-    //   uploadItem = SteamWorkshopMain.Instance.GetItemUpdateFromFolder(contentPath);
-    // }
-
-    updateInfo = new WorkshopItemUpdate();
+    var updateInfo = new WorkshopItemUpdate();
     updateInfo.Name = name;
     updateInfo.Description = description;
     updateInfo.ContentPath = contentPath;
@@ -211,18 +196,18 @@ public class WorkshopAssetSource : MonoBehaviour
     updateInfo.Tags.Add(typeTag.ToString());
     if (fileIdToUpdate != null)
     {
-      updateInfo.SteamNative.m_nPublishedFileId = fileIdToUpdate.Value;
+      updateInfo.PublishedFileId = fileIdToUpdate.Value.m_PublishedFileId;
     }
     if (updateInfo.IconPath == null && typeTag == SteamUtil.GameBuilderTags.CardPack)
     {
       updateInfo.IconPath = Path.Combine(
         Util.GetConcretePath(Util.AbstractLocation.StreamingAssets), CARD_PACK_ICON_PATH);
     }
-    // uploadItem.IconPath // TODO
-    SteamWorkshopMain.Instance.Upload(updateInfo, (args) => UploadCallback(args, onComplete));
+    bool requirePublic = !updateInfo.PublishedFileId.HasValue;
+    SteamWorkshopService.Instance.Upload(updateInfo, args => UploadCallback(args, onComplete, requirePublic));
     onStatus?.Invoke(() =>
     {
-      return SteamWorkshopMain.Instance.GetUploadProgress(updateInfo);
+      return SteamWorkshopService.Instance.GetUploadProgress(updateInfo);
     });
   }
 
@@ -240,39 +225,35 @@ public class WorkshopAssetSource : MonoBehaviour
     StartCoroutine(PutRoutine(contentPath, name, description, typeTag, thumbnailPath, fileIdToUpdate, onComplete, onStatus));
   }
 
-  void UploadCallback(WorkshopItemUpdateEventArgs args, System.Action<Util.Maybe<ulong>> onComplete)
+  void UploadCallback(WorkshopItemUpdateEventArgs args, System.Action<Util.Maybe<ulong>> onComplete, bool requirePublic)
   {
     if (args.IsError)
     {
       onComplete(Util.Maybe<ulong>.CreateError(args.ErrorMessage));
+      return;
     }
-    else
-    {
-      bool makePrivate = !args.Item.Tags.Any(tag => VisibleTypeTags.Contains(tag.ToLowerInvariant()));
-      PerformWorkshopVisibilityCheck(args.Item.SteamNative.m_nPublishedFileId.m_PublishedFileId, onComplete, makePrivate);
-    }
+
+    bool makePrivate = !args.Item.Tags.Any(tag => VisibleTypeTags.Contains(tag.ToLowerInvariant()));
+    PerformWorkshopVisibilityCheck(args.Item.PublishedFileId, onComplete, makePrivate, requirePublic);
   }
 
-  void PerformWorkshopVisibilityCheck(ulong fileId, System.Action<Util.Maybe<ulong>> onComplete, bool makePrivate)
+  void PerformWorkshopVisibilityCheck(ulong fileId, System.Action<Util.Maybe<ulong>> onComplete, bool makePrivate, bool requirePublic)
   {
-    GameBuilder.SteamUtil.QueryWorkShopItemVisibility(fileId, maybeVisible =>
+    SteamWorkshopService.Instance.QueryVisibility(fileId, maybeVisible =>
     {
-      if (maybeVisible.IsEmpty() || maybeVisible.Value == false)
+      if (maybeVisible.IsEmpty() || (requirePublic && !maybeVisible.Value))
       {
-        onComplete(Util.Maybe<ulong>.CreateError($"Item was uploaded with ID {fileId}, but we could not look it up afterwards. Are you sure you have agreed to the Steam Subscriber Agreement?"));
+        onComplete(Util.Maybe<ulong>.CreateError($"Item was uploaded with ID {fileId}, but we could not verify its visibility. Are you sure you have agreed to the Steam Subscriber Agreement?"));
         return;
       }
-      else
-      {
-        // All goooood
-        onComplete(Util.Maybe<ulong>.CreateWith(fileId));
 
-        if (makePrivate)
+      onComplete(Util.Maybe<ulong>.CreateWith(fileId));
+      if (makePrivate && maybeVisible.Value)
+      {
+        SteamWorkshopService.Instance.SetVisibilityPrivate(fileId, success =>
         {
-          UGCUpdateHandle_t itemUpdateHandle = SteamUGC.StartItemUpdate(SteamUtils.GetAppID(), new Steamworks.PublishedFileId_t(fileId));
-          SteamUGC.SetItemVisibility(itemUpdateHandle, ERemoteStoragePublishedFileVisibility.k_ERemoteStoragePublishedFileVisibilityPrivate);
-          SteamUGC.SubmitItemUpdate(itemUpdateHandle, "hide asset");
-        }
+          if (!success) Util.LogError($"Could not make Workshop asset {fileId} private.");
+        });
       }
     });
   }

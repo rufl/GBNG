@@ -21,8 +21,7 @@ using System.IO;
 using UnityEngine;
 
 #if USE_STEAMWORKS
-using LapinerTools.Steam;
-using LapinerTools.Steam.Data;
+using GameBuilder.Workshop;
 #endif
 
 public class SceneActorLibrary : MonoBehaviour
@@ -238,7 +237,7 @@ public class SceneActorLibrary : MonoBehaviour
         {
           id += $" (from \"{workshopItem.Name}\" on Workshop)";
           prefab.label += $" (from \"{workshopItem.Name}\" on Workshop)";
-          prefab.workshopId = workshopItem.SteamNative.m_nPublishedFileId.ToString();
+          prefab.workshopId = workshopItem.PublishedFileId.ToString();
         }
 #endif
         prefabs[id] = prefab;

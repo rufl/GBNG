@@ -19,8 +19,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 #if USE_STEAMWORKS
-using LapinerTools.Steam;
-using LapinerTools.Steam.Data;
+using GameBuilder.Workshop;
 #endif
 
 using GameBuilder;
@@ -299,23 +298,22 @@ public class GameLibraryMenu : ThumbnailMenu
 #if USE_STEAMWORKS
   void CreateSteamSubscribedThumbnails()
   {
-    if (!SteamManager.Initialized)
+    if (!SteamRuntime.Initialized)
     {
       SetCategoryLoading(WORKSHOP, false);
       Debug.Log($"Steam Workshop is not available right now. Did you launch from Steam?");
       return;
     }
-    SteamWorkshopMain.Instance.ResetItemSearch();
-    SteamWorkshopMain.Instance.Sorting = new WorkshopSortMode(EWorkshopSource.SUBSCRIBED);
-    SteamWorkshopMain.Instance.GetItemList(1, OnSubscribedWorkshopListLoaded);
+    SteamWorkshopService.Instance.ResetItemSearch();
+    SteamWorkshopService.Instance.Sorting = new WorkshopSortMode(EWorkshopSource.SUBSCRIBED);
+    SteamWorkshopService.Instance.GetItemList(1, OnSubscribedWorkshopListLoaded);
   }
 
   IEnumerator GenerateWorkshopThumbnails(List<WorkshopItem> items)
   {
     foreach (WorkshopItem item in items)
     {
-      string[] tags = item.SteamNative.m_details.m_rgchTags.Split(',');
-      if (tags.Contains(SteamUtil.GameBuilderTags.Asset.ToString())) continue;
+      if (item.Tags.Contains(SteamUtil.GameBuilderTags.Asset.ToString())) continue;
       GameThumbnail gameThumbnail = Instantiate(gameThumbnailPrefab).GetComponent<GameThumbnail>();
       if (item.PreviewImageURL != null && item.PreviewImageURL.Length > 0)
       {

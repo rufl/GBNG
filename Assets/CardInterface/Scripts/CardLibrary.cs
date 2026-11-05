@@ -15,8 +15,7 @@
  */
 
 #if USE_STEAMWORKS
-using LapinerTools.Steam;
-using LapinerTools.Steam.Data;
+using GameBuilder.Workshop;
 using Steamworks;
 #endif
 using System.Collections;

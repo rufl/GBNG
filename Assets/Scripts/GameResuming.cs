@@ -19,7 +19,7 @@ using System.Collections;
 using UnityEngine;
 using GameBuilder;
 #if USE_STEAMWORKS
-using LapinerTools.Steam.Data;
+using GameBuilder.Workshop;
 #endif
 
 public class GameResuming : MonoBehaviour
@@ -79,9 +79,9 @@ public class GameResuming : MonoBehaviour
       yield break;
     }
 
-    // Hmm ideally this is done in GetWorkShopItem, but I need to make that a MonoBehaviour.
+    // Wait only until Steam initialization has been attempted; offline resume must not hang.
 #if USE_STEAMWORKS
-    while (!SteamManager.Initialized)
+    while (!SteamRuntime.InitializationAttempted)
     {
       yield return null;
     }
@@ -89,9 +89,9 @@ public class GameResuming : MonoBehaviour
 
     ResumeInfo info = JsonUtility.FromJson<ResumeInfo>(PlayerPrefs.GetString(ResumeInfoPlayerPrefKey));
 #if USE_STEAMWORKS
-    if (info.steamWorkshopFileId != 0)
+    if (info.steamWorkshopFileId != 0 && SteamRuntime.Initialized)
     {
-      SteamUtil.GetWorkShopItem(info.steamWorkshopFileId, item =>
+      SteamUtil.GetWorkshopItem(info.steamWorkshopFileId, item =>
       {
         if (!item.IsEmpty())
         {

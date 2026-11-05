@@ -14,11 +14,10 @@
  * limitations under the License.
  */
 
+using System.Collections;
 using System.Collections.Generic;
 #if USE_STEAMWORKS
-using Steamworks;
-using LapinerTools.Steam;
-using LapinerTools.Steam.Data;
+using GameBuilder.Workshop;
 #endif
 using UnityEngine;
 
@@ -26,14 +25,13 @@ public class FeaturedWorkshopItems : MonoBehaviour
 {
 #if USE_STEAMWORKS
   // https://steamcommunity.com/sharedfiles/filedetails/?id=1569305489
-  public static PublishedFileId_t[] FeaturedPublishedFileIds = new PublishedFileId_t[] {
-    new PublishedFileId_t(1790543051),
-    new PublishedFileId_t(1790375733),
-    new PublishedFileId_t(1809912386)
+  public static readonly ulong[] FeaturedPublishedFileIds = {
+    1790543051,
+    1790375733,
+    1809912386
   };
 
-  List<WorkshopItem> items = new List<WorkshopItem>();
-
+  readonly List<WorkshopItem> items = new List<WorkshopItem>();
   bool waitingOnQuery = true;
 
   GameBuilderSceneController scenes;
@@ -43,54 +41,35 @@ public class FeaturedWorkshopItems : MonoBehaviour
     Util.FindIfNotSet(this, ref scenes);
   }
 
-  // TODO make this share code with SteamUtil
-  System.Collections.IEnumerator Start()
+  IEnumerator Start()
   {
-    while (!SteamManager.Initialized)
+    while (!SteamRuntime.InitializationAttempted)
     {
       yield return null;
     }
-    UGCQueryHandle_t queryHandle = SteamUGC.CreateQueryUGCDetailsRequest(FeaturedPublishedFileIds, (uint)FeaturedPublishedFileIds.Length);
-    SteamWorkshopMain.Instance.Execute<SteamUGCQueryCompleted_t>(SteamUGC.SendQueryUGCRequest(queryHandle), OnQueryCompleted);
+
+    if (!SteamRuntime.Initialized)
+    {
+      waitingOnQuery = false;
+      yield break;
+    }
+
+    SteamWorkshopService.Instance.GetItemsByIds(FeaturedPublishedFileIds, OnItemsLoaded);
   }
 
-  private void OnQueryCompleted(SteamUGCQueryCompleted_t p_callback, bool p_bIOFailure)
+  void OnItemsLoaded(WorkshopItemListEventArgs args)
   {
     waitingOnQuery = false;
     items.Clear();
-
-    if (p_bIOFailure || p_callback.m_eResult != EResult.k_EResultOK)
+    if (args.IsError)
     {
-      Util.LogError($"Failed to query featured workshop items. Result code: {p_callback.m_eResult}");
+      Util.LogError($"Failed to query featured Workshop items: {args.ErrorMessage}");
       return;
     }
 
-    for (uint i = 0; i < p_callback.m_unNumResultsReturned; i++)
-    {
-      SteamUGCDetails_t itemDetails;
-      if (SteamUGC.GetQueryUGCResult(p_callback.m_handle, i, out itemDetails))
-      {
-        if (itemDetails.m_eResult != Steamworks.EResult.k_EResultOK)
-        {
-          Util.LogError($"Something is wrong with featured file ID {FeaturedPublishedFileIds[i]} - ignoring.");
-        }
-        else
-        {
-          WorkshopItem item = SteamWorkshopMain.Instance.RegisterQueryResultItem(p_callback.m_handle, i, itemDetails);
-          items.Add(item);
-          // Util.Log($"got WorkshopItem for featured ID {item.SteamNative.m_nPublishedFileId}, name is {item.Name} {item.PreviewImageURL}. sub'd? {item.IsSubscribed}");
-        }
-      }
-      else
-      {
-        Util.LogError($"Could not query details of featured file ID {FeaturedPublishedFileIds[i]} - ignoring.");
-      }
-    }
+    items.AddRange(args.ItemList.Items);
   }
 
-  // NOTE: These items will probably not reflect the full state of a normal
-  // SteamWorkShopMain item. For example, their IsFavorited state should
-  // probably not be trusted.
   public ICollection<WorkshopItem> GetItems()
   {
     return items;
@@ -100,6 +79,5 @@ public class FeaturedWorkshopItems : MonoBehaviour
   {
     return waitingOnQuery;
   }
-
 #endif
 }

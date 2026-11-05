@@ -15,8 +15,7 @@
  */
 
 #if USE_STEAMWORKS
-using LapinerTools.Steam;
-using LapinerTools.Steam.Data;
+using GameBuilder.Workshop;
 using Steamworks;
 #endif
 using System.Collections;
@@ -78,7 +77,7 @@ public class CardPackWorkshopMenu : ThumbnailMenu
     {
       SetSearchString(searchString);
       ClearThumbnails();
-      SteamWorkshopMain.Instance.SearchText = searchString;
+      SteamWorkshopService.Instance.SearchText = searchString;
       CreateSteamThumbnails();
     }
   }
@@ -117,7 +116,7 @@ public class CardPackWorkshopMenu : ThumbnailMenu
 
   void CreateSteamThumbnails(uint page = 1)
   {
-    if (!SteamManager.Initialized)
+    if (!SteamRuntime.Initialized)
     {
       Debug.Log($"Steam Workshop is not available right now. Did you launch from Steam?");
       return;
@@ -126,12 +125,11 @@ public class CardPackWorkshopMenu : ThumbnailMenu
     workingFeedback.SetActive(true);
     noResultsFeedback.SetActive(false);
 
-    // TODO need to edit SteamWorkshopMain to use SetExcludeTags and exclude Assets
-    SteamWorkshopMain.Instance.ResetItemSearch();
-    SteamWorkshopMain.Instance.m_excludeTags.Clear();
-    SteamWorkshopMain.Instance.SearchTags.Add(SteamUtil.GameBuilderTags.CardPack.ToString());
-    SteamWorkshopMain.Instance.Sorting = new WorkshopSortMode(GetSortMode());
-    SteamWorkshopMain.Instance.GetItemList(curPage, OnWorkshopListLoaded);
+    SteamWorkshopService.Instance.ResetItemSearch();
+    SteamWorkshopService.Instance.ExcludedTags.Clear();
+    SteamWorkshopService.Instance.SearchTags.Add(SteamUtil.GameBuilderTags.CardPack.ToString());
+    SteamWorkshopService.Instance.Sorting = new WorkshopSortMode(GetSortMode());
+    SteamWorkshopService.Instance.GetItemList(curPage, OnWorkshopListLoaded);
   }
 
   protected override void Update()

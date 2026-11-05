@@ -19,8 +19,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 #if USE_STEAMWORKS
-using LapinerTools.Steam;
-using LapinerTools.Steam.Data;
+using GameBuilder.Workshop;
 #endif
 
 using System.IO;
@@ -72,7 +71,7 @@ public class GameFeatured : MonoBehaviour
     else if (!workshopItem.IsSubscribed)
     {
       // Not yet installed workshop item.
-      SteamWorkshopMain.Instance.Subscribe(workshopItem, (args) => { }) /* empty callback */;
+      SteamWorkshopService.Instance.Subscribe(workshopItem, (args) => { }) /* empty callback */;
     }
   }
 
@@ -84,7 +83,7 @@ public class GameFeatured : MonoBehaviour
     }
     else
     {
-      ulong itemId = workshopItem.SteamNative.m_nPublishedFileId.m_PublishedFileId;
+      ulong itemId = workshopItem.PublishedFileId;
       // Two action logs intentional.
     }
     loadingScreen.ShowAndDo(() =>
@@ -162,7 +161,7 @@ public class GameFeatured : MonoBehaviour
         downloadTextObject.SetActive(true);
         if (workshopItem.IsDownloading)
         {
-          downloadText.text = $"{Mathf.FloorToInt(100 * SteamWorkshopMain.Instance.GetDownloadProgress(workshopItem))}%";
+          downloadText.text = $"{Mathf.FloorToInt(100 * SteamWorkshopService.Instance.GetDownloadProgress(workshopItem))}%";
         }
         else
         {

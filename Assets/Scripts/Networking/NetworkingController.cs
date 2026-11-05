@@ -466,7 +466,7 @@ public class NetworkingController : Photon.PunBehaviour
   string GetSteamID()
   {
 #if USE_STEAMWORKS
-    if (SteamManager.Initialized)
+    if (GameBuilder.Workshop.SteamRuntime.Initialized)
     {
       return Steamworks.SteamUser.GetSteamID().m_SteamID.ToString();
     }
@@ -487,7 +487,7 @@ public class NetworkingController : Photon.PunBehaviour
     string nickName = null;
 
 #if USE_STEAMWORKS
-    if (SteamManager.Initialized)
+    if (GameBuilder.Workshop.SteamRuntime.Initialized)
     {
       nickName = Steamworks.SteamFriends.GetPersonaName();
       props[(object)SteamIdPlayerProperty] = GetSteamID();

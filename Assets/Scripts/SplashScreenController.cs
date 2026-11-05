@@ -18,7 +18,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 #if USE_STEAMWORKS
-using LapinerTools.Steam.Data;
+using GameBuilder.Workshop;
 #endif
 using GameBuilder;
 

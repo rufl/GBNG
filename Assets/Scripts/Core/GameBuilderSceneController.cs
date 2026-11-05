@@ -21,7 +21,7 @@ using UnityEngine.SceneManagement;
 using System.IO;
 using GameBuilder;
 #if USE_STEAMWORKS
-using LapinerTools.Steam.Data;
+using GameBuilder.Workshop;
 #endif
 
 #if TEXTURE_ADJUSTMENTS
@@ -38,7 +38,7 @@ public struct LoadableWorkshopItem
 
   public LoadableWorkshopItem(WorkshopItem item)
   {
-    this.steamId = item.SteamNative.m_nPublishedFileId.m_PublishedFileId;
+    this.steamId = item.PublishedFileId;
     this.displayName = item.Name;
     this.installedLocalFolder = item.InstalledLocalFolder;
   }
