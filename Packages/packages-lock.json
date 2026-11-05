@@ -1,5 +1,11 @@
 {
   "dependencies": {
+    "com.cysharp.unitask": {
+      "version": "file:com.cysharp.unitask",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {}
+    },
     "com.donghok.meshimporter": {
       "version": "https://github.com/eastskykang/UnityMeshImporter.git#d3b2be29d6eec3a8a05799001acaa38c37e6a596",
       "depth": 0,
@@ -48,6 +54,13 @@
     },
     "com.unity.nuget.mono-cecil": {
       "version": "1.11.6",
+      "depth": 1,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://packages.unity.com"
+    },
+    "com.unity.nuget.newtonsoft-json": {
+      "version": "3.2.2",
       "depth": 1,
       "source": "registry",
       "dependencies": {},
@@ -104,11 +117,76 @@
         "com.unity.modules.physics": "1.0.0"
       }
     },
-    "com.webviewtoolkit.core": {
-      "version": "file:com.webviewtoolkit.core",
+    "dev.voltstro.nativearrayspanextensions": {
+      "version": "1.0.1",
+      "depth": 1,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://upr.voltstro.dev"
+    },
+    "dev.voltstro.unitywebbrowser": {
+      "version": "2.2.8",
       "depth": 0,
-      "source": "embedded",
-      "dependencies": {}
+      "source": "registry",
+      "dependencies": {
+        "dev.voltstro.nativearrayspanextensions": "1.0.1",
+        "com.unity.nuget.newtonsoft-json": "3.2.1",
+        "com.cysharp.unitask": "2.5.10",
+        "org.nuget.voltrpc": "3.2.1"
+      },
+      "url": "https://upr.voltstro.dev"
+    },
+    "dev.voltstro.unitywebbrowser.engine.cef": {
+      "version": "2.2.8",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "dev.voltstro.unitywebbrowser": "2.2.8"
+      },
+      "url": "https://upr.voltstro.dev"
+    },
+    "dev.voltstro.unitywebbrowser.engine.cef.linux.x64": {
+      "version": "2.2.8",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "dev.voltstro.unitywebbrowser.engine.cef": "2.2.8"
+      },
+      "url": "https://upr.voltstro.dev"
+    },
+    "dev.voltstro.unitywebbrowser.engine.cef.macos.arm64": {
+      "version": "2.2.8",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "dev.voltstro.unitywebbrowser.engine.cef": "2.2.8"
+      },
+      "url": "https://upr.voltstro.dev"
+    },
+    "dev.voltstro.unitywebbrowser.engine.cef.macos.x64": {
+      "version": "2.2.8",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "dev.voltstro.unitywebbrowser.engine.cef": "2.2.8"
+      },
+      "url": "https://upr.voltstro.dev"
+    },
+    "dev.voltstro.unitywebbrowser.engine.cef.win.x64": {
+      "version": "2.2.8",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "dev.voltstro.unitywebbrowser.engine.cef": "2.2.8"
+      },
+      "url": "https://upr.voltstro.dev"
+    },
+    "org.nuget.voltrpc": {
+      "version": "3.2.1",
+      "depth": 1,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://upr.voltstro.dev"
     },
     "com.unity.modules.animation": {
       "version": "1.0.0",

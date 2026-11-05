@@ -8,14 +8,24 @@ public static class MonacoAssetsBuildPostprocessor
   [PostProcessBuild(500)]
   public static void CopyMonacoAssets(BuildTarget target, string playerPath)
   {
-    if (target != BuildTarget.StandaloneWindows64) return;
+    if (target != BuildTarget.StandaloneWindows64 &&
+        target != BuildTarget.StandaloneLinux64 &&
+        target != BuildTarget.StandaloneOSX) return;
 
     string projectRoot = Directory.GetParent(Application.dataPath).FullName;
     string sourceRoot = Path.Combine(projectRoot, "third_party");
-    string playerDirectory = Path.GetDirectoryName(playerPath);
-    string playerDataDirectory = Path.Combine(
-      playerDirectory,
-      Path.GetFileNameWithoutExtension(playerPath) + "_Data");
+    string playerDataDirectory;
+    if (target == BuildTarget.StandaloneOSX)
+    {
+      playerDataDirectory = Path.Combine(playerPath, "Contents", "Resources", "Data");
+    }
+    else
+    {
+      string playerDirectory = Path.GetDirectoryName(playerPath);
+      playerDataDirectory = Path.Combine(
+        playerDirectory,
+        Path.GetFileNameWithoutExtension(playerPath) + "_Data");
+    }
     string destinationRoot = Path.Combine(playerDataDirectory, "StreamingAssets", "third_party");
 
     CopyDirectory(

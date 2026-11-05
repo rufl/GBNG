@@ -151,19 +151,32 @@ authored color instead of aborting scene load.
 
 ## Behavior code editor
 
-The full Monaco behavior editor is supported in Windows x64 players using
-Direct3D 11 or 12. It uses the MIT-licensed WebViewToolkit, vendored Monaco
-and Microsoft's free [Evergreen WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/);
-no paid Unity plugin is required.
+The full Monaco behavior editor is supported in Windows x64, Linux x64 and
+macOS desktop builds through UnityWebBrowser's CEF engine. UnityWebBrowser is
+MIT-licensed; the CEF engine and native packages are free and do not require
+WebView2, Direct3D 11/12 or a paid Unity plugin. CEF runs in a separate process,
+and its native runtime is automatically included in desktop player builds.
 
 It provides syntax highlighting, completions, behavior-system typings and
 source navigation, editing, read-only mode, diagnostics, scroll restoration
-and zoom. If WebView2 is missing, the graphics API is unsupported, or the
-build targets another platform, the built-in multiline editor remains
-available.
-The native browser surface is created lazily at the visible code panel's pixel
-dimensions. Native resizing is avoided because the bundled WebView resize path
-can crash; Unity scales the existing texture if the window layout later changes.
+and zoom. If CEF cannot start or Monaco assets are missing, the built-in
+multiline editor remains available. The browser starts lazily at the visible
+code panel's pixel dimensions; Unity scales that texture after layout changes
+instead of resizing the browser process.
+
+The bundled CEF runtime increases desktop build size and requires the Mono
+scripting backend; UnityWebBrowser does not support IL2CPP. Linux support is
+x64 (upstream tested on Ubuntu 22.04). macOS CEF apps are unsigned and must be
+signed/notarized for public distribution; upstream ARM64 support is provided
+but not tested by its maintainers.
+
+UnityWebBrowser and the CEF engine packages are pinned at 2.2.8. The verified
+Windows player contains `LICENSE.UWB.txt`, `LICENSE.CEF.txt` and `README.CEF.txt`
+beside the CEF binaries in `GameBuilder_Data/UWB`; CEF's README points to
+`about:credits` for Chromium and other bundled third-party notices. UniTask
+2.5.10 is embedded under `Packages/com.cysharp.unitask`, with its upstream MIT
+license at `LICENSE`. Only the optional Editor task-tracker code is omitted
+because it no longer compiles against the pinned Unity release.
 
 ## Optional integrations available for free
 

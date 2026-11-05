@@ -69,8 +69,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
     var zoom = 0;
 
     function notifyUnity(type, value) {
-      if (window.chrome && window.chrome.webview) {
-        window.chrome.webview.postMessage(JSON.stringify({ type: type, value: value }));
+      if (window.uwb && typeof window.uwb.ExecuteJsMethod === "function") {
+        window.uwb.ExecuteJsMethod("OnMonacoMessage", JSON.stringify({ type: type, value: value }));
       }
     }
 

@@ -18,21 +18,19 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
 using System.Net;
 using System.Net.Sockets;
-using System.Runtime.InteropServices;
-#endif
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
-#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
-using WebViewToolkit;
-using WebViewToolkit.Native;
-#endif
+using VoltstroStudios.UnityWebBrowser;
+using VoltstroStudios.UnityWebBrowser.Communication;
+using VoltstroStudios.UnityWebBrowser.Core.Engines;
+using VoltstroStudios.UnityWebBrowser.Input;
+
 
 public interface ISystemSourceBrowser
 {
@@ -40,14 +38,11 @@ public interface ISystemSourceBrowser
   void AddSystemSource(string contents, string fileName);
 }
 
-public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSourceBrowser,
-  IPointerDownHandler, IPointerUpHandler, IPointerMoveHandler, IDragHandler,
-  IPointerExitHandler, IScrollHandler
+public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSourceBrowser, IPointerDownHandler
+
 {
   const float InitializationTimeoutSeconds = 15f;
-#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
-  static readonly KeyMapping[] KeyMappings = CreateKeyMappings();
-#endif
+
 
   [Serializable]
   private sealed class PageMessage
@@ -82,30 +77,15 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
     public string message;
   }
 
-#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
-  private struct KeyMapping
-  {
-    public KeyCode key;
-    public uint virtualKey;
-    public bool printable;
-
-    public KeyMapping(KeyCode key, uint virtualKey, bool printable)
-    {
-      this.key = key;
-      this.virtualKey = virtualKey;
-      this.printable = printable;
-    }
-  }
-#endif
 
   private BasicCodeBrowser fallback;
   private RawImage output;
   private Texture originalTexture;
-#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
-  private WebViewInstance webView;
+  private Rect originalUvRect;
+  private WebBrowserUIBasic browser;
+  private WebBrowserOldInputHandler inputHandler;
+  private TCPCommunicationLayer communicationLayer;
   private MonacoAssetServer assetServer;
-  private WebViewManager manager;
-#endif
   private readonly List<Action<bool>> readinessCallbacks = new List<Action<bool>>();
   private readonly List<PendingError> pendingErrors = new List<PendingError>();
   private string code = "";
@@ -126,31 +106,64 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
   {
     fallback = basicCodeBrowser;
     output = GetComponent<RawImage>();
-    if (output != null) originalTexture = output.texture;
+    if (output != null)
+    {
+      originalTexture = output.texture;
+      originalUvRect = output.uvRect;
+    }
   }
 
-  private void Start()
+  private void Update()
   {
-#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
-    // Wait until the editor panel has its real dimensions before creating the WebView.
-#else
-    TryStartWebView(0, 0);
-#endif
+    if (fallbackRequested)
+    {
+      fallbackRequested = false;
+      SwitchToFallback(fallbackReason);
+    }
+
+    if (usingFallback) return;
+
+    if (browser == null)
+    {
+      if (assetServer != null)
+      {
+        SwitchToFallback("The CEF browser surface was destroyed unexpectedly.");
+        return;
+      }
+
+      if (!visible || output == null) return;
+
+      Rect outputRect = output.rectTransform.rect;
+      float canvasScaleFactor = output.canvas != null ? output.canvas.scaleFactor : 1f;
+      int width = Mathf.RoundToInt(outputRect.width * canvasScaleFactor);
+      int height = Mathf.RoundToInt(outputRect.height * canvasScaleFactor);
+      if (width < 2 || height < 2) return;
+
+      startTime = Time.unscaledTime;
+      TryStartWebView(width, height);
+      if (usingFallback || browser == null) return;
+    }
+    if (browser.browserClient == null || browser.browserClient.HasDisposed)
+    {
+      SwitchToFallback("The CEF browser process stopped unexpectedly.");
+      return;
+    }
+
+    if (!pageReady && Time.unscaledTime - startTime > InitializationTimeoutSeconds)
+    {
+      SwitchToFallback("The Monaco page did not finish loading in time.");
+      return;
+    }
+
+
+    UpdateKeyboardFocus();
   }
 
   private void TryStartWebView(int width, int height)
   {
-#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
     if (fallback == null || output == null)
     {
       SwitchToFallback("The code canvas is missing its fallback editor or RawImage.");
-      return;
-    }
-
-    if (SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Direct3D11 &&
-        SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Direct3D12)
-    {
-      SwitchToFallback("The free embedded browser requires Direct3D 11 or Direct3D 12.");
       return;
     }
 
@@ -164,76 +177,46 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
         return;
       }
 
+      Engine cefEngine = Resources.Load<Engine>("Cef Engine Configuration");
+      if (cefEngine == null)
+      {
+        SwitchToFallback("The free CEF browser engine configuration is missing.");
+        return;
+      }
+
       assetServer = new MonacoAssetServer(thirdPartyRoot);
       string editorUrl = assetServer.Start();
-      manager = WebViewManager.Instance;
-      if (manager == null || !manager.IsInitialized)
+
+      inputHandler = ScriptableObject.CreateInstance<WebBrowserOldInputHandler>();
+      communicationLayer = ScriptableObject.CreateInstance<TCPCommunicationLayer>();
+      browser = output.gameObject.AddComponent<WebBrowserUIBasic>();
+      browser.browserClient.engine = cefEngine;
+      browser.browserClient.initialUrl = editorUrl;
+      browser.browserClient.communicationLayer = communicationLayer;
+      browser.browserClient.windowlessFrameRate = 30;
+      browser.browserClient.jsMethodManager.jsMethodsEnable = true;
+      browser.browserClient.RegisterJsMethod<string>("OnMonacoMessage", OnMonacoMessage);
+      browser.inputHandler = inputHandler;
+
+      // UWB exposes resizing only after startup; set its serialized startup resolution instead.
+      string resolutionJson = "{\"resolution\":{\"Width\":" +
+        width.ToString(CultureInfo.InvariantCulture) + ",\"Height\":" +
+        height.ToString(CultureInfo.InvariantCulture) + "}}";
+      JsonUtility.FromJsonOverwrite(resolutionJson, browser.browserClient);
+      VoltstroStudios.UnityWebBrowser.Shared.Resolution resolution = browser.browserClient.Resolution;
+      if (resolution.Width != width || resolution.Height != height)
       {
-        SwitchToFallback("The free WebView2 runtime could not initialize.");
+        SwitchToFallback("The CEF browser could not use the code canvas resolution.");
         return;
       }
 
-      webView = manager.CreateWebView(width, height, editorUrl, false);
-      if (webView == null || webView.Texture == null)
-      {
-        SwitchToFallback("The free WebView2 runtime could not create a browser surface.");
-        return;
-      }
-
-      webView.NavigationCompleted += OnNavigationCompleted;
-      webView.MessageReceived += OnMessageReceived;
-      output.texture = webView.Texture;
       output.enabled = visible;
     }
     catch (Exception exception)
     {
       SwitchToFallback($"The free Monaco editor could not start: {exception.Message}");
     }
-#else
-    SwitchToFallback("The rich Monaco editor is currently supported on Windows builds only.");
-#endif
   }
-
-  private void Update()
-  {
-    if (fallbackRequested)
-    {
-      fallbackRequested = false;
-      SwitchToFallback(fallbackReason);
-    }
-
-    if (usingFallback) return;
-#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
-    if (webView == null)
-    {
-      if (!visible || output == null) return;
-
-      Rect outputRect = output.rectTransform.rect;
-      float canvasScaleFactor = output.canvas != null ? output.canvas.scaleFactor : 1f;
-      int width = Mathf.RoundToInt(outputRect.width * canvasScaleFactor);
-      int height = Mathf.RoundToInt(outputRect.height * canvasScaleFactor);
-      if (width < 2 || height < 2) return;
-
-      startTime = Time.unscaledTime;
-      TryStartWebView(width, height);
-      if (usingFallback || webView == null) return;
-    }
-
-    manager?.Tick();
-
-    if (!pageReady && Time.unscaledTime - startTime > InitializationTimeoutSeconds)
-    {
-      SwitchToFallback("The Monaco page did not finish loading in time.");
-      return;
-    }
-
-    UpdateKeyboardFocus();
-    if (pageReady && keyboardFocus) ForwardKeyboardInput();
-#else
-    if (visible) TryStartWebView(0, 0);
-#endif
-  }
-
 
   private void UpdateKeyboardFocus()
   {
@@ -245,56 +228,7 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
     }
   }
 
-#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
-  private void ForwardKeyboardInput()
-  {
-    string typed = Input.inputString;
-    if (!string.IsNullOrEmpty(typed))
-    {
-      StringBuilder text = null;
-      for (int i = 0; i < typed.Length; i++)
-      {
-        char character = typed[i];
-        if (char.IsControl(character)) continue;
-        if (text == null) text = new StringBuilder(typed.Length);
-        text.Append(character);
-      }
-
-      if (text != null && text.Length > 0)
-      {
-        string json = JsonUtility.ToJson(new CodePayload { code = text.ToString() });
-        ExecuteScript($"editor.trigger('keyboard', 'type', {{ text: ({json}).code }});");
-      }
-    }
-
-    bool shortcutModifier = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl) ||
-      Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt) || Input.GetKey(KeyCode.AltGr);
-    bool systemKey = Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt) || Input.GetKey(KeyCode.AltGr);
-
-    foreach (KeyMapping mapping in KeyMappings)
-    {
-      if (mapping.printable && !shortcutModifier) continue;
-
-      bool keyDown = Input.GetKeyDown(mapping.key);
-      bool keyUp = Input.GetKeyUp(mapping.key);
-      if (!keyDown && !keyUp) continue;
-
-      uint scanCode = MapVirtualKeyCode(mapping.virtualKey);
-      webView.SendKeyEvent(mapping.virtualKey, scanCode, keyDown, systemKey);
-    }
-  }
-#endif
-
-  private void OnNavigationCompleted(string url, bool succeeded)
-  {
-    if (!succeeded)
-    {
-      RequestFallback("The local Monaco page could not be opened.");
-    }
-  }
-
-#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
-  private void OnMessageReceived(string message)
+  private void OnMonacoMessage(string message)
   {
     try
     {
@@ -329,13 +263,13 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
 
   private void FinishPageInitialization()
   {
-    if (pageReady || usingFallback || webView == null) return;
+    if (pageReady || usingFallback || browser == null || !browser.browserClient.IsConnected) return;
 
     pageReady = true;
     if (fallback != null) fallback.gameObject.SetActive(false);
     if (output != null)
     {
-      output.texture = webView.Texture;
+      output.texture = browser.browserClient.BrowserTexture;
       output.enabled = visible;
     }
 
@@ -352,7 +286,6 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
     for (int i = 0; i < readinessCallbacks.Count; i++) readinessCallbacks[i]?.Invoke(true);
     readinessCallbacks.Clear();
   }
-#endif
 
   private void RequestFallback(string reason)
   {
@@ -369,25 +302,14 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
 
     if (!string.IsNullOrEmpty(reason)) Debug.LogWarning(reason + " Using the built-in multiline editor instead.");
 
-#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
-    if (webView != null)
-    {
-      webView.NavigationCompleted -= OnNavigationCompleted;
-      webView.MessageReceived -= OnMessageReceived;
-      try { webView.Dispose(); }
-      catch (Exception exception) { Debug.LogWarning($"Could not dispose the embedded browser cleanly: {exception.Message}"); }
-      webView = null;
-    }
-    if (assetServer != null)
-    {
-      assetServer.Dispose();
-      assetServer = null;
-    }
-#endif
+    DisposeBrowser();
+    assetServer?.Dispose();
+    assetServer = null;
 
     if (output != null)
     {
       output.texture = originalTexture;
+      output.uvRect = originalUvRect;
       output.enabled = false;
     }
 
@@ -408,6 +330,47 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
     readinessCallbacks.Clear();
   }
 
+  private void DisposeBrowser()
+  {
+    if (browser != null)
+    {
+      WebBrowserUIBasic activeBrowser = browser;
+      browser = null;
+      activeBrowser.enabled = false;
+      try
+      {
+        if (activeBrowser.browserClient != null && !activeBrowser.browserClient.HasDisposed)
+        {
+          activeBrowser.browserClient.Dispose();
+        }
+      }
+      catch (Exception exception)
+      {
+        Debug.LogWarning($"Could not dispose the CEF browser cleanly: {exception.Message}");
+      }
+      DestroyUnityObject(activeBrowser);
+    }
+
+    if (inputHandler != null)
+    {
+      DestroyUnityObject(inputHandler);
+      inputHandler = null;
+    }
+
+    if (communicationLayer != null)
+    {
+      DestroyUnityObject(communicationLayer);
+      communicationLayer = null;
+    }
+  }
+
+  private static void DestroyUnityObject(UnityEngine.Object target)
+  {
+    if (target == null) return;
+    if (Application.isPlaying) UnityEngine.Object.Destroy(target);
+    else UnityEngine.Object.DestroyImmediate(target);
+  }
+
   private void OnEnable()
   {
     keyboardFocus = false;
@@ -420,17 +383,14 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
 
   private void OnDestroy()
   {
-#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
-    if (webView != null)
-    {
-      webView.NavigationCompleted -= OnNavigationCompleted;
-      webView.MessageReceived -= OnMessageReceived;
-      try { webView.Dispose(); }
-      catch (Exception exception) { Debug.LogWarning($"Could not dispose the embedded browser cleanly: {exception.Message}"); }
-      webView = null;
-    }
+    DisposeBrowser();
     assetServer?.Dispose();
-#endif
+    assetServer = null;
+    if (output != null)
+    {
+      output.texture = originalTexture;
+      output.uvRect = originalUvRect;
+    }
   }
 
   public void Show(bool show)
@@ -549,91 +509,31 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
 
   private bool ExecuteScript(string script)
   {
-#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
-    return webView != null && !webView.IsDestroyed && webView.ExecuteScript(script);
-#else
-    return false;
-#endif
+    if (browser == null || !pageReady || browser.browserClient == null ||
+        browser.browserClient.HasDisposed || !browser.browserClient.ReadySignalReceived ||
+        !browser.browserClient.IsConnected)
+    {
+      return false;
+    }
+
+    try
+    {
+      browser.browserClient.ExecuteJs(script);
+      return true;
+    }
+    catch (Exception exception)
+    {
+      RequestFallback($"The CEF browser stopped accepting Monaco updates: {exception.Message}");
+      return false;
+    }
   }
 
   public void OnPointerDown(PointerEventData eventData)
   {
-    if (usingFallback) return;
-#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
-    SendMouseEvent(MouseEventType.Down, ToMouseButton(eventData.button), eventData.position);
-    if (eventData.button == PointerEventData.InputButton.Left)
-    {
-      keyboardFocus = true;
-      if (EventSystem.current != null) EventSystem.current.SetSelectedGameObject(gameObject);
-    }
-#endif
+    if (usingFallback || !pageReady || eventData.button != PointerEventData.InputButton.Left) return;
+    keyboardFocus = true;
+    if (EventSystem.current != null) EventSystem.current.SetSelectedGameObject(gameObject);
   }
-
-  public void OnPointerUp(PointerEventData eventData)
-  {
-#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
-    if (!usingFallback) SendMouseEvent(MouseEventType.Up, ToMouseButton(eventData.button), eventData.position);
-#endif
-  }
-
-  public void OnPointerMove(PointerEventData eventData)
-  {
-#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
-    if (!usingFallback) SendMouseEvent(MouseEventType.Move, MouseButton.None, eventData.position);
-#endif
-  }
-
-  public void OnDrag(PointerEventData eventData)
-  {
-#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
-    if (!usingFallback) SendMouseEvent(MouseEventType.Move, ToMouseButton(eventData.button), eventData.position);
-#endif
-  }
-
-  public void OnPointerExit(PointerEventData eventData)
-  {
-#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
-    if (!usingFallback && webView != null)
-    {
-      webView.SendMouseEvent(MouseEventType.Leave, MouseButton.None, 0.5f, 0.5f);
-    }
-#endif
-  }
-
-  public void OnScroll(PointerEventData eventData)
-  {
-#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
-    if (!usingFallback) SendMouseEvent(MouseEventType.Wheel, MouseButton.None, eventData.position, -eventData.scrollDelta.y);
-#endif
-  }
-
-#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
-  private void SendMouseEvent(MouseEventType eventType, MouseButton button, Vector2 screenPosition, float wheelDelta = 0f)
-  {
-    if (webView == null || webView.IsDestroyed || output == null) return;
-    Canvas canvas = output.canvas;
-    Camera camera = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay ? canvas.worldCamera : null;
-    Vector2 localPosition;
-    if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(output.rectTransform, screenPosition, camera, out localPosition)) return;
-
-    Rect rect = output.rectTransform.rect;
-    if (rect.width <= 0f || rect.height <= 0f) return;
-    float x = Mathf.Clamp01((localPosition.x - rect.xMin) / rect.width);
-    float y = Mathf.Clamp01(1f - (localPosition.y - rect.yMin) / rect.height);
-    webView.SendMouseEvent(eventType, button, x, y, wheelDelta);
-  }
-
-  private static MouseButton ToMouseButton(PointerEventData.InputButton button)
-  {
-    switch (button)
-    {
-      case PointerEventData.InputButton.Left: return MouseButton.Left;
-      case PointerEventData.InputButton.Right: return MouseButton.Right;
-      case PointerEventData.InputButton.Middle: return MouseButton.Middle;
-      default: return MouseButton.None;
-    }
-  }
-#endif
 
   private static string GetThirdPartyRoot()
   {
@@ -644,83 +544,8 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
 #endif
   }
 
-#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
-  [DllImport("user32.dll", EntryPoint = "MapVirtualKeyW")]
-  private static extern uint MapVirtualKeyCodeNative(uint virtualKey, uint mapType);
-#endif
-
-  private static uint MapVirtualKeyCode(uint virtualKey)
-  {
-#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
-    return MapVirtualKeyCodeNative(virtualKey, 4);
-#else
-    return 0;
-#endif
-  }
-
-#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
-  private static KeyMapping[] CreateKeyMappings()
-  {
-    return new[]
-    {
-      new KeyMapping(KeyCode.A, 0x41, true), new KeyMapping(KeyCode.B, 0x42, true),
-      new KeyMapping(KeyCode.C, 0x43, true), new KeyMapping(KeyCode.D, 0x44, true),
-      new KeyMapping(KeyCode.E, 0x45, true), new KeyMapping(KeyCode.F, 0x46, true),
-      new KeyMapping(KeyCode.G, 0x47, true), new KeyMapping(KeyCode.H, 0x48, true),
-      new KeyMapping(KeyCode.I, 0x49, true), new KeyMapping(KeyCode.J, 0x4A, true),
-      new KeyMapping(KeyCode.K, 0x4B, true), new KeyMapping(KeyCode.L, 0x4C, true),
-      new KeyMapping(KeyCode.M, 0x4D, true), new KeyMapping(KeyCode.N, 0x4E, true),
-      new KeyMapping(KeyCode.O, 0x4F, true), new KeyMapping(KeyCode.P, 0x50, true),
-      new KeyMapping(KeyCode.Q, 0x51, true), new KeyMapping(KeyCode.R, 0x52, true),
-      new KeyMapping(KeyCode.S, 0x53, true), new KeyMapping(KeyCode.T, 0x54, true),
-      new KeyMapping(KeyCode.U, 0x55, true), new KeyMapping(KeyCode.V, 0x56, true),
-      new KeyMapping(KeyCode.W, 0x57, true), new KeyMapping(KeyCode.X, 0x58, true),
-      new KeyMapping(KeyCode.Y, 0x59, true), new KeyMapping(KeyCode.Z, 0x5A, true),
-      new KeyMapping(KeyCode.Alpha0, 0x30, true), new KeyMapping(KeyCode.Alpha1, 0x31, true),
-      new KeyMapping(KeyCode.Alpha2, 0x32, true), new KeyMapping(KeyCode.Alpha3, 0x33, true),
-      new KeyMapping(KeyCode.Alpha4, 0x34, true), new KeyMapping(KeyCode.Alpha5, 0x35, true),
-      new KeyMapping(KeyCode.Alpha6, 0x36, true), new KeyMapping(KeyCode.Alpha7, 0x37, true),
-      new KeyMapping(KeyCode.Alpha8, 0x38, true), new KeyMapping(KeyCode.Alpha9, 0x39, true),
-      new KeyMapping(KeyCode.Space, 0x20, true),
-      new KeyMapping(KeyCode.Comma, 0xBC, true), new KeyMapping(KeyCode.Minus, 0xBD, true),
-      new KeyMapping(KeyCode.Period, 0xBE, true), new KeyMapping(KeyCode.Slash, 0xBF, true),
-      new KeyMapping(KeyCode.Semicolon, 0xBA, true), new KeyMapping(KeyCode.Equals, 0xBB, true),
-      new KeyMapping(KeyCode.LeftBracket, 0xDB, true), new KeyMapping(KeyCode.Backslash, 0xDC, true),
-      new KeyMapping(KeyCode.RightBracket, 0xDD, true), new KeyMapping(KeyCode.Quote, 0xDE, true),
-      new KeyMapping(KeyCode.BackQuote, 0xC0, true),
-      new KeyMapping(KeyCode.Keypad0, 0x60, true), new KeyMapping(KeyCode.Keypad1, 0x61, true),
-      new KeyMapping(KeyCode.Keypad2, 0x62, true), new KeyMapping(KeyCode.Keypad3, 0x63, true),
-      new KeyMapping(KeyCode.Keypad4, 0x64, true), new KeyMapping(KeyCode.Keypad5, 0x65, true),
-      new KeyMapping(KeyCode.Keypad6, 0x66, true), new KeyMapping(KeyCode.Keypad7, 0x67, true),
-      new KeyMapping(KeyCode.Keypad8, 0x68, true), new KeyMapping(KeyCode.Keypad9, 0x69, true),
-      new KeyMapping(KeyCode.KeypadPeriod, 0x6E, true), new KeyMapping(KeyCode.KeypadDivide, 0x6F, true),
-      new KeyMapping(KeyCode.KeypadMultiply, 0x6A, true), new KeyMapping(KeyCode.KeypadMinus, 0x6D, true),
-      new KeyMapping(KeyCode.KeypadPlus, 0x6B, true),
-      new KeyMapping(KeyCode.Backspace, 0x08, false), new KeyMapping(KeyCode.Tab, 0x09, false),
-      new KeyMapping(KeyCode.Return, 0x0D, false), new KeyMapping(KeyCode.KeypadEnter, 0x0D, false),
-      new KeyMapping(KeyCode.Escape, 0x1B, false), new KeyMapping(KeyCode.Delete, 0x2E, false),
-      new KeyMapping(KeyCode.Insert, 0x2D, false), new KeyMapping(KeyCode.Home, 0x24, false),
-      new KeyMapping(KeyCode.End, 0x23, false), new KeyMapping(KeyCode.PageUp, 0x21, false),
-      new KeyMapping(KeyCode.PageDown, 0x22, false), new KeyMapping(KeyCode.LeftArrow, 0x25, false),
-      new KeyMapping(KeyCode.UpArrow, 0x26, false), new KeyMapping(KeyCode.RightArrow, 0x27, false),
-      new KeyMapping(KeyCode.DownArrow, 0x28, false),
-      new KeyMapping(KeyCode.LeftShift, 0xA0, false), new KeyMapping(KeyCode.RightShift, 0xA1, false),
-      new KeyMapping(KeyCode.LeftControl, 0xA2, false), new KeyMapping(KeyCode.RightControl, 0xA3, false),
-      new KeyMapping(KeyCode.LeftAlt, 0xA4, false), new KeyMapping(KeyCode.RightAlt, 0xA5, false),
-      new KeyMapping(KeyCode.AltGr, 0xA5, false), new KeyMapping(KeyCode.CapsLock, 0x14, false),
-      new KeyMapping(KeyCode.Numlock, 0x90, false), new KeyMapping(KeyCode.ScrollLock, 0x91, false),
-      new KeyMapping(KeyCode.F1, 0x70, false), new KeyMapping(KeyCode.F2, 0x71, false),
-      new KeyMapping(KeyCode.F3, 0x72, false), new KeyMapping(KeyCode.F4, 0x73, false),
-      new KeyMapping(KeyCode.F5, 0x74, false), new KeyMapping(KeyCode.F6, 0x75, false),
-      new KeyMapping(KeyCode.F7, 0x76, false), new KeyMapping(KeyCode.F8, 0x77, false),
-      new KeyMapping(KeyCode.F9, 0x78, false), new KeyMapping(KeyCode.F10, 0x79, false),
-      new KeyMapping(KeyCode.F11, 0x7A, false), new KeyMapping(KeyCode.F12, 0x7B, false)
-    };
-  }
-#endif
 }
 
-#if UNITY_EDITOR_WIN || (UNITY_STANDALONE_WIN && UNITY_64)
 internal sealed class MonacoAssetServer : IDisposable
 {
   private readonly string root;
@@ -855,4 +680,3 @@ internal sealed class MonacoAssetServer : IDisposable
     activeListener?.Stop();
   }
 }
-#endif
