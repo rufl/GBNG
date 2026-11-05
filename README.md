@@ -154,9 +154,12 @@ authored color instead of aborting scene load.
 Unity packages the Monaco assets and free UnityWebBrowser CEF engine in Windows
 x64, Linux x64, macOS x64 and macOS ARM64 standalone builds. Cross-builds for
 Linux x64 and both macOS architectures succeed; this verifies packaging, not
-interactive runtime. The Monaco/CEF player path has been runtime-smoked on
-Windows x64 only. CEF does not require WebView2, Direct3D 11/12 or a paid Unity
-plugin.
+all native platform combinations. The Monaco/CEF player path has been runtime-
+smoked on Windows x64 and on Linux x64 with Unity 6000.6.6f1 Mono on Ubuntu
+26.04 under WSL2/WSLg and Mesa llvmpipe. Linux smoke confirmed the CEF page
+ready signal, a 1280x720 browser texture, and JS editor-code round-trip. Physical
+Linux hardware and GPU-specific rendering are not yet validated. CEF does not
+require WebView2, Direct3D 11/12 or a paid Unity plugin.
 
 It provides syntax highlighting, completions, behavior-system typings and
 source navigation, editing, read-only mode, diagnostics, scroll restoration
@@ -176,7 +179,7 @@ and bundle `libminizip.so` beside Assimp, preloading it globally to satisfy
 Assimp's `libminizip.so.1` dependency without `LD_LIBRARY_PATH`.
 A Linux player smoke imported a one-triangle OBJ through Assimp. This verifies
 native loading and mesh import, not the full FBX asset workflow. Cross-host
-IPv6 multicast and interactive CEF/Monaco use remain untested.
+IPv6 multicast across hosts remains untested.
 The checked-in macOS V8 bundle is x86_64-only, so Apple Silicon players also
 cannot execute behavior scripts yet. macOS CEF apps are unsigned and must be
 signed/notarized for public distribution.

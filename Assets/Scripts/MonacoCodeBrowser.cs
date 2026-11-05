@@ -189,25 +189,39 @@ public sealed class MonacoCodeBrowser : MonoBehaviour, ICodeBrowser, ISystemSour
 
       inputHandler = ScriptableObject.CreateInstance<WebBrowserOldInputHandler>();
       communicationLayer = ScriptableObject.CreateInstance<TCPCommunicationLayer>();
-      browser = output.gameObject.AddComponent<WebBrowserUIBasic>();
-      browser.browserClient.engine = cefEngine;
-      browser.browserClient.initialUrl = editorUrl;
-      browser.browserClient.communicationLayer = communicationLayer;
-      browser.browserClient.windowlessFrameRate = 30;
-      browser.browserClient.jsMethodManager.jsMethodsEnable = true;
-      browser.browserClient.RegisterJsMethod<string>("OnMonacoMessage", OnMonacoMessage);
-      browser.inputHandler = inputHandler;
-
-      // UWB exposes resizing only after startup; set its serialized startup resolution instead.
-      string resolutionJson = "{\"resolution\":{\"Width\":" +
-        width.ToString(CultureInfo.InvariantCulture) + ",\"Height\":" +
-        height.ToString(CultureInfo.InvariantCulture) + "}}";
-      JsonUtility.FromJsonOverwrite(resolutionJson, browser.browserClient);
-      VoltstroStudios.UnityWebBrowser.Shared.Resolution resolution = browser.browserClient.Resolution;
-      if (resolution.Width != width || resolution.Height != height)
+      bool outputWasActive = output.gameObject.activeSelf;
+      output.gameObject.SetActive(false);
+      try
       {
-        SwitchToFallback("The CEF browser could not use the code canvas resolution.");
-        return;
+        browser = output.gameObject.AddComponent<WebBrowserUIBasic>();
+        if (Application.platform == RuntimePlatform.LinuxPlayer)
+        {
+          // Linux CEF can take longer to initialize on mounted or slower filesystems.
+          browser.browserClient.engineStartupTimeout = 10000;
+        }
+        browser.browserClient.engine = cefEngine;
+        browser.browserClient.initialUrl = editorUrl;
+        browser.browserClient.communicationLayer = communicationLayer;
+        browser.browserClient.windowlessFrameRate = 30;
+        browser.browserClient.jsMethodManager.jsMethodsEnable = true;
+        browser.browserClient.RegisterJsMethod<string>("OnMonacoMessage", OnMonacoMessage);
+        browser.inputHandler = inputHandler;
+
+        // UWB exposes resizing only after startup; set its serialized startup resolution instead.
+        string resolutionJson = "{\"resolution\":{\"Width\":" +
+          width.ToString(CultureInfo.InvariantCulture) + ",\"Height\":" +
+          height.ToString(CultureInfo.InvariantCulture) + "}}";
+        JsonUtility.FromJsonOverwrite(resolutionJson, browser.browserClient);
+        VoltstroStudios.UnityWebBrowser.Shared.Resolution resolution = browser.browserClient.Resolution;
+        if (resolution.Width != width || resolution.Height != height)
+        {
+          SwitchToFallback("The CEF browser could not use the code canvas resolution.");
+          return;
+        }
+      }
+      finally
+      {
+        output.gameObject.SetActive(outputWasActive);
       }
 
       output.enabled = visible;
