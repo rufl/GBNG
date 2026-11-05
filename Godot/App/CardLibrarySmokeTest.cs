@@ -172,12 +172,11 @@ public partial class GameBuilderApp
                     _ => DirectionalLight3D.ShadowMode.Orthogonal
                 };
                 float expectedShadowDistance = qualityIndex == (int)GraphicsQuality.High ? 100f : 40f;
-                DisplayServer.VSyncMode expectedVsync = lowQuality
-                    ? DisplayServer.VSyncMode.Disabled
-                    : DisplayServer.VSyncMode.Enabled;
+                DisplayServer.VSyncMode expectedVsync = DisplayServer.VSyncMode.Enabled;
                 Viewport.AnisotropicFiltering expectedAnisotropy = lowQuality
                     ? Viewport.AnisotropicFiltering.Disabled
                     : Viewport.AnisotropicFiltering.Anisotropy4X;
+                float expectedTextureMipmapBias = lowQuality ? 1f : 0f;
                 savedDisplayPreferences = new ConfigFile();
                 if (_graphicsQuality != (GraphicsQuality)qualityIndex
                     || graphicsQuality.Selected != qualityIndex
@@ -187,6 +186,7 @@ public partial class GameBuilderApp
                     || !Mathf.IsEqualApprox(qualitySun.DirectionalShadowMaxDistance, expectedShadowDistance)
                     || DisplayServer.WindowGetVsyncMode() != expectedVsync
                     || qualityViewport.AnisotropicFilteringLevel != expectedAnisotropy
+                    || !Mathf.IsEqualApprox(qualityViewport.TextureMipmapBias, expectedTextureMipmapBias)
                     || savedDisplayPreferences.Load(EditorSettingsPath) != Error.Ok
                     || (int)savedDisplayPreferences.GetValue("display", "graphics_quality", -1).AsDouble() != qualityIndex)
                     throw new InvalidOperationException($"The {graphicsQuality.GetItemText(qualityIndex)} quality preset did not apply and persist its Godot rendering profile.");

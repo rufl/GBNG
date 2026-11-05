@@ -43,10 +43,9 @@ public partial class GameBuilderApp
         GetViewport().AnisotropicFilteringLevel = quality == GraphicsQuality.Low
             ? Viewport.AnisotropicFiltering.Disabled
             : Viewport.AnisotropicFiltering.Anisotropy4X;
+        GetViewport().TextureMipmapBias = quality == GraphicsQuality.Low ? 1f : 0f;
 
-        DisplayServer.WindowSetVsyncMode(quality == GraphicsQuality.Low
-            ? DisplayServer.VSyncMode.Disabled
-            : DisplayServer.VSyncMode.Enabled);
+        DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Enabled);
     }
 
     private void SetGraphicsQuality(int qualityIndex)
