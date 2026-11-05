@@ -10,6 +10,7 @@ public partial class GameBuilderApp
     private readonly List<string> _recentProjectPaths = new();
     private OptionButton? _recentProjectPicker;
     private Button? _openRecentProjectButton;
+    private Button? _resumeSessionButton;
 
     private void LoadRecentProjects()
     {
@@ -83,6 +84,22 @@ public partial class GameBuilderApp
         if (_recentProjectPicker is null || _recentProjectPicker.Selected < 0)
             return;
         string path = _recentProjectPicker.GetItemMetadata(_recentProjectPicker.Selected).AsString();
+        OpenRecentProject(path);
+    }
+
+    private void ResumeLastSession()
+    {
+        if (_networkWindow is not null && _networkWindow.LastJoinedRoomCode.Length == 8)
+        {
+            _networkWindow.ResumeLastOnlineRoom();
+            return;
+        }
+        if (_recentProjectPaths.Count > 0)
+            OpenRecentProject(_recentProjectPaths[0]);
+    }
+
+    private void OpenRecentProject(string path)
+    {
         if (!File.Exists(path))
         {
             _recentProjectPaths.RemoveAll(existingPath => PathsEqual(existingPath, path));
@@ -94,6 +111,32 @@ public partial class GameBuilderApp
         LoadProject(path);
     }
 
+    private void RefreshResumeButton()
+    {
+        if (_resumeSessionButton is null || !IsInstanceValid(_resumeSessionButton))
+            return;
+
+        string roomCode = _networkWindow?.LastJoinedRoomCode ?? string.Empty;
+        if (roomCode.Length == 8)
+        {
+            _resumeSessionButton.Text = "Rejoin online game";
+            _resumeSessionButton.TooltipText = $"Rejoin the last online game with invite code {roomCode}.";
+            _resumeSessionButton.Disabled = false;
+        }
+        else if (_recentProjectPaths.Count > 0 && File.Exists(_recentProjectPaths[0]))
+        {
+            string projectName = Path.GetFileNameWithoutExtension(_recentProjectPaths[0]);
+            _resumeSessionButton.Text = "Resume last project";
+            _resumeSessionButton.TooltipText = $"Open {projectName}.";
+            _resumeSessionButton.Disabled = false;
+        }
+        else
+        {
+            _resumeSessionButton.Text = "Resume last session";
+            _resumeSessionButton.TooltipText = "Open the most recent project or rejoin the last online game.";
+            _resumeSessionButton.Disabled = true;
+        }
+    }
     private void RefreshRecentProjectPicker()
     {
         if (_recentProjectPicker is null || !IsInstanceValid(_recentProjectPicker))
@@ -105,6 +148,7 @@ public partial class GameBuilderApp
             _recentProjectPicker.Disabled = true;
             if (_openRecentProjectButton is not null && IsInstanceValid(_openRecentProjectButton))
                 _openRecentProjectButton.Disabled = true;
+            RefreshResumeButton();
             return;
         }
 
@@ -123,7 +167,9 @@ public partial class GameBuilderApp
         _recentProjectPicker.Select(0);
         if (_openRecentProjectButton is not null && IsInstanceValid(_openRecentProjectButton))
             _openRecentProjectButton.Disabled = false;
+        RefreshResumeButton();
     }
+
 
     private void SaveRecentProjects()
     {

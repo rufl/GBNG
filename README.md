@@ -110,7 +110,15 @@ Godot plays legacy one-shot animations through one cycle, then crossfades back t
 
 Projects auto-save every 60 seconds into ten rotating recovery copies under `user://autosaves`. Use **Recover autosave…** on the welcome screen or **Recover** in the toolbar to open a copy. A recovered copy is protected from automatic overwrite; **Save** opens **Save as…** so the original recovery point remains intact. LAN clients do not create host-project backups.
 
-The welcome screen also remembers the ten most recently opened or saved local `.voos` projects in `user://recent-projects.cfg`. Missing files are pruned on startup; bundled examples and auto-save recovery copies are excluded.
+The welcome screen remembers the ten most recently opened or saved local `.voos` projects in `user://recent-projects.cfg`. **Resume last project** opens the newest one regardless of the recent-project picker selection. A successfully joined online invite code is saved in `user://network-settings.cfg`; **Rejoin online game** uses it first. If no matchmaking URL is configured, it opens Advanced network options without discarding the code; if no code is saved, it falls back to the newest local project. Room codes are bearer credentials and may stop working when the host closes the room. Missing files are pruned on startup; bundled examples and auto-save recovery copies are excluded.
+
+To exercise the recent-project picker, last-session rejoin setup, latest-project resume, and welcome-screen layout:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\godot\run.ps1 --path . -- res://Assets/StreamingAssets/ExampleGames/Public/sample-platformer.voos --smoke-recent-projects
+```
+
+The smoke prints `RECENT_PROJECTS_SMOKE_OK` and writes `.godot/resume-welcome-smoke.png`.
 
 The welcome screen's **New project…** flow restores the legacy starter-template selector with preview cards for Tutorial, Empty, 3D Platformer, First-Person Shooter, and Driving. Tutorial starts its bundled world in Play mode; the other templates open in the editor. These bundled `.voos` files are read-only. Use **Save as…** to make writable copies. Choosing a template replaces the current editor contents, so save first if needed.
 

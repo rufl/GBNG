@@ -678,6 +678,8 @@ public sealed partial class LegacyLanSession : Node
     private void OnConnectedToServer()
     {
         RpcId(1, nameof(RegisterPlayer), _localPlayerName);
+        if (_onlineRoomCode.Length == 8)
+            OnlineRoomJoined?.Invoke(_onlineRoomCode);
         SetStatus("Connected; requesting the host's project copy…");
     }
     public void SetHostPlayMode(bool enabled)

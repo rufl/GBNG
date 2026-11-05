@@ -580,6 +580,7 @@ public partial class GameBuilderApp : Node3D
         var layer = new CanvasLayer { Name = "EditorInterface", Layer = 10 };
         AddChild(layer);
         _networkWindow = new LegacyLanNetworkWindow(_lanSession, PrepareNetworkHostProjectCopy, OpenReceivedNetworkProject);
+        _networkWindow.ResumeStateChanged += RefreshResumeButton;
         _worldSettingsWindow = new LegacyWorldSettingsWindow(UpdateStageProperty, ApplyWorldMapSize);
         _visualEffectsWindow = new LegacyVisualEffectsWindow(_cameraEffects);
         _controlsWindow = new LegacyControlsWindow(SetControlPreferences, SetWindowedSizePreference, SetGraphicsQuality);
@@ -755,6 +756,15 @@ public partial class GameBuilderApp : Node3D
         _openRecentProjectButton = new Button { Text = "Open", CustomMinimumSize = new Vector2(80f, 36f) };
         _openRecentProjectButton.Pressed += OpenSelectedRecentProject;
         recentProjects.AddChild(_openRecentProjectButton);
+        _resumeSessionButton = new Button
+        {
+            Name = "ResumeSessionButton",
+            Text = "Resume last session",
+            CustomMinimumSize = new Vector2(140f, 36f),
+            Disabled = true
+        };
+        _resumeSessionButton.Pressed += ResumeLastSession;
+        recentProjects.AddChild(_resumeSessionButton);
         box.AddChild(recentProjects);
         RefreshRecentProjectPicker();
 

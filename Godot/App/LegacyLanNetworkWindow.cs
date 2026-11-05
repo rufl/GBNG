@@ -26,10 +26,17 @@ public partial class LegacyLanNetworkWindow : Window
     private PanelContainer _advancedPanel = null!;
     private bool _localNetworkOnly;
 
-    public LegacyLanNetworkWindow(LegacyLanSession session, Func<string?> projectPath, Action<string> openReceivedProject)
+    public event Action? ResumeStateChanged;
+    public string LastJoinedRoomCode => _settings.LastJoinedRoomCode;
+
+    public LegacyLanNetworkWindow(
+        LegacyLanSession session,
+        Func<string?> projectPath,
+        Action<string> openReceivedProject,
+        LegacyNetworkSettings? settings = null)
     {
         _session = session;
-        _settings = LegacyNetworkSettings.Load();
+        _settings = settings ?? LegacyNetworkSettings.Load();
         _projectPath = projectPath;
         _openReceivedProject = openReceivedProject;
         Title = "Play together";
@@ -41,9 +48,33 @@ public partial class LegacyLanNetworkWindow : Window
         _session.RoomDiscovered += OnRoomDiscovered;
         _session.ProjectReceived += OnProjectReceived;
         _session.InviteCodeChanged += OnInviteCodeChanged;
+        _session.OnlineRoomJoined += OnOnlineRoomJoined;
         BuildInterface();
         RefreshState();
     }
+    public void ResumeLastOnlineRoom()
+    {
+        string roomCode = _settings.LastJoinedRoomCode;
+        if (roomCode.Length != 8)
+            return;
+
+        _joinCode.Text = roomCode;
+        PopupCenteredClamped(Size);
+        if (string.IsNullOrWhiteSpace(_matchmakingUrl.Text))
+        {
+            _advancedPanel.Visible = true;
+            _status.Text = "Rejoining needs a WSS matchmaking address. Configure one in Advanced network options.";
+            return;
+        }
+
+        _settings.LastJoinedRoomCode = string.Empty;
+        Error saveError = _settings.Save();
+        if (saveError != Error.Ok)
+            GD.PushWarning($"Could not clear the previous invite code before rejoining: {saveError}.");
+        ResumeStateChanged?.Invoke();
+        JoinByCode();
+    }
+
 
     private void BuildInterface()
     {
@@ -446,6 +477,15 @@ public partial class LegacyLanNetworkWindow : Window
 
     private void OnInviteCodeChanged(string _) => RefreshState();
 
+    private void OnOnlineRoomJoined(string roomCode)
+    {
+        _settings.LastJoinedRoomCode = roomCode;
+        Error saveError = _settings.Save();
+        if (saveError != Error.Ok)
+            GD.PushWarning($"Could not save the last joined room code: {saveError}.");
+        ResumeStateChanged?.Invoke();
+    }
+
     private void OnProjectReceived(string path) => _openReceivedProject(path);
 
     private void RefreshState()
@@ -566,5 +606,6 @@ public partial class LegacyLanNetworkWindow : Window
         _session.RoomDiscovered -= OnRoomDiscovered;
         _session.ProjectReceived -= OnProjectReceived;
         _session.InviteCodeChanged -= OnInviteCodeChanged;
+        _session.OnlineRoomJoined -= OnOnlineRoomJoined;
     }
 }

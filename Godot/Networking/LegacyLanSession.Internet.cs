@@ -21,6 +21,7 @@ public sealed partial class LegacyLanSession
     private string _onlineRoomCode = string.Empty;
 
     public event Action<string>? InviteCodeChanged;
+    public event Action<string>? OnlineRoomJoined;
     public string OnlineRoomCode => _onlineRoomCode;
     public bool IsBusy => HasPeer || _matchmakingSocket is not null;
     public bool WebRtcAvailable
