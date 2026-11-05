@@ -8,6 +8,8 @@ public readonly record struct LegacyBehaviorMessage(string Name, string OtherAct
 public partial class WorldActorNode : RigidBody3D
 {
     private Node3D? _renderableRoot;
+    private LegacyCommentPanelRenderer? _commentPanelRenderer;
+    private bool _billboardTextPanel;
     private RayCast3D? _groundProbe;
     private bool _playMode;
     private ulong _oneShotAnimationGeneration;
@@ -25,6 +27,10 @@ public partial class WorldActorNode : RigidBody3D
     public LegacyActorData State { get; private set; } = null!;
     public string LegacyName => State.Name;
     public string RenderableUri => State.RenderableUri;
+    public bool SupportsCommentText => LegacyCommentPanelRenderer.SupportsRenderable(State.RenderableUri);
+    public bool IsBillboardTextPanel => _billboardTextPanel;
+    internal Node3D? RenderableRoot => _renderableRoot;
+    internal LegacyCommentPanelRenderer? CommentPanelRenderer => _commentPanelRenderer;
     public bool IsGrounded => _groundProbe?.IsColliding() ?? false;
     public bool IsOffstageEffective
     {
@@ -116,6 +122,13 @@ public partial class WorldActorNode : RigidBody3D
             State.WriteColor(tint);
         if (_renderableRoot is not null)
             ApplyTint(_renderableRoot, tint);
+        _commentPanelRenderer?.SetTint(tint);
+    }
+
+    public void SetCommentText(string text)
+    {
+        State.WriteString("commentText", text);
+        _commentPanelRenderer?.SetCommentText(text);
     }
 
     public void SetRenderableOffset(Vector3 legacyOffset)
@@ -304,6 +317,16 @@ public partial class WorldActorNode : RigidBody3D
         modelRoot.Quaternion = state.RenderableRotation;
         _renderableRoot = modelRoot;
         AddChild(modelRoot);
+        if (LegacyCommentPanelRenderer.SupportsRenderable(state.RenderableUri))
+        {
+            foreach (MeshInstance3D panelMesh in modelRoot.FindChildren("*", "MeshInstance3D", true, false).OfType<MeshInstance3D>())
+                panelMesh.Visible = false;
+
+            _billboardTextPanel = state.RenderableUri == "builtin:BuiltinAssets/BillboardTextPanel";
+            _commentPanelRenderer = new LegacyCommentPanelRenderer { Name = "LegacyCommentPanelRenderer" };
+            modelRoot.AddChild(_commentPanelRenderer);
+            _commentPanelRenderer.SetCommentText(state.CommentText);
+        }
         SetTint(state.Tint);
     }
 
@@ -320,6 +343,20 @@ public partial class WorldActorNode : RigidBody3D
             _groundProbe.Enabled = true;
         ApplyLegacyPhysicsSettings();
         ApplyLoopingAnimation();
+    }
+    public override void _Process(double deltaSeconds)
+    {
+        if (!_billboardTextPanel || _renderableRoot is null)
+            return;
+
+        Camera3D? camera = GetViewport().GetCamera3D();
+        if (camera is null)
+            return;
+
+        _renderableRoot.GlobalRotation = new Vector3(
+            -camera.GlobalRotation.X,
+            Mathf.Pi + camera.GlobalRotation.Y,
+            0f);
     }
     public override void _PhysicsProcess(double deltaSeconds)
     {

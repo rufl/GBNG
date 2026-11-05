@@ -220,6 +220,7 @@ public sealed class LegacyActorData
     public string Name => LegacySaveDocument.ReadString(_data["name"]);
     public string DisplayName => LegacySaveDocument.ReadString(_data["displayName"], Name);
     public string Description => LegacySaveDocument.ReadString(_data["description"]);
+    public string CommentText => LegacySaveDocument.ReadString(_data["commentText"]);
     public string RenderableUri => LegacySaveDocument.ReadString(_data["renderableUri"]);
     public string BrainName => LegacySaveDocument.ReadString(_data["brainName"]);
     public string MemoryJson => LegacySaveDocument.ReadString(_data["memoryJson"], "{}");

@@ -1035,7 +1035,7 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
             0 => actor.State.DisplayName,
             1 => actor.State.Description,
             2 => actor.State.TransformParent,
-            3 => LegacySaveDocument.ReadString(data["commentText"]),
+            3 => actor.State.CommentText,
             4 => LegacySaveDocument.ReadString(data["debugString"]),
             5 => LegacySaveDocument.ReadString(data["cloneParent"]),
             6 => data["tags"] is JsonArray tags ? string.Join(',', tags.Select(tag => LegacySaveDocument.ReadString(tag))) : "",
@@ -1061,7 +1061,7 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
             case 0: actor.State.WriteString("displayName", value); break;
             case 1: actor.State.WriteString("description", value); break;
             case 2: actor.State.SetTransformParent(value); break;
-            case 3: actor.State.WriteString("commentText", value); break;
+            case 3: actor.SetCommentText(value); break;
             case 4: actor.State.WriteString("debugString", value); break;
             case 5:
                 actor.State.Data["tags"] = new JsonArray(value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)

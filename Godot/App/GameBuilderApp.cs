@@ -116,6 +116,8 @@ public partial class GameBuilderApp : Node3D
     private readonly List<Control> _inspectorInputs = new();
     private LineEdit _displayNameField = null!;
     private TextEdit _descriptionField = null!;
+    private Label _commentTextLabel = null!;
+    private TextEdit _commentTextField = null!;
     private SpinBox[] _scaleFields = Array.Empty<SpinBox>();
     private CheckBox _renderableOffsetsToggle = null!;
     private VBoxContainer _renderableOffsetsPanel = null!;
@@ -274,6 +276,8 @@ public partial class GameBuilderApp : Node3D
             RunActorCopySmoke();
         if (commandLineArgs.Contains("--smoke-actor-hierarchy", StringComparer.Ordinal))
             RunActorHierarchyNavigationSmoke();
+        if (commandLineArgs.Contains("--smoke-comment-panels", StringComparer.Ordinal))
+            RunCommentPanelSmoke();
     }
 
 
@@ -1059,6 +1063,20 @@ public partial class GameBuilderApp : Node3D
         _descriptionField.FocusExited += EndTextEdit;
         inspector.AddChild(_descriptionField);
         _inspectorInputs.Add(_descriptionField);
+        _commentTextLabel = CreateLabel("Panel text", 14);
+        _commentTextLabel.Visible = false;
+        inspector.AddChild(_commentTextLabel);
+        _commentTextField = new TextEdit
+        {
+            Name = "CommentTextField",
+            CustomMinimumSize = new Vector2(0f, 110f),
+            Visible = false
+        };
+        _commentTextField.TextChanged += UpdateSelectedCommentText;
+        _commentTextField.FocusEntered += () => BeginTextEdit("commentText");
+        _commentTextField.FocusExited += EndTextEdit;
+        inspector.AddChild(_commentTextField);
+        _inspectorInputs.Add(_commentTextField);
         inspector.AddChild(CreateLabel("World position", 14));
         _positionFields = new SpinBox[3];
         string[] axes = ["X", "Y", "Z"];
@@ -1438,7 +1456,12 @@ public partial class GameBuilderApp : Node3D
     {
         if (_updatingInspector || _playMode || _selectedActor is null)
             return;
-        string value = property == "displayName" ? _selectedActor.State.DisplayName : _selectedActor.State.Description;
+        string value = property switch
+        {
+            "displayName" => _selectedActor.State.DisplayName,
+            "commentText" => _selectedActor.State.CommentText,
+            _ => _selectedActor.State.Description
+        };
         _pendingTextEdit = (_selectedActor.LegacyName, property, value);
     }
 
@@ -1450,10 +1473,16 @@ public partial class GameBuilderApp : Node3D
         WorldActorNode? actor = FindActor(edit.ActorName);
         if (actor is null)
             return;
-        string newValue = edit.Property == "displayName" ? actor.State.DisplayName : actor.State.Description;
+        string newValue = edit.Property switch
+        {
+            "displayName" => actor.State.DisplayName,
+            "commentText" => actor.State.CommentText,
+            _ => actor.State.Description
+        };
         if (edit.Value == newValue)
             return;
-        RecordHistory($"Edit {edit.Property} for {actor.State.DisplayName}",
+        string propertyLabel = edit.Property == "commentText" ? "panel text" : edit.Property;
+        RecordHistory($"Edit {propertyLabel} for {actor.State.DisplayName}",
             () => SetActorStringProperty(edit.ActorName, edit.Property, edit.Value),
             () => SetActorStringProperty(edit.ActorName, edit.Property, newValue));
     }
@@ -1470,13 +1499,21 @@ public partial class GameBuilderApp : Node3D
         if (!_updatingInspector && !_playMode && _selectedActor is not null)
             SetActorStringProperty(_selectedActor.LegacyName, "description", _descriptionField.Text);
     }
+    private void UpdateSelectedCommentText()
+    {
+        if (!_updatingInspector && !_playMode && _selectedActor is { SupportsCommentText: true } && _selectedActors.Count == 1)
+            SetActorStringProperty(_selectedActor.LegacyName, "commentText", _commentTextField.Text);
+    }
 
     private void SetActorStringProperty(string actorName, string property, string value)
     {
         WorldActorNode? actor = FindActor(actorName);
         if (actor is null)
             return;
-        actor.State.WriteString(property, value);
+        if (property == "commentText")
+            actor.SetCommentText(value);
+        else
+            actor.State.WriteString(property, value);
         if (property == "displayName")
         {
             RefreshActorList();
@@ -1490,6 +1527,8 @@ public partial class GameBuilderApp : Node3D
             _displayNameField.Text = value;
         else if (property == "description" && _descriptionField.Text != value)
             _descriptionField.Text = value;
+        else if (property == "commentText" && _commentTextField.Text != value)
+            _commentTextField.Text = value;
         else if (property == "brainName")
             RefreshBrainChoices();
         _updatingInspector = false;
@@ -2412,6 +2451,10 @@ public partial class GameBuilderApp : Node3D
             return false;
         }
         string name = $"actor-{Guid.NewGuid():N}";
+        bool isTextPanel = LegacyCommentPanelRenderer.SupportsRenderable(uri);
+        float actorScale = isTextPanel ? 6f : 1f;
+        float tintChannel = isTextPanel ? 1f / 255f : 1f;
+        float tintAlpha = isTextPanel ? 190f / 255f : 1f;
         var actorData = new JsonObject
         {
             ["version"] = 8,
@@ -2420,19 +2463,19 @@ public partial class GameBuilderApp : Node3D
             ["tags"] = new JsonArray(),
             ["renderableUri"] = uri,
             ["memoryJson"] = "{}",
-            ["displayName"] = uri[(uri.LastIndexOf('/') + 1)..],
+            ["displayName"] = isTextPanel ? "Text" : uri[(uri.LastIndexOf('/') + 1)..],
             ["description"] = "",
-            ["tint"] = new JsonObject { ["r"] = 1f, ["g"] = 1f, ["b"] = 1f, ["a"] = 1f },
+            ["tint"] = new JsonObject { ["r"] = tintChannel, ["g"] = tintChannel, ["b"] = tintChannel, ["a"] = tintAlpha },
             ["transformParent"] = "",
             ["position"] = new JsonObject { ["x"] = 0f, ["y"] = 1f, ["z"] = 0f },
             ["rotation"] = new JsonObject { ["x"] = 0f, ["y"] = 0f, ["z"] = 0f, ["w"] = 1f },
-            ["localScale"] = new JsonObject { ["x"] = 1f, ["y"] = 1f, ["z"] = 1f },
+            ["localScale"] = new JsonObject { ["x"] = actorScale, ["y"] = actorScale, ["z"] = actorScale },
             ["renderableOffset"] = new JsonObject { ["x"] = 0f, ["y"] = 0f, ["z"] = 0f },
             ["renderableRotation"] = new JsonObject { ["x"] = 0f, ["y"] = 0f, ["z"] = 0f, ["w"] = 1f },
             ["preferOffstage"] = false,
-            ["isSolid"] = true,
-            ["enablePhysics"] = true,
-            ["enableGravity"] = true,
+            ["isSolid"] = !isTextPanel,
+            ["enablePhysics"] = !isTextPanel,
+            ["enableGravity"] = !isTextPanel,
             ["bounciness"] = 0f,
             ["drag"] = 0f,
             ["angularDrag"] = 0.05f,
@@ -2938,6 +2981,11 @@ public partial class GameBuilderApp : Node3D
                 : "Select an actor";
         _displayNameField.Text = hasActor ? _selectedActor!.State.DisplayName : "";
         _descriptionField.Text = hasActor ? _selectedActor!.State.Description : "";
+        bool showCommentText = hasActor && _selectedActors.Count == 1 && _selectedActor!.SupportsCommentText;
+        _commentTextLabel.Visible = showCommentText;
+        _commentTextField.Visible = showCommentText;
+        _commentTextField.Editable = showCommentText && !_playMode;
+        _commentTextField.Text = showCommentText ? _selectedActor!.State.CommentText : string.Empty;
         for (int axis = 0; axis < 3; axis++)
         {
             _positionFields[axis].Editable = hasActor && !_playMode;
