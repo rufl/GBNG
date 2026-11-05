@@ -71,7 +71,7 @@ public partial class GameBuilderApp
             _status.Text = $"Could not synchronize collaborative edits: {exception.Message}";
         }
     }
-    private void SaveSynthSoundEffect(JsonObject? before, JsonObject? after, string label)
+    private void SaveSoundEffect(JsonObject? before, JsonObject? after, string label)
     {
         if (_document is null || _playMode)
             return;
@@ -79,7 +79,7 @@ public partial class GameBuilderApp
         JsonObject? identity = after ?? before;
         string id = LegacySaveDocument.ReadString(identity?["id"]);
         if (id.Length == 0)
-            throw new InvalidDataException("A synthesized sound effect needs an ID.");
+            throw new InvalidDataException("A sound effect needs an ID.");
         bool hadDatabase = _document.Root.ContainsKey("sojoDatabase");
         bool hadSoundArray = _document.Root["sojoDatabase"]?["sojos"] is JsonArray;
         JsonObject? beforeSojo = before?.DeepClone().AsObject();
@@ -129,7 +129,7 @@ public partial class GameBuilderApp
             if (!hadDatabase && database.Count == 0)
                 _document.Root.Remove("sojoDatabase");
             RebuildBehaviorRuntimeAfterCollaborativeEdit();
-            _synthSoundWindow?.RefreshFromDocument();
+            _soundEffectWindow?.RefreshFromDocument();
         }
 
         ApplySound(afterSojo);
@@ -306,7 +306,7 @@ public partial class GameBuilderApp
             window.RefreshFromDocument();
         foreach (LegacyCardLibraryManagerWindow window in Descendants<LegacyCardLibraryManagerWindow>(this))
             window.RefreshFromDocument();
-        foreach (LegacySynthSoundWindow window in Descendants<LegacySynthSoundWindow>(this))
+        foreach (LegacySoundEffectWindow window in Descendants<LegacySoundEffectWindow>(this))
             window.RefreshFromDocument();
     }
     private static IEnumerable<T> Descendants<T>(Node root) where T : Node
@@ -329,11 +329,11 @@ public partial class GameBuilderApp
             MergeAssetBundleIntoEditor(bundleProjectPath);
             PersistNetworkHostProjectCopy();
             _lanSession.BroadcastAssetBundle(_networkHostProjectPath, peerId, transferId);
-            _status.Text = "Imported model shared with the host; syncing it to connected players.";
+            _status.Text = "Imported project assets shared with the host; syncing them to connected players.";
         }
         catch (Exception exception)
         {
-            _lanSession.RejectAssetBundle(peerId, transferId, $"Could not merge the imported model: {exception.Message}");
+            _lanSession.RejectAssetBundle(peerId, transferId, $"Could not merge the imported project assets: {exception.Message}");
         }
         finally
         {
@@ -346,12 +346,12 @@ public partial class GameBuilderApp
         try
         {
             if (_document is null)
-                throw new InvalidOperationException("No project is open to receive the shared model.");
+                throw new InvalidOperationException("No project is open to receive shared assets.");
             MergeAssetBundleIntoEditor(bundleProjectPath);
             if (_lanSession.ConfirmAssetBundleApplied(originPeerId, originTransferId)
                 && _pendingAssetUrisByTransferId.Remove(originTransferId, out string? uri))
                 _unsharedAssetUris.Remove(uri);
-            _status.Text = "Shared project models synchronized.";
+            _status.Text = "Shared project assets synchronized.";
         }
         catch (Exception exception)
         {
@@ -367,7 +367,7 @@ public partial class GameBuilderApp
     private void MergeAssetBundleIntoEditor(string bundleProjectPath)
     {
         if (_document is null)
-            throw new InvalidOperationException("No project is open to receive the shared model.");
+            throw new InvalidOperationException("No project is open to receive shared assets.");
 
         if (_lanSession.IsHost)
         {

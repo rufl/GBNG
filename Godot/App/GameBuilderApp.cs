@@ -37,7 +37,7 @@ public partial class GameBuilderApp : Node3D
     private LegacyControlsWindow _controlsWindow = null!;
     private LegacyTooltipPolicy? _tooltipPolicy;
     private LegacyAudioSettingsWindow _audioSettingsWindow = null!;
-    private LegacySynthSoundWindow _synthSoundWindow = null!;
+    private LegacySoundEffectWindow _soundEffectWindow = null!;
     private float _sfxVolume = LegacyAudioSettings.DefaultSfxVolume;
     private float _musicVolume = LegacyAudioSettings.DefaultMusicVolume;
     private const string EditorSettingsPath = "user://editor-settings.cfg";
@@ -74,6 +74,8 @@ public partial class GameBuilderApp : Node3D
     private FileDialog _saveDialog = null!;
     private FileDialog _importModelDialog = null!;
     private FileDialog _importImageDialog = null!;
+    private FileDialog _importAudioDialog = null!;
+    private string? _pendingSoundReplacementId;
     private AcceptDialog _errorDialog = null!;
     private LegacyLanSession _lanSession = null!;
     private LegacyLanNetworkWindow _networkWindow = null!;
@@ -235,6 +237,8 @@ public partial class GameBuilderApp : Node3D
             RunAudioSpatializationSmoke();
         if (commandLineArgs.Contains("--smoke-synth-sound", StringComparer.Ordinal))
             RunSynthSoundSmoke();
+        if (commandLineArgs.Contains("--smoke-local-audio", StringComparer.Ordinal))
+            RunLocalAudioSmoke();
         if (commandLineArgs.Contains("--smoke-window-focus", StringComparer.Ordinal))
             RunWindowFocusSmoke();
         if (commandLineArgs.Contains("--smoke-action-prompts", StringComparer.Ordinal))
@@ -577,9 +581,11 @@ public partial class GameBuilderApp : Node3D
         _audioSettingsWindow = new LegacyAudioSettingsWindow(SetSfxVolumePreference, SetMusicVolumePreference);
         _audioSettingsWindow.SetSfxVolume(_sfxVolume);
         _audioSettingsWindow.SetMusicVolume(_musicVolume);
-        _synthSoundWindow = new LegacySynthSoundWindow(
+        _soundEffectWindow = new LegacySoundEffectWindow(
             () => _document?.Root["sojoDatabase"]?["sojos"] as JsonArray,
-            SaveSynthSoundEffect,
+            SaveSoundEffect,
+            RequestSoundAudioImport,
+            content => _document is null ? null : LegacyAudioAssetCatalog.LoadStream(GetProjectAssetSourcePath(), content),
             message => _status.Text = message);
         _assetStoreWindow = new LegacyAssetStoreWindow(
             _catalog,
@@ -593,7 +599,7 @@ public partial class GameBuilderApp : Node3D
         AddChild(_visualEffectsWindow);
         AddChild(_controlsWindow);
         AddChild(_audioSettingsWindow);
-        AddChild(_synthSoundWindow);
+        AddChild(_soundEffectWindow);
 
         var root = new Control
         {
@@ -681,6 +687,17 @@ public partial class GameBuilderApp : Node3D
         _importImageDialog.AddFilter("*.webp", "WebP image");
         _importImageDialog.FileSelected += ImportImageFromPath;
         root.AddChild(_importImageDialog);
+        _importAudioDialog = new FileDialog
+        {
+            Title = "Import a sound effect",
+            FileMode = FileDialog.FileModeEnum.OpenFile,
+            Access = FileDialog.AccessEnum.Filesystem,
+            UseNativeDialog = true
+        };
+        _importAudioDialog.AddFilter("*.wav", "WAV audio");
+        _importAudioDialog.AddFilter("*.ogg", "Ogg Vorbis audio");
+        _importAudioDialog.FileSelected += ImportSoundAudioFromPath;
+        root.AddChild(_importAudioDialog);
 
         _errorDialog = new AcceptDialog { Title = "GBNG" };
         root.AddChild(_errorDialog);
@@ -805,7 +822,7 @@ public partial class GameBuilderApp : Node3D
         AddToolbarButton(toolbar, "Effects", OpenVisualEffects);
         AddToolbarButton(toolbar, "Options", OpenControls);
         AddToolbarButton(toolbar, "Audio", OpenAudioSettings);
-        AddToolbarButton(toolbar, "Sounds", OpenSynthSoundEditor);
+        AddToolbarButton(toolbar, "Sounds", OpenSoundEffectEditor);
         AddToolbarButton(toolbar, "Terrain", OpenTerrainEditor);
         AddToolbarButton(toolbar, "Reset", ResetActors);
         _undoButton = new Button { Text = "Undo", CustomMinimumSize = new Vector2(70f, 36f), Disabled = true };
@@ -1246,15 +1263,15 @@ public partial class GameBuilderApp : Node3D
     {
         _audioSettingsWindow.PopupCentered(new Vector2I(540, 285));
     }
-    private void OpenSynthSoundEditor()
+    private void OpenSoundEffectEditor()
     {
         if (_document is null || _playMode)
         {
-            _status.Text = "Open a project and stop play mode before editing synthesized sounds.";
+            _status.Text = "Open a project and stop play mode before editing sound effects.";
             return;
         }
-        _synthSoundWindow.RefreshFromDocument();
-        _synthSoundWindow.PopupCenteredClamped(new Vector2I(1040, 760));
+        _soundEffectWindow.RefreshFromDocument();
+        _soundEffectWindow.PopupCenteredClamped(new Vector2I(1040, 760));
     }
 
     private void OpenTerrainEditor()
@@ -2115,6 +2132,123 @@ public partial class GameBuilderApp : Node3D
             return;
         }
         _importImageDialog.PopupCentered(new Vector2I(1000, 700));
+    }
+    private void RequestSoundAudioImport(string? replaceSoundId)
+    {
+        if (_document is null || _playMode)
+        {
+            ShowError("Open a project and stop play mode before importing audio.");
+            return;
+        }
+        if (GetProjectAssetSourcePath().StartsWith("res://", StringComparison.Ordinal))
+        {
+            ShowError("Save a writable .voos copy before importing audio.");
+            return;
+        }
+        if (replaceSoundId is not null && FindSoundEffect(replaceSoundId) is null)
+        {
+            ShowError("The selected sound effect no longer exists in this project.");
+            return;
+        }
+        _pendingSoundReplacementId = replaceSoundId;
+        _importAudioDialog.PopupCentered(new Vector2I(1000, 700));
+    }
+
+    private void ImportSoundAudioFromPath(string path)
+    {
+        if (_document is null)
+            return;
+        try
+        {
+            string? replaceSoundId = _pendingSoundReplacementId;
+            _pendingSoundReplacementId = null;
+            JsonObject? before = replaceSoundId is null ? null : FindSoundEffect(replaceSoundId);
+            if (replaceSoundId is not null && before is null)
+                throw new InvalidOperationException("The selected sound effect no longer exists in this project.");
+
+            LegacyAudioAsset asset = LegacyAudioAssetCatalog.ImportProjectAudio(GetProjectAssetSourcePath(), path);
+            string id = before is null ? Guid.NewGuid().ToString("N") : LegacySaveDocument.ReadString(before["id"]);
+            JsonObject after = before?.DeepClone().AsObject() ?? new JsonObject
+            {
+                ["id"] = id,
+                ["contentType"] = "SoundEffect"
+            };
+            JsonObject content = TryParseSoundEffectContent(before) ?? new JsonObject();
+            content["effectType"] = 2;
+            content["localAssetId"] = asset.Id;
+            content["localAssetExtension"] = asset.Extension;
+            content["spatialized"] = LegacySaveDocument.ReadBool(content["spatialized"], true);
+            content.Remove("synthParams");
+            content.Remove("steamWorkshopId");
+            after["name"] = before is null
+                ? Path.GetFileNameWithoutExtension(path)
+                : LegacySaveDocument.ReadString(before["name"], Path.GetFileNameWithoutExtension(path));
+            after["content"] = content.ToJsonString();
+
+            SaveSoundEffect(before, after, before is null
+                ? $"Import sound effect {LegacySaveDocument.ReadString(after["name"])}"
+                : $"Replace sound effect audio {LegacySaveDocument.ReadString(after["name"])}");
+            _soundEffectWindow.FocusSoundEffect(id);
+            CompleteSoundAudioImport(path, asset);
+        }
+        catch (Exception exception)
+        {
+            ShowError($"Could not import sound effect audio:\n{exception.Message}");
+        }
+    }
+
+    private JsonObject? FindSoundEffect(string id)
+    {
+        JsonArray? sojos = _document?.Root["sojoDatabase"]?["sojos"] as JsonArray;
+        if (sojos is null)
+            return null;
+        foreach (JsonNode? node in sojos)
+        {
+            if (node is JsonObject sojo
+                && LegacySaveDocument.ReadString(sojo["id"]) == id
+                && LegacySaveDocument.ReadString(sojo["contentType"]) == "SoundEffect")
+                return sojo;
+        }
+        return null;
+    }
+
+    private static JsonObject? TryParseSoundEffectContent(JsonObject? sojo)
+    {
+        string content = LegacySaveDocument.ReadString(sojo?["content"]);
+        return content.Length > 0 ? JsonNode.Parse(content) as JsonObject : null;
+    }
+
+    private void CompleteSoundAudioImport(string path, LegacyAudioAsset asset)
+    {
+        string assetProjectPath = GetProjectAssetSourcePath();
+        string pendingKey = $"sound:{asset.Id}";
+        if (_lanSession.IsClient)
+        {
+            if (_lanSession.SubmitAssetBundle(assetProjectPath, out long transferId))
+            {
+                _unsharedAssetUris.Add(pendingKey);
+                _pendingAssetUrisByTransferId.Add(transferId, pendingKey);
+            }
+            else
+            {
+                _unsharedAssetUris.Add(pendingKey);
+            }
+            _status.Text = _unsharedAssetUris.Contains(pendingKey)
+                ? $"Imported {Path.GetFileName(path)} locally; waiting for the host to sync the audio asset."
+                : $"Imported {Path.GetFileName(path)} into this project.";
+        }
+        else if (_lanSession.IsHost && _networkHostProjectPath is string hostProjectPath)
+        {
+            if (!_document!.SourcePath.StartsWith("res://", StringComparison.Ordinal))
+                _catalog.CopyProjectAssets(hostProjectPath, _document.SourcePath);
+            PersistNetworkHostProjectCopy();
+            _lanSession.BroadcastAssetBundle(hostProjectPath, _lanSession.LocalPeerId, 0);
+            _status.Text = $"Imported {Path.GetFileName(path)} and shared the audio asset with connected players.";
+        }
+        else
+        {
+            _status.Text = $"Imported {Path.GetFileName(path)} into this project.";
+        }
     }
 
     private void ImportImageFromPath(string path)

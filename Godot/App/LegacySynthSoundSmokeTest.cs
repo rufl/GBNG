@@ -16,21 +16,21 @@ public partial class GameBuilderApp
         try
         {
             await WaitForUiFrames(2);
-            _synthSoundWindow.RefreshFromDocument();
-            _synthSoundWindow.PopupCenteredClamped(new Vector2I(1040, 760));
+            _soundEffectWindow.RefreshFromDocument();
+            _soundEffectWindow.PopupCenteredClamped(new Vector2I(1040, 760));
             await WaitForUiFrames(2);
-            if (!_synthSoundWindow.Visible)
+            if (!_soundEffectWindow.Visible)
                 throw new InvalidOperationException("The synthesized sound editor did not open.");
 
-            var newButton = (Button)_synthSoundWindow.FindChild("SynthNewButton", true, false);
-            var nameField = (LineEdit)_synthSoundWindow.FindChild("SynthSoundName", true, false);
-            var waveShape = (OptionButton)_synthSoundWindow.FindChild("SynthWaveShape", true, false);
-            var speed = (HSlider)_synthSoundWindow.FindChild("SynthPlaybackSpeed", true, false);
-            var spatialized = (CheckBox)_synthSoundWindow.FindChild("SynthSpatialized", true, false);
-            var volumeEnvelope = (LegacySynthEnvelopeEditor)_synthSoundWindow.FindChild("SynthVolumeEnvelope", true, false);
-            var pitchEnvelope = (LegacySynthEnvelopeEditor)_synthSoundWindow.FindChild("SynthPitchEnvelope", true, false);
-            var previewButton = (Button)_synthSoundWindow.FindChild("SynthPreviewButton", true, false);
-            var saveButton = (Button)_synthSoundWindow.FindChild("SynthSaveButton", true, false);
+            var newButton = (Button)_soundEffectWindow.FindChild("SynthNewButton", true, false);
+            var nameField = (LineEdit)_soundEffectWindow.FindChild("SynthSoundName", true, false);
+            var waveShape = (OptionButton)_soundEffectWindow.FindChild("SynthWaveShape", true, false);
+            var speed = (HSlider)_soundEffectWindow.FindChild("SynthPlaybackSpeed", true, false);
+            var spatialized = (CheckBox)_soundEffectWindow.FindChild("SynthSpatialized", true, false);
+            var volumeEnvelope = (LegacySynthEnvelopeEditor)_soundEffectWindow.FindChild("SynthVolumeEnvelope", true, false);
+            var pitchEnvelope = (LegacySynthEnvelopeEditor)_soundEffectWindow.FindChild("SynthPitchEnvelope", true, false);
+            var previewButton = (Button)_soundEffectWindow.FindChild("SynthPreviewButton", true, false);
+            var saveButton = (Button)_soundEffectWindow.FindChild("SynthSaveButton", true, false);
             newButton.EmitSignal(Button.SignalName.Pressed);
             nameField.Text = "Synth authoring smoke";
             waveShape.Select(3);
@@ -40,7 +40,7 @@ public partial class GameBuilderApp
             pitchEnvelope.SetSliceValue(31, 40);
             previewButton.EmitSignal(Button.SignalName.Pressed);
             await WaitForUiFrames(2);
-            var preview = (AudioStreamPlayer)_synthSoundWindow.FindChild("SynthSoundPreview", true, false);
+            var preview = (AudioStreamPlayer)_soundEffectWindow.FindChild("SynthSoundPreview", true, false);
             if (!preview.Playing || preview.Bus != GBNG.Audio.LegacyAudioSettings.SfxBusName
                 || preview.Stream is not AudioStreamWav { Data.Length: > 0 })
                 throw new InvalidOperationException("The draft synthesized sound could not be previewed on the SFX bus.");
@@ -82,7 +82,7 @@ public partial class GameBuilderApp
                 throw new InvalidOperationException("The new synthesized sound did not survive a .voos save and reload.");
 
             string screenshot = ProjectSettings.GlobalizePath("res://.godot/synth-sound-smoke.png");
-            if (_synthSoundWindow.GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
+            if (_soundEffectWindow.GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
                 throw new InvalidOperationException("Could not save the synthesized sound editor screenshot.");
             GD.Print($"SYNTH_SOUND_SMOKE_OK created=true waveform=noise speed=16 spatialized=false volume0=7 pitch31=40 preview=true roundTrip=true screenshot={screenshot}");
         }
@@ -93,11 +93,11 @@ public partial class GameBuilderApp
         }
         finally
         {
-            if (_synthSoundWindow is not null && IsInstanceValid(_synthSoundWindow))
+            if (_soundEffectWindow is not null && IsInstanceValid(_soundEffectWindow))
             {
-                var preview = _synthSoundWindow.FindChild("SynthSoundPreview", true, false) as AudioStreamPlayer;
+                var preview = _soundEffectWindow.FindChild("SynthSoundPreview", true, false) as AudioStreamPlayer;
                 preview?.Stop();
-                _synthSoundWindow.Hide();
+                _soundEffectWindow.Hide();
             }
             if (hadSoundDatabase)
                 document.Root["sojoDatabase"] = originalSoundDatabase?.DeepClone();

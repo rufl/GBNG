@@ -7,7 +7,7 @@ using Godot;
 
 namespace GBNG.App;
 
-public sealed partial class LegacySynthSoundWindow : Window
+public sealed partial class LegacySoundEffectWindow : Window
 {
     private const int SliceCount = 32;
     private const int MaximumVolume = 16;
@@ -15,6 +15,8 @@ public sealed partial class LegacySynthSoundWindow : Window
 
     private readonly Func<JsonArray?> _readSoundEffects;
     private readonly Action<JsonObject?, JsonObject?, string> _saveSoundEffect;
+    private readonly Action<string?> _requestAudioImport;
+    private readonly Func<JsonObject, AudioStream?> _loadLocalAudio;
     private readonly Action<string> _reportStatus;
     private readonly ItemList _soundList = new();
     private readonly LineEdit _nameField = new();
@@ -24,9 +26,13 @@ public sealed partial class LegacySynthSoundWindow : Window
     private readonly CheckBox _spatialized = new();
     private readonly LegacySynthEnvelopeEditor _volumeEnvelope = new() { Name = "SynthVolumeEnvelope" };
     private readonly LegacySynthEnvelopeEditor _pitchEnvelope = new() { Name = "SynthPitchEnvelope" };
+    private readonly VBoxContainer _synthControls = new() { Name = "SynthSoundControls" };
+    private readonly Label _audioInfo = new() { Name = "ImportedAudioInfo", AutowrapMode = TextServer.AutowrapMode.Word };
     private readonly Button _saveButton = new() { Name = "SynthSaveButton", Text = "Save" };
     private readonly Button _deleteButton = new() { Name = "SynthDeleteButton", Text = "Delete" };
     private readonly Button _previewButton = new() { Name = "SynthPreviewButton", Text = "Preview" };
+    private readonly Button _importAudioButton = new() { Name = "LocalAudioImportButton", Text = "Import audio…" };
+    private readonly Button _replaceAudioButton = new() { Name = "ReplaceAudioButton", Text = "Import / replace audio…" };
     private readonly Label _status = new() { Name = "SynthSoundStatus", AutowrapMode = TextServer.AutowrapMode.Word };
     private readonly ConfirmationDialog _deleteConfirmation = new();
     private readonly AudioStreamPlayer _previewPlayer = new() { Name = "SynthSoundPreview", Bus = LegacyAudioSettings.SfxBusName, VolumeDb = -1.9382f };
@@ -35,17 +41,22 @@ public sealed partial class LegacySynthSoundWindow : Window
     private JsonObject? _originalSojo;
     private string? _selectedId;
     private bool _isNew;
+    private bool _isSynthSound = true;
     private bool _refreshing;
 
-    public LegacySynthSoundWindow(
+    public LegacySoundEffectWindow(
         Func<JsonArray?> readSoundEffects,
         Action<JsonObject?, JsonObject?, string> saveSoundEffect,
+        Action<string?> requestAudioImport,
+        Func<JsonObject, AudioStream?> loadLocalAudio,
         Action<string> reportStatus)
     {
         _readSoundEffects = readSoundEffects;
         _saveSoundEffect = saveSoundEffect;
+        _requestAudioImport = requestAudioImport;
+        _loadLocalAudio = loadLocalAudio;
         _reportStatus = reportStatus;
-        Name = "SynthSoundEditorWindow";
+        Name = "SoundEffectEditorWindow";
         Title = "Sound effects";
         Size = new Vector2I(1040, 760);
         Hide();
@@ -53,7 +64,7 @@ public sealed partial class LegacySynthSoundWindow : Window
         VisibilityChanged += StopPreviewWhenHidden;
         BuildInterface();
         AddChild(_previewPlayer);
-        _deleteConfirmation.Title = "Delete synthesized sound";
+        _deleteConfirmation.Title = "Delete sound effect";
         _deleteConfirmation.Confirmed += DeleteCurrentSound;
         AddChild(_deleteConfirmation);
         RefreshFromDocument();
@@ -62,7 +73,7 @@ public sealed partial class LegacySynthSoundWindow : Window
     internal void RefreshFromDocument()
     {
         string? selectedId = _selectedId;
-        List<JsonObject> sounds = GetSynthSounds();
+        List<JsonObject> sounds = GetSoundEffects();
         _refreshing = true;
         _soundList.Clear();
         int selectedIndex = -1;
@@ -71,7 +82,7 @@ public sealed partial class LegacySynthSoundWindow : Window
             JsonObject sound = sounds[index];
             string id = LegacySaveDocument.ReadString(sound["id"]);
             string name = LegacySaveDocument.ReadString(sound["name"], id);
-            _soundList.AddItem(name);
+            _soundList.AddItem($"{name} · {GetSoundKindLabel(sound)}");
             _soundList.SetItemMetadata(index, id);
             if (id == selectedId)
                 selectedIndex = index;
@@ -94,6 +105,13 @@ public sealed partial class LegacySynthSoundWindow : Window
         UpdateButtonState();
     }
 
+    internal void FocusSoundEffect(string id)
+    {
+        _selectedId = id;
+        _isNew = false;
+        RefreshFromDocument();
+    }
+
     private void BuildInterface()
     {
         var margin = new MarginContainer { AnchorRight = 1f, AnchorBottom = 1f };
@@ -107,24 +125,27 @@ public sealed partial class LegacySynthSoundWindow : Window
         columns.AddThemeConstantOverride("separation", 14);
         margin.AddChild(columns);
 
-        var library = new PanelContainer { CustomMinimumSize = new Vector2(190f, 0f) };
+        var library = new PanelContainer { CustomMinimumSize = new Vector2(220f, 0f) };
         columns.AddChild(library);
         var libraryLayout = new VBoxContainer();
         libraryLayout.AddThemeConstantOverride("separation", 8);
         library.AddChild(libraryLayout);
-        libraryLayout.AddChild(new Label { Text = "Synthesized sounds", HorizontalAlignment = HorizontalAlignment.Center });
+        libraryLayout.AddChild(new Label { Text = "Sound effects", HorizontalAlignment = HorizontalAlignment.Center });
         _soundList.Name = "SynthSoundList";
         _soundList.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
         _soundList.ItemSelected += SelectSound;
         libraryLayout.AddChild(_soundList);
         var libraryButtons = new HBoxContainer();
-        _newButton = new Button { Name = "SynthNewButton", Text = "New", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        _newButton = new Button { Name = "SynthNewButton", Text = "New synth", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         _newButton.Pressed += BeginNewSound;
+        _importAudioButton.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        _importAudioButton.Pressed += ImportNewAudio;
+        libraryButtons.AddChild(_newButton);
+        libraryButtons.AddChild(_importAudioButton);
+        libraryLayout.AddChild(libraryButtons);
         _deleteButton.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         _deleteButton.Pressed += RequestDeleteSound;
-        libraryButtons.AddChild(_newButton);
-        libraryButtons.AddChild(_deleteButton);
-        libraryLayout.AddChild(libraryButtons);
+        libraryLayout.AddChild(_deleteButton);
 
         var scroll = new ScrollContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, SizeFlagsVertical = Control.SizeFlags.ExpandFill };
         columns.AddChild(scroll);
@@ -133,7 +154,7 @@ public sealed partial class LegacySynthSoundWindow : Window
         scroll.AddChild(editor);
         editor.AddChild(new Label
         {
-            Text = "Create and edit legacy 32-slice synthesized effects. Imported sound files remain selectable in behavior properties but are not editable here.",
+            Text = "Edit synthesized effects or import local WAV and Ogg Vorbis sounds. Replace legacy Steam Workshop audio with a local file to restore playback.",
             AutowrapMode = TextServer.AutowrapMode.Word
         });
         AddEditorRow(editor, "Name", _nameField);
@@ -150,7 +171,7 @@ public sealed partial class LegacySynthSoundWindow : Window
             _waveShape.AddItem(text, value);
         _waveShape.Name = "SynthWaveShape";
         _waveShape.ItemSelected += _ => MarkDraftChanged();
-        AddEditorRow(editor, "Wave shape", _waveShape);
+        AddEditorRow(_synthControls, "Wave shape", _waveShape);
 
         var speedRow = new HBoxContainer();
         _speed.Name = "SynthPlaybackSpeed";
@@ -168,7 +189,7 @@ public sealed partial class LegacySynthSoundWindow : Window
         speedRow.AddChild(_speedRowLabel);
         speedRow.AddChild(_speed);
         speedRow.AddChild(_speedValue);
-        AddEditorRow(editor, "Playback speed", speedRow);
+        AddEditorRow(_synthControls, "Playback speed", speedRow);
 
         _spatialized.Name = "SynthSpatialized";
         _spatialized.Text = "Spatialized (3D)";
@@ -204,7 +225,14 @@ public sealed partial class LegacySynthSoundWindow : Window
         };
         pitchColumn.AddChild(_pitchEnvelope);
         envelopes.AddChild(pitchColumn);
-        editor.AddChild(envelopes);
+        _synthControls.AddChild(envelopes);
+        editor.AddChild(_synthControls);
+
+        _audioInfo.Visible = false;
+        editor.AddChild(_audioInfo);
+        _replaceAudioButton.Pressed += ReplaceAudio;
+        _replaceAudioButton.Visible = false;
+        editor.AddChild(_replaceAudioButton);
 
         var actions = new HBoxContainer();
         _previewButton.Pressed += PreviewSound;
@@ -215,6 +243,7 @@ public sealed partial class LegacySynthSoundWindow : Window
         editor.AddChild(actions);
         UpdateButtonState();
     }
+
 
     private Button _newButton = null!;
     private Label _speedRowLabel = null!;
@@ -228,7 +257,7 @@ public sealed partial class LegacySynthSoundWindow : Window
         layout.AddChild(row);
     }
 
-    private List<JsonObject> GetSynthSounds()
+    private List<JsonObject> GetSoundEffects()
     {
         var sounds = new List<JsonObject>();
         JsonArray? sojos = _readSoundEffects();
@@ -236,7 +265,7 @@ public sealed partial class LegacySynthSoundWindow : Window
             return sounds;
         foreach (JsonNode? node in sojos)
         {
-            if (node is JsonObject sojo && TryReadSynthParams(sojo, out _))
+            if (node is JsonObject sojo && LegacySaveDocument.ReadString(sojo["contentType"]) == "SoundEffect")
                 sounds.Add(sojo);
         }
         sounds.Sort(static (left, right) =>
@@ -249,6 +278,18 @@ public sealed partial class LegacySynthSoundWindow : Window
                 : StringComparer.Ordinal.Compare(LegacySaveDocument.ReadString(left["id"]), LegacySaveDocument.ReadString(right["id"]));
         });
         return sounds;
+    }
+
+    private static string GetSoundKindLabel(JsonObject sojo)
+    {
+        JsonObject? content = TryReadContent(sojo);
+        return LegacySaveDocument.ReadInt(content?["effectType"], -1) switch
+        {
+            0 => "Synth",
+            1 => "Workshop",
+            2 => "Local audio",
+            _ => "Legacy"
+        };
     }
 
     private void SelectSound(long index)
@@ -273,7 +314,7 @@ public sealed partial class LegacySynthSoundWindow : Window
             _refreshing = false;
             return;
         }
-        JsonObject? sound = GetSynthSounds().FirstOrDefault(candidate => LegacySaveDocument.ReadString(candidate["id"]) == id);
+        JsonObject? sound = GetSoundEffects().FirstOrDefault(candidate => LegacySaveDocument.ReadString(candidate["id"]) == id);
         if (sound is null)
         {
             RefreshFromDocument();
@@ -295,19 +336,38 @@ public sealed partial class LegacySynthSoundWindow : Window
 
     private void LoadSound(JsonObject sojo)
     {
-        if (!TryReadSynthParams(sojo, out JsonObject? synth) || synth is null)
-            return;
         _selectedId = LegacySaveDocument.ReadString(sojo["id"]);
         _originalSojo = sojo.DeepClone().AsObject();
         _isNew = false;
-        _volumeValues = ReadEnvelope(synth["volume"], MaximumVolume);
-        _pitchValues = ReadEnvelope(synth["pitch"], MaximumPitch / 2);
+        JsonObject? content = TryReadContent(sojo);
+        _isSynthSound = content is not null
+            && LegacySaveDocument.ReadInt(content["effectType"], 0) == 0
+            && content["synthParams"] is JsonObject;
         _nameField.Text = LegacySaveDocument.ReadString(sojo["name"], "Sound effect");
-        _waveShape.Select(Math.Clamp(LegacySaveDocument.ReadInt(synth["waveShape"], 0), 0, 3));
-        _speed.Value = Math.Clamp(LegacySaveDocument.ReadInt(synth["speed"], 8), 0, 16);
         _spatialized.ButtonPressed = ReadSpatialized(sojo);
-        _volumeEnvelope.SetValues(_volumeValues);
-        _pitchEnvelope.SetValues(_pitchValues);
+        _synthControls.Visible = _isSynthSound;
+        _audioInfo.Visible = !_isSynthSound;
+        _replaceAudioButton.Visible = true;
+
+        if (_isSynthSound && content?["synthParams"] is JsonObject synth)
+        {
+            _volumeValues = ReadEnvelope(synth["volume"], MaximumVolume);
+            _pitchValues = ReadEnvelope(synth["pitch"], MaximumPitch / 2);
+            _waveShape.Select(Math.Clamp(LegacySaveDocument.ReadInt(synth["waveShape"], 0), 0, 3));
+            _speed.Value = Math.Clamp(LegacySaveDocument.ReadInt(synth["speed"], 8), 0, 16);
+            _volumeEnvelope.SetValues(_volumeValues);
+            _pitchEnvelope.SetValues(_pitchValues);
+            _audioInfo.Text = string.Empty;
+        }
+        else
+        {
+            _audioInfo.Text = LegacySaveDocument.ReadInt(content?["effectType"], -1) switch
+            {
+                1 => $"This effect refers to Steam Workshop item {LegacySaveDocument.ReadString(content?["steamWorkshopId"])}. Workshop downloads are unavailable here; import a local WAV or Ogg file to replace it.",
+                2 => "This effect uses a local WAV or Ogg asset. Its audio is included with the project sidecar and can be replaced here.",
+                _ => "This legacy sound format cannot be played here. Import a local WAV or Ogg file to replace it."
+            };
+        }
         _status.Text = string.Empty;
     }
 
@@ -320,6 +380,10 @@ public sealed partial class LegacySynthSoundWindow : Window
         _selectedId = Guid.NewGuid().ToString("N");
         _originalSojo = null;
         _isNew = true;
+        _isSynthSound = true;
+        _synthControls.Visible = true;
+        _audioInfo.Visible = false;
+        _replaceAudioButton.Visible = false;
         _volumeValues = Enumerable.Repeat(MaximumVolume, SliceCount).ToArray();
         _pitchValues = Enumerable.Repeat(MaximumPitch / 2, SliceCount).ToArray();
         _nameField.Text = "New sound";
@@ -328,13 +392,29 @@ public sealed partial class LegacySynthSoundWindow : Window
         _spatialized.ButtonPressed = true;
         _volumeEnvelope.SetValues(_volumeValues);
         _pitchEnvelope.SetValues(_pitchValues);
-        _status.Text = "New sound · save to add it to the project.";
+        _status.Text = "New synthesized sound · save to add it to the project.";
         _refreshing = false;
         UpdateButtonState();
     }
 
+    private void ImportNewAudio()
+    {
+        if (SaveDraft())
+            _requestAudioImport(null);
+    }
+
+    private void ReplaceAudio()
+    {
+        if (_selectedId is not null && !_isNew && SaveDraft())
+            _requestAudioImport(_selectedId);
+    }
+
     private void SetEmptyDraft()
     {
+        _isSynthSound = true;
+        _synthControls.Visible = true;
+        _audioInfo.Visible = false;
+        _replaceAudioButton.Visible = false;
         _volumeValues = Enumerable.Repeat(MaximumVolume, SliceCount).ToArray();
         _pitchValues = Enumerable.Repeat(MaximumPitch / 2, SliceCount).ToArray();
         _nameField.Text = string.Empty;
@@ -343,7 +423,7 @@ public sealed partial class LegacySynthSoundWindow : Window
         _spatialized.ButtonPressed = true;
         _volumeEnvelope.SetValues(_volumeValues);
         _pitchEnvelope.SetValues(_pitchValues);
-        _status.Text = "Create a new synthesized sound to begin.";
+        _status.Text = "Create a synthesized sound or import local audio.";
     }
 
     private bool SaveDraft()
@@ -384,14 +464,17 @@ public sealed partial class LegacySynthSoundWindow : Window
         };
         sojo["name"] = name;
         JsonObject content = TryReadContent(sojo) ?? new JsonObject();
-        content["effectType"] = 0;
         content["spatialized"] = _spatialized.ButtonPressed;
-        JsonObject synth = content["synthParams"] as JsonObject ?? new JsonObject();
-        synth["waveShape"] = (int)_waveShape.GetSelectedId();
-        synth["speed"] = (int)_speed.Value;
-        synth["volume"] = ToJsonArray(_volumeValues);
-        synth["pitch"] = ToJsonArray(_pitchValues);
-        content["synthParams"] = synth;
+        if (_isSynthSound)
+        {
+            content["effectType"] = 0;
+            JsonObject synth = content["synthParams"] as JsonObject ?? new JsonObject();
+            synth["waveShape"] = (int)_waveShape.GetSelectedId();
+            synth["speed"] = (int)_speed.Value;
+            synth["volume"] = ToJsonArray(_volumeValues);
+            synth["pitch"] = ToJsonArray(_pitchValues);
+            content["synthParams"] = synth;
+        }
         sojo["content"] = content.ToJsonString();
         return sojo;
     }
@@ -402,7 +485,7 @@ public sealed partial class LegacySynthSoundWindow : Window
             return;
         if (!SaveDraft())
             return;
-        JsonObject? sound = GetSynthSounds().FirstOrDefault(candidate => LegacySaveDocument.ReadString(candidate["id"]) == _selectedId);
+        JsonObject? sound = GetSoundEffects().FirstOrDefault(candidate => LegacySaveDocument.ReadString(candidate["id"]) == _selectedId);
         if (sound is null)
             return;
         _deleteConfirmation.DialogText = $"Delete '{LegacySaveDocument.ReadString(sound["name"])}'? You can undo this from the main toolbar.";
@@ -413,7 +496,7 @@ public sealed partial class LegacySynthSoundWindow : Window
     {
         if (_selectedId is null)
             return;
-        JsonObject? sound = GetSynthSounds().FirstOrDefault(candidate => LegacySaveDocument.ReadString(candidate["id"]) == _selectedId);
+        JsonObject? sound = GetSoundEffects().FirstOrDefault(candidate => LegacySaveDocument.ReadString(candidate["id"]) == _selectedId);
         if (sound is null)
             return;
         string name = LegacySaveDocument.ReadString(sound["name"]);
@@ -431,12 +514,27 @@ public sealed partial class LegacySynthSoundWindow : Window
             return;
         JsonObject sojo = BuildSojo(_nameField.Text.Trim());
         JsonObject? content = TryReadContent(sojo);
-        if (content?["synthParams"] is not JsonObject synth)
+        if (content is null)
             return;
         try
         {
+            AudioStream? stream;
+            if (_isSynthSound && content["synthParams"] is JsonObject synth)
+                stream = LegacyBehaviorRuntime.CreateSynthAudioStream(synth);
+            else if (LegacySaveDocument.ReadInt(content["effectType"], -1) == 2)
+                stream = _loadLocalAudio(content);
+            else
+            {
+                _status.Text = "Import a local WAV or Ogg file to preview this legacy effect.";
+                return;
+            }
+            if (stream is null)
+            {
+                _status.Text = "The imported audio file is missing or could not be decoded. Replace it with a valid WAV or Ogg file.";
+                return;
+            }
             _previewPlayer.Stop();
-            _previewPlayer.Stream = LegacyBehaviorRuntime.CreateSynthAudioStream(synth);
+            _previewPlayer.Stream = stream;
             _previewPlayer.Play();
             _status.Text = "Previewing this draft.";
         }
@@ -460,6 +558,8 @@ public sealed partial class LegacySynthSoundWindow : Window
         _previewButton.Disabled = !hasDraft;
         _saveButton.Disabled = !hasDraft;
         _newButton.Disabled = false;
+        _importAudioButton.Disabled = false;
+        _replaceAudioButton.Visible = hasDraft && !_isNew;
     }
 
     private void CloseEditor()

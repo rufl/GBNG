@@ -14,7 +14,7 @@ public sealed partial class LegacyBehaviorRuntime
     private const uint TerrainCollisionLayer = 2u;
     private const uint ActorTriggerCollisionLayer = 4u;
     private const string ActorPrefabRoot = "res://Assets/StreamingAssets/PrefabLibrary/ActorPrefabs";
-    private readonly Dictionary<string, AudioStreamWav> _soundCache = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, AudioStream> _soundCache = new(StringComparer.Ordinal);
     private readonly Dictionary<string, bool> _soundSpatialization = new(StringComparer.Ordinal);
     private bool _refreshDatabasePending;
 
@@ -470,7 +470,7 @@ public sealed partial class LegacyBehaviorRuntime
     internal string PlaySound(JsonObject args)
     {
         string soundId = LegacySaveDocument.ReadString(args["soundId"]);
-        AudioStreamWav? stream = GetSound(soundId, out bool spatialized);
+        AudioStream? stream = GetSound(soundId, out bool spatialized);
         if (stream is null)
             return "false";
         string actorName = LegacySaveDocument.ReadString(args["actorName"]);
@@ -508,22 +508,28 @@ public sealed partial class LegacyBehaviorRuntime
         return "true";
     }
 
-    private AudioStreamWav? GetSound(string soundId, out bool spatialized)
+    private AudioStream? GetSound(string soundId, out bool spatialized)
     {
         spatialized = true;
-        if (_soundCache.TryGetValue(soundId, out AudioStreamWav? cached))
+        if (_soundCache.TryGetValue(soundId, out AudioStream? cached))
         {
             if (_soundSpatialization.TryGetValue(soundId, out bool cachedSpatialization))
                 spatialized = cachedSpatialization;
             return cached;
         }
         JsonObject? sojo = FindSojo(soundId, "SoundEffect");
-        string content = LegacySaveDocument.ReadString(sojo?["content"]);
-        if (content.Length == 0 || JsonNode.Parse(content) is not JsonObject sound || sound["synthParams"] is not JsonObject synth)
+        string contentText = LegacySaveDocument.ReadString(sojo?["content"]);
+        if (contentText.Length == 0 || JsonNode.Parse(contentText) is not JsonObject content)
             return null;
-        spatialized = LegacySaveDocument.ReadBool(sound["spatialized"], true);
-
-        AudioStreamWav result = CreateSynthAudioStream(synth);
+        spatialized = LegacySaveDocument.ReadBool(content["spatialized"], true);
+        AudioStream? result = LegacySaveDocument.ReadInt(content["effectType"], 0) switch
+        {
+            0 when content["synthParams"] is JsonObject synth => CreateSynthAudioStream(synth),
+            2 => LegacyAudioAssetCatalog.LoadStream(_document.SourcePath, content),
+            _ => null
+        };
+        if (result is null)
+            return null;
         _soundCache.Add(soundId, result);
         _soundSpatialization.Add(soundId, spatialized);
         return result;

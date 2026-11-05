@@ -198,7 +198,8 @@ public sealed class LegacyRenderableCatalog
             return;
         string sourceDirectory = GetProjectAssetDirectory(sourceProject);
         Dictionary<string, string> sourceAssets = ReadProjectAssetManifest(Path.Combine(sourceDirectory, ManifestFileName));
-        if (sourceAssets.Count == 0)
+        bool hasAudioAssets = LegacyAudioAssetCatalog.HasAudioAssets(sourceDirectory);
+        if (sourceAssets.Count == 0 && !hasAudioAssets)
             return;
 
         string destinationDirectory = GetProjectAssetDirectory(destinationProject);
@@ -226,6 +227,7 @@ public sealed class LegacyRenderableCatalog
             }
             destinationAssets[uri] = fileName;
         }
+        LegacyAudioAssetCatalog.CopyProjectAssets(sourceDirectory, destinationDirectory);
         WriteProjectAssetManifest(destinationManifestPath, destinationAssets);
     }
 
