@@ -523,6 +523,14 @@ public sealed partial class LegacyBehaviorRuntime
             return null;
         spatialized = LegacySaveDocument.ReadBool(sound["spatialized"], true);
 
+        AudioStreamWav result = CreateSynthAudioStream(synth);
+        _soundCache.Add(soundId, result);
+        _soundSpatialization.Add(soundId, spatialized);
+        return result;
+    }
+
+    internal static AudioStreamWav CreateSynthAudioStream(JsonObject synth)
+    {
         const int sampleRate = 44100;
         const int numSlices = 32;
         int speed = Math.Clamp(LegacySaveDocument.ReadInt(synth["speed"], 8), 0, 16);
@@ -568,18 +576,15 @@ public sealed partial class LegacyBehaviorRuntime
             data[sample * 2 + 1] = (byte)((pcm >> 8) & 0xff);
         }
 
-        var result = new AudioStreamWav
+        return new AudioStreamWav
         {
             Data = data,
             Format = AudioStreamWav.FormatEnum.Format16Bits,
             MixRate = sampleRate,
             Stereo = false
         };
-        _soundCache.Add(soundId, result);
-        _soundSpatialization.Add(soundId, spatialized);
-        return result;
-
     }
+
 
     private string SpawnParticleEffect(JsonObject args)
     {

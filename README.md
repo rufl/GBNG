@@ -84,6 +84,8 @@ The **Options** toolbar button controls device-local fullscreen (windowed by def
 The **Audio** toolbar button controls device-local sound-effects volume (0–100%, default 50%) and background music volume (0–100%, default 100%) on separate mixer buses; both save to `user://editor-settings.cfg`. Godot plays the repository's original music tracks using the Unity A–F adaptive stem progression and `AudioStreamInteractive` transitions scheduled at each clip's end.
 Actor-attached sound effects honor the legacy `spatialized` flag: enabled uses 3D positioning, disabled uses non-positional playback. Sounds played only at a world position remain 3D.
 
+The **Sounds** toolbar button creates, edits, previews, and deletes legacy synthesized sound effects with Square, Triangle, Sine, and Noise waveforms; playback speed; spatialization; and editable 32-slice volume and pitch envelopes. Changes participate in Undo/Redo, LAN collaborative editing, and `.voos` saves. Imported/workshop sound effects remain selectable by behavior properties, but their playback and editing are not ported.
+
 When the main window loses focus, the app caps its frame rate at 30 FPS to reduce background load; regaining focus restores unlimited foreground rendering.
 
 In play mode, legacy player tooltips for `Action1` and `Action2` render as bottom-center LMB/RMB prompts for the local player. LAN hosts forward each player's prompts to the matching client; stopping play clears them.

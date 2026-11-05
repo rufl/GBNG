@@ -71,6 +71,70 @@ public partial class GameBuilderApp
             _status.Text = $"Could not synchronize collaborative edits: {exception.Message}";
         }
     }
+    private void SaveSynthSoundEffect(JsonObject? before, JsonObject? after, string label)
+    {
+        if (_document is null || _playMode)
+            return;
+
+        JsonObject? identity = after ?? before;
+        string id = LegacySaveDocument.ReadString(identity?["id"]);
+        if (id.Length == 0)
+            throw new InvalidDataException("A synthesized sound effect needs an ID.");
+        bool hadDatabase = _document.Root.ContainsKey("sojoDatabase");
+        bool hadSoundArray = _document.Root["sojoDatabase"]?["sojos"] is JsonArray;
+        JsonObject? beforeSojo = before?.DeepClone().AsObject();
+        JsonObject? afterSojo = after?.DeepClone().AsObject();
+
+        void ApplySound(JsonObject? sound)
+        {
+            if (_document is null)
+                return;
+            JsonObject database = LegacySaveDocument.EnsureObject(_document.Root, "sojoDatabase");
+            JsonArray? sojos = database["sojos"] as JsonArray;
+            if (sound is not null && sojos is null)
+            {
+                sojos = new JsonArray();
+                database["sojos"] = sojos;
+            }
+
+            if (sojos is not null)
+            {
+                int index = -1;
+                for (int candidate = 0; candidate < sojos.Count; candidate++)
+                {
+                    if (sojos[candidate] is JsonObject current
+                        && LegacySaveDocument.ReadString(current["id"]) == id
+                        && LegacySaveDocument.ReadString(current["contentType"]) == "SoundEffect")
+                    {
+                        index = candidate;
+                        break;
+                    }
+                }
+                if (sound is null)
+                {
+                    if (index >= 0)
+                        sojos.RemoveAt(index);
+                    if (sojos.Count == 0 && !hadSoundArray)
+                        database.Remove("sojos");
+                }
+                else
+                {
+                    JsonObject updated = sound.DeepClone().AsObject();
+                    if (index >= 0)
+                        sojos[index] = updated;
+                    else
+                        sojos.Add(updated);
+                }
+            }
+            if (!hadDatabase && database.Count == 0)
+                _document.Root.Remove("sojoDatabase");
+            RebuildBehaviorRuntimeAfterCollaborativeEdit();
+            _synthSoundWindow?.RefreshFromDocument();
+        }
+
+        ApplySound(afterSojo);
+        RecordHistory(label, () => ApplySound(beforeSojo), () => ApplySound(afterSojo));
+    }
 
     private void PersistNetworkHostProjectCopy()
     {
@@ -242,8 +306,9 @@ public partial class GameBuilderApp
             window.RefreshFromDocument();
         foreach (LegacyCardLibraryManagerWindow window in Descendants<LegacyCardLibraryManagerWindow>(this))
             window.RefreshFromDocument();
+        foreach (LegacySynthSoundWindow window in Descendants<LegacySynthSoundWindow>(this))
+            window.RefreshFromDocument();
     }
-
     private static IEnumerable<T> Descendants<T>(Node root) where T : Node
     {
         foreach (Node child in root.GetChildren())

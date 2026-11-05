@@ -37,6 +37,7 @@ public partial class GameBuilderApp : Node3D
     private LegacyControlsWindow _controlsWindow = null!;
     private LegacyTooltipPolicy? _tooltipPolicy;
     private LegacyAudioSettingsWindow _audioSettingsWindow = null!;
+    private LegacySynthSoundWindow _synthSoundWindow = null!;
     private float _sfxVolume = LegacyAudioSettings.DefaultSfxVolume;
     private float _musicVolume = LegacyAudioSettings.DefaultMusicVolume;
     private const string EditorSettingsPath = "user://editor-settings.cfg";
@@ -232,6 +233,8 @@ public partial class GameBuilderApp : Node3D
             RunAudioSmoke();
         if (commandLineArgs.Contains("--smoke-audio-spatialization", StringComparer.Ordinal))
             RunAudioSpatializationSmoke();
+        if (commandLineArgs.Contains("--smoke-synth-sound", StringComparer.Ordinal))
+            RunSynthSoundSmoke();
         if (commandLineArgs.Contains("--smoke-window-focus", StringComparer.Ordinal))
             RunWindowFocusSmoke();
         if (commandLineArgs.Contains("--smoke-action-prompts", StringComparer.Ordinal))
@@ -574,6 +577,10 @@ public partial class GameBuilderApp : Node3D
         _audioSettingsWindow = new LegacyAudioSettingsWindow(SetSfxVolumePreference, SetMusicVolumePreference);
         _audioSettingsWindow.SetSfxVolume(_sfxVolume);
         _audioSettingsWindow.SetMusicVolume(_musicVolume);
+        _synthSoundWindow = new LegacySynthSoundWindow(
+            () => _document?.Root["sojoDatabase"]?["sojos"] as JsonArray,
+            SaveSynthSoundEffect,
+            message => _status.Text = message);
         _assetStoreWindow = new LegacyAssetStoreWindow(
             _catalog,
             () => _document is not null && !_playMode && !_lanSession.HasPendingAssetSync,
@@ -586,6 +593,7 @@ public partial class GameBuilderApp : Node3D
         AddChild(_visualEffectsWindow);
         AddChild(_controlsWindow);
         AddChild(_audioSettingsWindow);
+        AddChild(_synthSoundWindow);
 
         var root = new Control
         {
@@ -797,6 +805,7 @@ public partial class GameBuilderApp : Node3D
         AddToolbarButton(toolbar, "Effects", OpenVisualEffects);
         AddToolbarButton(toolbar, "Options", OpenControls);
         AddToolbarButton(toolbar, "Audio", OpenAudioSettings);
+        AddToolbarButton(toolbar, "Sounds", OpenSynthSoundEditor);
         AddToolbarButton(toolbar, "Terrain", OpenTerrainEditor);
         AddToolbarButton(toolbar, "Reset", ResetActors);
         _undoButton = new Button { Text = "Undo", CustomMinimumSize = new Vector2(70f, 36f), Disabled = true };
@@ -1236,6 +1245,16 @@ public partial class GameBuilderApp : Node3D
     private void OpenAudioSettings()
     {
         _audioSettingsWindow.PopupCentered(new Vector2I(540, 285));
+    }
+    private void OpenSynthSoundEditor()
+    {
+        if (_document is null || _playMode)
+        {
+            _status.Text = "Open a project and stop play mode before editing synthesized sounds.";
+            return;
+        }
+        _synthSoundWindow.RefreshFromDocument();
+        _synthSoundWindow.PopupCenteredClamped(new Vector2I(1040, 760));
     }
 
     private void OpenTerrainEditor()
