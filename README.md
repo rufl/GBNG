@@ -112,6 +112,16 @@ Projects auto-save every 60 seconds into ten rotating recovery copies under `use
 
 The welcome screen also remembers the ten most recently opened or saved local `.voos` projects in `user://recent-projects.cfg`. Missing files are pruned on startup; bundled examples and auto-save recovery copies are excluded.
 
+The welcome screen's **New project…** flow restores the legacy starter-template selector with preview cards for Tutorial, Empty, 3D Platformer, First-Person Shooter, and Driving. Tutorial starts its bundled world in Play mode; the other templates open in the editor. These bundled `.voos` files are read-only. Use **Save as…** to make writable copies. Choosing a template replaces the current editor contents, so save first if needed.
+
+To exercise the template picker, preview cards, tutorial launch, and loading every starter project:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\godot\run.ps1 --path . -- --smoke-project-templates
+```
+
+The smoke prints `PROJECT_TEMPLATE_PICKER_SMOKE_OK` and writes welcome and template-picker screenshots under `.godot/`.
+
 This is not yet full parity. Internet invite-code hosting uses peer-to-peer WebRTC with optional coturn relay and requires an operator-run matchmaking/signaling service; LAN hosting and editing need no service or Docker. There is no bundled public matchmaking service, user accounts, parental controls, player-identity verification, moderation, or persistent rooms. Invite codes are bearer credentials; WebRTC data channels use DTLS encryption, while the signaling service sees SDP/ICE and source-IP metadata. See `tools/networking/README.md` for optional self-hosted matchmaking and relay tooling. The Godot asset store is an offline replacement for Poly; Google Image Search is disabled. Native CodeEdit replaces Monaco's browser for behavior and managed-card JavaScript editing with JavaScript syntax highlighting, line numbers, automatic indentation/braces, API suggestions from `VISIBLE_TO_MONACO` declarations (open suggestions with Ctrl+Space), line-numbered syntax diagnostics on Apply, and runtime error diagnostics in the open behavior editor with source lines. The editor also remembers vertical scroll position per behavior while switching assigned uses. The behavior and managed-card editors provide A−, A+, and Reset zoom controls, with font sizes clamped to 8–36 points. Both editors show a red `!` gutter marker and tinted source line for syntax diagnostics; the behavior editor also marks runtime errors. Hovering a marked line shows its diagnostic text. The behavior editor draws red squiggle underlines at reported syntax and runtime columns when available. Invalid managed-card JavaScript is not applied, preserving its last valid source. The optional Unity 2D Shaper plugin itself is not carried over; Godot implements the legacy behavior-UI drawing primitives natively. Several Unity-specific editor workflows remain unmigrated. The `unity` branch remains the complete reference for those contracts. The asset-license inventory covers repository files and their located license evidence; it does not verify licenses for models imported into a user's `.assets` sidecar.
 
 ## Prerequisites

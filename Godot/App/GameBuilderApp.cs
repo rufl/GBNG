@@ -207,9 +207,10 @@ public partial class GameBuilderApp : Node3D
         InitializeAutoSave();
         PopulateSamples();
         string[] commandLineArgs = OS.GetCmdlineUserArgs();
-        if (commandLineArgs.Length > 0)
+        string? startupProjectPath = commandLineArgs.FirstOrDefault(argument => !argument.StartsWith("--", StringComparison.Ordinal));
+        if (startupProjectPath is not null)
         {
-            LoadProject(commandLineArgs[0]);
+            LoadProject(startupProjectPath);
             if (commandLineArgs.Contains("--play", StringComparer.Ordinal))
                 SetPlayMode(true);
         }
@@ -255,6 +256,8 @@ public partial class GameBuilderApp : Node3D
             RunAutoSaveSmoke();
         if (commandLineArgs.Contains("--smoke-recent-projects", StringComparer.Ordinal))
             RunRecentProjectsSmoke();
+        if (commandLineArgs.Contains("--smoke-project-templates", StringComparer.Ordinal))
+            RunProjectTemplatePickerSmoke();
         if (commandLineArgs.Contains("--smoke-world-settings", StringComparer.Ordinal))
             RunWorldSettingsSmoke();
         if (commandLineArgs.Contains("--smoke-world-map-size", StringComparer.Ordinal))
@@ -614,6 +617,7 @@ public partial class GameBuilderApp : Node3D
         root.AddChild(_welcome);
         _editor = BuildEditorPanel();
         root.AddChild(_editor);
+        root.AddChild(BuildTemplatePicker());
 
         _behaviorUi = new LegacyBehaviorUi(_catalog) { Name = "BehaviorUi", Visible = false };
         _behaviorUi.SetMessageHandler((actorName, messageName, argumentJson) =>
@@ -729,6 +733,9 @@ public partial class GameBuilderApp : Node3D
         var open = new Button { Text = "Open project…", CustomMinimumSize = new Vector2(0f, 44f) };
         open.Pressed += () => _openDialog.PopupCentered(new Vector2I(1000, 700));
         box.AddChild(open);
+        var newProject = new Button { Name = "NewProjectButton", Text = "New project…", CustomMinimumSize = new Vector2(0f, 40f) };
+        newProject.Pressed += ShowTemplatePicker;
+        box.AddChild(newProject);
         var recoverAutosave = new Button { Text = "Recover autosave…", CustomMinimumSize = new Vector2(0f, 40f) };
         recoverAutosave.Pressed += OpenAutoSaveRecovery;
         box.AddChild(recoverAutosave);
@@ -1621,6 +1628,7 @@ public partial class GameBuilderApp : Node3D
             PopulateAssetPicker();
             _welcome.Visible = false;
             _editor.Visible = true;
+            _templatePicker.Visible = false;
             _status.Text = $"Loaded {Path.GetFileName(path)} — {document.Actors.Count} actors; save version {document.Version}.";
             AddRecentProject(path);
             ResetAutoSaveTimer();
