@@ -1268,10 +1268,10 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
             case "GetPlayerActors":
                 return JsonSerializer.Serialize(_actors.Where(actor => actor.State.IsPlayerControllable).Select(actor => actor.LegacyName));
             case "GetPlayerControlledActor":
-                return JsonSerializer.Serialize(_actors.FirstOrDefault(actor => actor.State.IsPlayerControllable)?.LegacyName);
+                return JsonSerializer.Serialize(GetLocalPlayerActor()?.LegacyName);
             case "GetCameraActor":
             {
-                WorldActorNode? player = _actors.FirstOrDefault(actor => actor.State.IsPlayerControllable);
+                WorldActorNode? player = GetLocalPlayerActor();
                 string cameraName = player is null ? "" : LegacySaveDocument.ReadString(player.State.Data["cameraActor"]);
                 return JsonSerializer.Serialize(_actors.FirstOrDefault(actor => actor.LegacyName == cameraName)?.LegacyName);
             }

@@ -225,6 +225,8 @@ public partial class GameBuilderApp : Node3D
             RunControlsSmoke();
         if (commandLineArgs.Contains("--smoke-one-shot-animation", StringComparer.Ordinal))
             RunOneShotAnimationSmoke();
+        if (commandLineArgs.Contains("--smoke-player-slot", StringComparer.Ordinal))
+            RunPlayerSlotSmoke();
         if (commandLineArgs.Contains("--smoke-audio", StringComparer.Ordinal))
             RunAudioSmoke();
         if (commandLineArgs.Contains("--smoke-audio-spatialization", StringComparer.Ordinal))
@@ -3775,15 +3777,7 @@ public partial class GameBuilderApp : Node3D
     private WorldActorNode? GetPlayerActor()
     {
         int targetSlot = _lanSession.IsClient ? _lanSession.LocalPlayerSlot : 1;
-        int slot = 0;
-        foreach (WorldActorNode actor in _actors)
-        {
-            if (!actor.State.IsPlayerControllable)
-                continue;
-            if (++slot == targetSlot)
-                return actor;
-        }
-        return null;
+        return WorldActorNode.FindPlayerActorAtSlot(_actors, targetSlot);
     }
     private WorldActorNode? GetCameraActor(WorldActorNode player)
     {

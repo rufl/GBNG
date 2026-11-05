@@ -397,10 +397,16 @@ public sealed partial class LegacyBehaviorRuntime
     private string RequestCameraOffset(JsonObject args)
     {
         string actorName = LegacySaveDocument.ReadString(args["actor"]);
-        WorldActorNode? player = _actors.FirstOrDefault(actor => actor.State.IsPlayerControllable);
+        WorldActorNode? player = GetLocalPlayerActor();
         if (player is not null && actorName == player.LegacyName)
             _requestCameraOffset?.Invoke(LegacyActorData.ReadVector(args["offset"], Vector3.Zero));
         return "true";
+    }
+
+    private WorldActorNode? GetLocalPlayerActor()
+    {
+        int targetSlot = _lanSession?.IsClient == true ? _lanSession.LocalPlayerSlot : 1;
+        return WorldActorNode.FindPlayerActorAtSlot(_actors, targetSlot);
     }
 
     private string ProjectPoint(JsonObject args)

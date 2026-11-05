@@ -33,6 +33,19 @@ public partial class WorldActorNode : RigidBody3D
     public bool IgnoreVerticalDesiredVelocity { get; set; }
     public bool UseStickyDesiredVelocity { get; set; }
 
+    internal static WorldActorNode? FindPlayerActorAtSlot(IReadOnlyList<WorldActorNode> actors, int targetSlot)
+    {
+        if (targetSlot <= 0)
+            return null;
+        int slot = 0;
+        foreach (WorldActorNode actor in actors)
+        {
+            if (actor.State.IsPlayerControllable && ++slot == targetSlot)
+                return actor;
+        }
+        return null;
+    }
+
     public Aabb GetWorldRenderBounds()
     {
         Aabb? bounds = null;
