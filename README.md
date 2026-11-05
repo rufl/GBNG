@@ -122,6 +122,16 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\godot\run.ps1 --path . -- 
 
 The smoke prints `PROJECT_TEMPLATE_PICKER_SMOKE_OK` and writes welcome and template-picker screenshots under `.godot/`.
 
+The editor's **Actors** pane presents a parent-first hierarchy with indentation and a case-insensitive display-name filter. **Show copies** includes user-created copies; script-created copies remain hidden. **Sort: name/distance** orders siblings alphabetically or by distance from the local player (the editor camera when no player exists), refreshing distance order every two seconds. Selection remains tied to actor identity while the list is filtered or reordered. The sidebar scrolls to keep the hierarchy usable alongside asset tools.
+
+To exercise actor search, copy visibility, parent-first ordering, distance sorting, and selection preservation:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\godot\run.ps1 --path . -- res://Assets/StreamingAssets/ExampleGames/Public/sample-platformer.voos --smoke-actor-hierarchy
+```
+
+The smoke prints `ACTOR_HIERARCHY_SMOKE_OK` and writes `.godot/actor-hierarchy-smoke.png`.
+
 This is not yet full parity. Internet invite-code hosting uses peer-to-peer WebRTC with optional coturn relay and requires an operator-run matchmaking/signaling service; LAN hosting and editing need no service or Docker. There is no bundled public matchmaking service, user accounts, parental controls, player-identity verification, moderation, or persistent rooms. Invite codes are bearer credentials; WebRTC data channels use DTLS encryption, while the signaling service sees SDP/ICE and source-IP metadata. See `tools/networking/README.md` for optional self-hosted matchmaking and relay tooling. The Godot asset store is an offline replacement for Poly; Google Image Search is disabled. Native CodeEdit replaces Monaco's browser for behavior and managed-card JavaScript editing with JavaScript syntax highlighting, line numbers, automatic indentation/braces, API suggestions from `VISIBLE_TO_MONACO` declarations (open suggestions with Ctrl+Space), line-numbered syntax diagnostics on Apply, and runtime error diagnostics in the open behavior editor with source lines. The editor also remembers vertical scroll position per behavior while switching assigned uses. The behavior and managed-card editors provide A−, A+, and Reset zoom controls, with font sizes clamped to 8–36 points. Both editors show a red `!` gutter marker and tinted source line for syntax diagnostics; the behavior editor also marks runtime errors. Hovering a marked line shows its diagnostic text. The behavior editor draws red squiggle underlines at reported syntax and runtime columns when available. Invalid managed-card JavaScript is not applied, preserving its last valid source. The optional Unity 2D Shaper plugin itself is not carried over; Godot implements the legacy behavior-UI drawing primitives natively. Several Unity-specific editor workflows remain unmigrated. The `unity` branch remains the complete reference for those contracts. The asset-license inventory covers repository files and their located license evidence; it does not verify licenses for models imported into a user's `.assets` sidecar.
 
 ## Prerequisites

@@ -270,12 +270,15 @@ public partial class GameBuilderApp : Node3D
             RunTerrainEditorSmokeStandalone();
         if (commandLineArgs.Contains("--smoke-copy-actors", StringComparer.Ordinal))
             RunActorCopySmoke();
+        if (commandLineArgs.Contains("--smoke-actor-hierarchy", StringComparer.Ordinal))
+            RunActorHierarchyNavigationSmoke();
     }
 
 
 
     public override void _Process(double delta)
     {
+        UpdateActorHierarchySort(delta);
         Vector3 cameraOffset = _pendingCameraOffset;
         _pendingCameraOffset = Vector3.Zero;
         if (!_playMode)
@@ -849,10 +852,25 @@ public partial class GameBuilderApp : Node3D
         };
         leftPanel.AddThemeStyleboxOverride("panel", MakePanelStyle("#1b2734", "#334455"));
         body.AddChild(leftPanel);
-        var left = new VBoxContainer();
-        leftPanel.AddChild(left);
+        var leftScroll = new ScrollContainer
+        {
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill
+        };
+        leftPanel.AddChild(leftScroll);
+        var left = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        leftScroll.AddChild(left);
         var actorListHeader = new HBoxContainer();
         actorListHeader.AddChild(CreateLabel("Actors", 18));
+        _actorListSortButton = new Button
+        {
+            Name = "ActorListSortButton",
+            Text = _sortActorListByDistance ? "Sort: distance" : "Sort: name",
+            TooltipText = "Switch between alphabetical and player-distance hierarchy order.",
+            CustomMinimumSize = new Vector2(88f, 28f)
+        };
+        _actorListSortButton.Pressed += ToggleActorListSort;
+        actorListHeader.AddChild(_actorListSortButton);
         _actorListToggleButton = new Button
         {
             Name = "ActorListToggleButton",
@@ -872,7 +890,24 @@ public partial class GameBuilderApp : Node3D
         };
         _parentOnResetToggle.Toggled += SetParentOnResetPreference;
         left.AddChild(_parentOnResetToggle);
-        _actorList = new ItemList { SizeFlagsVertical = Control.SizeFlags.ExpandFill, SelectMode = ItemList.SelectModeEnum.Multi };
+        _actorSearchField = new LineEdit { Name = "ActorSearchField", PlaceholderText = "Search actors…" };
+        _actorSearchField.TextChanged += _ => RefreshActorList();
+        left.AddChild(_actorSearchField);
+        _showActorCopiesToggle = new CheckBox
+        {
+            Name = "ShowActorCopiesToggle",
+            Text = "Show copies",
+            TooltipText = "Include user-created copies in the hierarchy.",
+            ButtonPressed = _showActorCopies
+        };
+        _showActorCopiesToggle.Toggled += SetShowActorCopiesPreference;
+        left.AddChild(_showActorCopiesToggle);
+        _actorList = new ItemList
+        {
+            CustomMinimumSize = new Vector2(0f, 140f),
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+            SelectMode = ItemList.SelectModeEnum.Multi
+        };
         _actorList.MultiSelected += SelectActorByIndex;
         left.AddChild(_actorList);
         left.AddChild(CreateLabel("Asset Store · offline", 14));
@@ -1412,17 +1447,9 @@ public partial class GameBuilderApp : Node3D
         actor.State.WriteString(property, value);
         if (property == "displayName")
         {
-            string label = value.Length > 0 ? value : actor.LegacyName;
-            for (int index = 0; index < _actorList.ItemCount; index++)
-            {
-                if (_actorList.GetItemMetadata(index).AsString() == actor.LegacyName)
-                {
-                    _actorList.SetItemText(index, label);
-                    break;
-                }
-            }
+            RefreshActorList();
             if (_selectedActor == actor)
-                _selectionTitle.Text = _selectedActors.Count > 1 ? $"{_selectedActors.Count} actors selected" : label;
+                _selectionTitle.Text = _selectedActors.Count > 1 ? $"{_selectedActors.Count} actors selected" : value.Length > 0 ? value : actor.LegacyName;
         }
         if (_selectedActor != actor)
             return;
@@ -2578,13 +2605,7 @@ public partial class GameBuilderApp : Node3D
 
     private void RefreshActorList()
     {
-        _actorList.Clear();
-        foreach (WorldActorNode actor in _actors)
-        {
-            string label = actor.State.DisplayName.Length > 0 ? actor.State.DisplayName : actor.LegacyName;
-            _actorList.AddItem(label);
-            _actorList.SetItemMetadata(_actorList.ItemCount - 1, actor.LegacyName);
-        }
+        PopulateHierarchyActorList();
         SyncActorListSelection();
     }
 
@@ -2592,9 +2613,11 @@ public partial class GameBuilderApp : Node3D
     {
         _syncingActorList = true;
         _actorList.DeselectAll();
-        for (int index = 0; index < Math.Min(_actors.Count, _actorList.ItemCount); index++)
+        var selectedNames = _selectedActors.Select(actor => actor.LegacyName).ToHashSet(StringComparer.Ordinal);
+        for (int index = 0; index < _actorList.ItemCount; index++)
         {
-            if (_selectedActors.Contains(_actors[index]))
+            string actorName = _actorList.GetItemMetadata(index).AsString();
+            if (selectedNames.Contains(actorName))
                 _actorList.Select(index, false);
         }
         _syncingActorList = false;
@@ -2604,13 +2627,16 @@ public partial class GameBuilderApp : Node3D
     {
         if (_syncingActorList || (ulong)index >= (ulong)_actorList.ItemCount)
             return;
+        string actorName = _actorList.GetItemMetadata((int)index).AsString();
+        if (actorName.Length == 0)
+            return;
         WorldActorNode[] selectedActors = _actorList.GetSelectedItems()
-            .Select(itemIndex => (string)_actorList.GetItemMetadata(itemIndex))
+            .Select(itemIndex => _actorList.GetItemMetadata(itemIndex).AsString())
             .Select(name => _actors.FirstOrDefault(actor => actor.LegacyName == name))
             .OfType<WorldActorNode>()
             .ToArray();
         WorldActorNode? actor = selected
-            ? _actors.FirstOrDefault(candidate => candidate.LegacyName == (string)_actorList.GetItemMetadata((int)index))
+            ? _actors.FirstOrDefault(candidate => candidate.LegacyName == actorName)
             : null;
         WorldActorNode? focus = actor
             ?? (selectedActors.Contains(_selectedActor) ? _selectedActor : selectedActors.LastOrDefault());
@@ -3330,6 +3356,8 @@ public partial class GameBuilderApp : Node3D
         _parentOnReset = settings.GetValue("editor", "parent_on_reset", true).AsBool();
         _showTooltips = settings.GetValue("editor", "show_tooltips", true).AsBool();
         _fullscreen = settings.GetValue("display", "fullscreen", false).AsBool();
+        _showActorCopies = settings.GetValue("editor", "show_actor_copies", true).AsBool();
+        _sortActorListByDistance = settings.GetValue("editor", "sort_actor_list_by_distance", false).AsBool();
         _graphicsQuality = ReadGraphicsQuality(settings);
         _windowedSize = new Vector2I(
             ReadDisplayDimension(settings, "windowed_width", _windowedSize.X),
@@ -3445,6 +3473,8 @@ public partial class GameBuilderApp : Node3D
         settings.Load(EditorSettingsPath);
         settings.SetValue("editor", "parent_on_reset", _parentOnReset);
         settings.SetValue("editor", "show_tooltips", _showTooltips);
+        settings.SetValue("editor", "show_actor_copies", _showActorCopies);
+        settings.SetValue("editor", "sort_actor_list_by_distance", _sortActorListByDistance);
         settings.SetValue("display", "fullscreen", _fullscreen);
         settings.SetValue("display", "graphics_quality", (int)_graphicsQuality);
         settings.SetValue("display", "windowed_width", _windowedSize.X);
@@ -3721,6 +3751,7 @@ public partial class GameBuilderApp : Node3D
         actor.LinearVelocity = snapshot.Velocity;
         actor.AngularVelocity = snapshot.AngularVelocity;
         actor.SaveTransform();
+        RefreshActorList();
         if (_selectedActor == actor)
             SelectActor(actor);
     }
