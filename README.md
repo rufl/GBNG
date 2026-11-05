@@ -95,6 +95,7 @@ Terrain authoring supports the legacy create, dig, and paint brushes plus drag s
 Gameplay snapshots are compressed and sent in bounded 1 KiB unreliable-ordered chunks (16 MiB maximum). Clients apply only complete snapshots and discard incomplete transfers when a newer snapshot supersedes them.
 
 During host-authoritative play, legacy particle effects spawn on the host and replicate their effect ID, position, rotation, and scale to project-ready peers over an unreliable RPC. Clients resolve effects from the synchronized `.voos` project and render them locally.
+Godot plays legacy one-shot animations through one cycle, then crossfades back to the actor's configured looping animation; if no loop is configured, playback stops.
 
 Projects auto-save every 60 seconds into ten rotating recovery copies under `user://autosaves`. Use **Recover autosave…** on the welcome screen or **Recover** in the toolbar to open a copy. A recovered copy is protected from automatic overwrite; **Save** opens **Save as…** so the original recovery point remains intact. LAN clients do not create host-project backups.
 

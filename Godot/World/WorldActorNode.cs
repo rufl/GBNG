@@ -10,6 +10,7 @@ public partial class WorldActorNode : RigidBody3D
     private Node3D? _renderableRoot;
     private RayCast3D? _groundProbe;
     private bool _playMode;
+    private ulong _oneShotAnimationGeneration;
     private readonly List<LegacyBehaviorMessage> _pendingBehaviorMessages = new();
     private HashSet<ulong> _previousContactColliderIds = new();
     private HashSet<ulong> _currentContactColliderIds = new();
@@ -111,20 +112,58 @@ public partial class WorldActorNode : RigidBody3D
     public void SetLoopingAnimation(string animationName)
     {
         State.WriteString("loopingAnimation", animationName);
+        _oneShotAnimationGeneration++;
         ApplyLoopingAnimation();
     }
     public bool PlayOneShotAnimation(string animationName)
     {
         if (_renderableRoot is null)
             return false;
+        if (animationName == State.LoopingAnimation)
+            return true;
+
         foreach (AnimationPlayer player in _renderableRoot.FindChildren("*", "AnimationPlayer", true, false).OfType<AnimationPlayer>())
         {
             if (!player.HasAnimation(animationName))
                 continue;
-            player.Play(animationName);
+
+            Animation animation = player.GetAnimation(animationName);
+            player.Play(animationName, 0.5f);
+            player.Seek(0d, true);
+            ulong generation = ++_oneShotAnimationGeneration;
+            float playbackSpeed = Math.Abs(player.SpeedScale);
+            if (playbackSpeed > 0f)
+            {
+                double duration = Math.Max(0.001d, animation.Length / playbackSpeed);
+                GetTree().CreateTimer(duration).Timeout += () => FinishOneShotAnimation(player, generation);
+            }
             return true;
         }
         return false;
+    }
+
+    private void FinishOneShotAnimation(AnimationPlayer player, ulong generation)
+    {
+        if (!GodotObject.IsInstanceValid(this)
+            || !IsInsideTree()
+            || !GodotObject.IsInstanceValid(player)
+            || generation != _oneShotAnimationGeneration)
+            return;
+
+        string loopingAnimation = State.LoopingAnimation;
+        if (loopingAnimation.Length == 0)
+        {
+            player.Stop();
+            return;
+        }
+        if (player.HasAnimation(loopingAnimation))
+        {
+            PlayLoopingAnimation(player, loopingAnimation, 0.5f);
+            return;
+        }
+
+        player.Stop();
+        ApplyLoopingAnimation(0.5f);
     }
 
 
@@ -370,22 +409,29 @@ public partial class WorldActorNode : RigidBody3D
         }
         return null;
     }
-    private void ApplyLoopingAnimation()
+    private bool ApplyLoopingAnimation(float customBlend = -1f)
     {
         string animationName = State?.LoopingAnimation ?? "";
         if (animationName.Length == 0 || _renderableRoot is null)
-            return;
+            return false;
 
         foreach (AnimationPlayer player in _renderableRoot.FindChildren("*", "AnimationPlayer", true, false).OfType<AnimationPlayer>())
         {
             if (player.HasAnimation(animationName))
             {
-                player.Play(animationName);
-                return;
+                PlayLoopingAnimation(player, animationName, customBlend);
+                return true;
             }
         }
 
         GD.PushWarning($"Actor '{LegacyName}' requests missing animation '{animationName}'.");
+        return false;
+    }
+
+    private static void PlayLoopingAnimation(AnimationPlayer player, string animationName, float customBlend)
+    {
+        player.GetAnimation(animationName).LoopMode = Animation.LoopModeEnum.Linear;
+        player.Play(animationName, customBlend);
     }
 
 
