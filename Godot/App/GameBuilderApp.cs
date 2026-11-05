@@ -199,6 +199,7 @@ public partial class GameBuilderApp : Node3D
         LegacyAudioSettings.ApplyMusicVolume(_musicVolume);
         AddChild(new LegacyMusicController());
         BuildInterface();
+        InitializeAutoSave();
         PopulateSamples();
         string[] commandLineArgs = OS.GetCmdlineUserArgs();
         if (commandLineArgs.Length > 0)
@@ -235,6 +236,8 @@ public partial class GameBuilderApp : Node3D
             RunParticleLanHostSmoke();
         if (commandLineArgs.Contains("--smoke-particles-lan-client", StringComparer.Ordinal))
             RunParticleLanClientSmoke();
+        if (commandLineArgs.Contains("--smoke-autosave", StringComparer.Ordinal))
+            RunAutoSaveSmoke();
         if (commandLineArgs.Contains("--smoke-world-settings", StringComparer.Ordinal))
             RunWorldSettingsSmoke();
         if (commandLineArgs.Contains("--smoke-world-map-size", StringComparer.Ordinal))
@@ -689,6 +692,9 @@ public partial class GameBuilderApp : Node3D
         var open = new Button { Text = "Open project…", CustomMinimumSize = new Vector2(0f, 44f) };
         open.Pressed += () => _openDialog.PopupCentered(new Vector2I(1000, 700));
         box.AddChild(open);
+        var recoverAutosave = new Button { Text = "Recover autosave…", CustomMinimumSize = new Vector2(0f, 40f) };
+        recoverAutosave.Pressed += OpenAutoSaveRecovery;
+        box.AddChild(recoverAutosave);
 
         var samples = new HBoxContainer();
         _samplePicker = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, Name = "SamplePicker" };
@@ -725,11 +731,16 @@ public partial class GameBuilderApp : Node3D
         title.SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin;
         toolbar.AddChild(title);
         AddToolbarButton(toolbar, "Open", () => _openDialog.PopupCentered(new Vector2I(1000, 700)));
+        AddToolbarButton(toolbar, "Recover", OpenAutoSaveRecovery);
         AddToolbarButton(toolbar, "Host", () => _networkWindow.PopupCenteredClamped(new Vector2I(760, 470)));
         AddToolbarButton(toolbar, "Save", SaveProject);
         AddToolbarButton(toolbar, "Save as…", () =>
         {
-            _saveDialog.CurrentFile = _document is null ? "project.voos" : Path.GetFileName(_document.SourcePath);
+            _saveDialog.CurrentFile = _document is null
+                ? "project.voos"
+                : IsAutoSavePath(_document.SourcePath)
+                    ? "recovered-project.voos"
+                    : Path.GetFileName(_document.SourcePath);
             _saveDialog.PopupCentered(new Vector2I(1000, 700));
         });
         _playButton = new Button { Text = "Play", CustomMinimumSize = new Vector2(84f, 36f) };
@@ -1549,6 +1560,7 @@ public partial class GameBuilderApp : Node3D
             _welcome.Visible = false;
             _editor.Visible = true;
             _status.Text = $"Loaded {Path.GetFileName(path)} — {document.Actors.Count} actors; save version {document.Version}.";
+            ResetAutoSaveTimer();
             SelectActor(_actors.FirstOrDefault());
             _cameraTarget = ComputeWorldCenter();
             UpdateOrbitCamera();
@@ -3061,9 +3073,10 @@ public partial class GameBuilderApp : Node3D
     {
         if (_document is null)
             return;
-        if (_document.SourcePath.StartsWith("res://", StringComparison.Ordinal))
+        bool isRecoveryCopy = IsAutoSavePath(_document.SourcePath);
+        if (_document.SourcePath.StartsWith("res://", StringComparison.Ordinal) || isRecoveryCopy)
         {
-            _saveDialog.CurrentFile = Path.GetFileName(_document.SourcePath);
+            _saveDialog.CurrentFile = isRecoveryCopy ? "recovered-project.voos" : Path.GetFileName(_document.SourcePath);
             _saveDialog.PopupCentered(new Vector2I(1000, 700));
             return;
         }
@@ -3104,6 +3117,7 @@ public partial class GameBuilderApp : Node3D
             PopulateAssetPicker();
             ReleaseRetainedHostAssetsAfterSave();
             _status.Text = $"Saved {Path.GetFileName(path)} — {_actors.Count} actors.";
+            ResetAutoSaveTimer();
         }
         catch (Exception exception)
         {
