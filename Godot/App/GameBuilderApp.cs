@@ -225,6 +225,8 @@ public partial class GameBuilderApp : Node3D
             RunControlsSmoke();
         if (commandLineArgs.Contains("--smoke-audio", StringComparer.Ordinal))
             RunAudioSmoke();
+        if (commandLineArgs.Contains("--smoke-audio-spatialization", StringComparer.Ordinal))
+            RunAudioSpatializationSmoke();
         if (commandLineArgs.Contains("--smoke-window-focus", StringComparer.Ordinal))
             RunWindowFocusSmoke();
         if (commandLineArgs.Contains("--smoke-action-prompts", StringComparer.Ordinal))

@@ -15,6 +15,7 @@ public sealed partial class LegacyBehaviorRuntime
     private const uint ActorTriggerCollisionLayer = 4u;
     private const string ActorPrefabRoot = "res://Assets/StreamingAssets/PrefabLibrary/ActorPrefabs";
     private readonly Dictionary<string, AudioStreamWav> _soundCache = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, bool> _soundSpatialization = new(StringComparer.Ordinal);
     private bool _refreshDatabasePending;
 
     private string OverlapSphere(JsonObject args)
@@ -457,10 +458,10 @@ public sealed partial class LegacyBehaviorRuntime
         return screenPoint * scale;
     }
 
-    private string PlaySound(JsonObject args)
+    internal string PlaySound(JsonObject args)
     {
         string soundId = LegacySaveDocument.ReadString(args["soundId"]);
-        AudioStreamWav? stream = GetSound(soundId);
+        AudioStreamWav? stream = GetSound(soundId, out bool spatialized);
         if (stream is null)
             return "false";
         string actorName = LegacySaveDocument.ReadString(args["actorName"]);
@@ -468,30 +469,50 @@ public sealed partial class LegacyBehaviorRuntime
         if (actorName.Length > 0 && actor is null)
             return "false";
         Vector3 position = actor?.GlobalPosition ?? CoordinateSpace.ToGodot(LegacyActorData.ReadVector(args["position"], Vector3.Zero));
-        var player = new AudioStreamPlayer3D { Name = "LegacySound", Stream = stream, Bus = LegacyAudioSettings.SfxBusName };
+        if (actor is not null && !spatialized)
+        {
+            var player = new AudioStreamPlayer { Name = "LegacySound", Stream = stream, Bus = LegacyAudioSettings.SfxBusName };
+            actor.AddChild(player);
+            player.Finished += player.QueueFree;
+            player.Play();
+            return "true";
+        }
+
+        var spatialPlayer = new AudioStreamPlayer3D
+        {
+            Name = "LegacySound",
+            Stream = stream,
+            Bus = LegacyAudioSettings.SfxBusName
+        };
         if (actor is not null)
         {
-            actor.AddChild(player);
-            player.Position = Vector3.Zero;
+            actor.AddChild(spatialPlayer);
+            spatialPlayer.Position = Vector3.Zero;
         }
         else
         {
-            _world.AddChild(player);
-            player.GlobalPosition = position;
+            _world.AddChild(spatialPlayer);
+            spatialPlayer.GlobalPosition = position;
         }
-        player.Finished += player.QueueFree;
-        player.Play();
+        spatialPlayer.Finished += spatialPlayer.QueueFree;
+        spatialPlayer.Play();
         return "true";
     }
 
-    private AudioStreamWav? GetSound(string soundId)
+    private AudioStreamWav? GetSound(string soundId, out bool spatialized)
     {
+        spatialized = true;
         if (_soundCache.TryGetValue(soundId, out AudioStreamWav? cached))
+        {
+            if (_soundSpatialization.TryGetValue(soundId, out bool cachedSpatialization))
+                spatialized = cachedSpatialization;
             return cached;
+        }
         JsonObject? sojo = FindSojo(soundId, "SoundEffect");
         string content = LegacySaveDocument.ReadString(sojo?["content"]);
         if (content.Length == 0 || JsonNode.Parse(content) is not JsonObject sound || sound["synthParams"] is not JsonObject synth)
             return null;
+        spatialized = LegacySaveDocument.ReadBool(sound["spatialized"], true);
 
         const int sampleRate = 44100;
         const int numSlices = 32;
@@ -546,6 +567,7 @@ public sealed partial class LegacyBehaviorRuntime
             Stereo = false
         };
         _soundCache.Add(soundId, result);
+        _soundSpatialization.Add(soundId, spatialized);
         return result;
 
     }
