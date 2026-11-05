@@ -40,7 +40,11 @@ public class GameBuilderMenu
   {
     if (Directory.Exists(outDir))
     {
-      bool delete = EditorUtility.DisplayDialog("Delete previous build?", $"The build output directory '{outDir}' exists. If that's a previous build, it must be deleted before proceeding (merely overwriting a previous build can lead to issues).", "Delete it", "Cancel build");
+      if (Application.isBatchMode)
+      {
+        throw new IOException($"Build output directory already exists: {outDir}");
+      }
+      bool delete = EditorUtility.DisplayDialog("Delete previous build?", $"If '{outDir}' is a previous build, it must be deleted before proceeding (merely overwriting a previous build can lead to issues).", "Delete it", "Cancel build");
       if (!delete) return;
       Debug.Log($"Deleting {outDir}...");
       Directory.Delete(outDir, true);
@@ -57,12 +61,21 @@ public class GameBuilderMenu
       case BuildTarget.StandaloneOSX:
         exeName = "Game Builder.app";
         break;
+      case BuildTarget.StandaloneLinux64:
+        exeName = "Game Builder.x86_64";
+        break;
       default:
         throw new System.Exception($"Unsupported build target: {target}");
     }
 
     string buildTargetPath = Path.Combine(outDir, exeName);
     var report = BuildPipeline.BuildPlayer(EditorBuildSettings.scenes, buildTargetPath, target, BuildOptions.ForceEnableAssertions | BuildOptions.StrictMode | extraBuildOpts);
+
+    if (report.summary.result != UnityEditor.Build.Reporting.BuildResult.Succeeded)
+    {
+      throw new System.Exception($"Build failed for {target}: {report.summary.result}");
+    }
+
 
     // Get the GIT commit version and write it to a text file
     SD.Process gitCall = new SD.Process();
@@ -89,7 +102,8 @@ public class GameBuilderMenu
     {
       foreach (string filePath in
         Directory.GetFiles(outDir, "*.dll", SearchOption.AllDirectories).
-        Concat(Directory.GetFiles(outDir, "*.exe", SearchOption.AllDirectories)))
+        Concat(Directory.GetFiles(outDir, "*.exe", SearchOption.AllDirectories)).
+        Concat(Directory.GetFiles(outDir, "*.so", SearchOption.AllDirectories)))
       {
         // NOTE: It doesn't work if you pass outDir to MakeRelativePath..you end
         // up getting "content/blah.exe"
@@ -103,15 +117,18 @@ public class GameBuilderMenu
       }
     }
 
-    bool show = EditorUtility.DisplayDialog("Build done!", $@"
+    if (!Application.isBatchMode)
+    {
+      bool show = EditorUtility.DisplayDialog("Build done!", $@"
 {System.DateTime.Now}
 
 Build is located at: {outDir}
 ".Trim(), "Show build location", "OK");
 
-    if (show)
-    {
-      EditorUtility.RevealInFinder(outDir);
+      if (show)
+      {
+        EditorUtility.RevealInFinder(outDir);
+      }
     }
   }
 
