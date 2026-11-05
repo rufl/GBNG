@@ -6,7 +6,71 @@ namespace GBNG.App;
 
 public partial class GameBuilderApp
 {
-    private readonly record struct ActorHierarchyRow(WorldActorNode Actor, WorldActorNode[] Path, bool IsCopy);
+    private readonly record struct ActorHierarchyRow(WorldActorNode Actor, WorldActorNode[] Path, bool IsCopy, bool IsOffstage);
+    private sealed partial class ActorHierarchyItemList : ItemList
+    {
+        private Func<string, string?, bool>? _canDropActor;
+        private Action<string, string?>? _dropActor;
+
+        public void Configure(
+            bool isOffstage,
+            Func<string, string?, bool> canDropActor,
+            Action<string, string?> dropActor)
+        {
+            _canDropActor = canDropActor;
+            _dropActor = dropActor;
+            TooltipText = isOffstage
+                ? "Drop an actor on blank space to move it offstage; drop on a row to parent it."
+                : "Drop an actor on blank space to move it on stage; drop on a row to parent it.";
+        }
+
+        public override Variant _GetDragData(Vector2 atPosition)
+        {
+            int index = GetItemAtPosition(atPosition, true);
+            if (index < 0)
+                return default;
+
+            Variant payload = GetItemMetadata(index);
+            if (payload.VariantType != Variant.Type.String)
+                return default;
+            if (GetViewport().GuiIsDragging())
+                SetDragPreview(new Label { Text = GetItemText(index) });
+            return payload;
+        }
+
+        public override bool _CanDropData(Vector2 atPosition, Variant data)
+        {
+            if (data.VariantType != Variant.Type.String)
+                return false;
+            return _canDropActor?.Invoke(data.AsString(), GetActorNameAt(atPosition)) ?? false;
+        }
+
+        public override void _DropData(Vector2 atPosition, Variant data)
+        {
+            if (_CanDropData(atPosition, data))
+                _dropActor?.Invoke(data.AsString(), GetActorNameAt(atPosition));
+        }
+
+        public int FindActorIndex(string actorName)
+        {
+            for (int index = 0; index < ItemCount; index++)
+            {
+                if (GetItemMetadata(index).AsString() == actorName)
+                    return index;
+            }
+            return -1;
+        }
+
+        private string? GetActorNameAt(Vector2 position)
+        {
+            int index = GetItemAtPosition(position, true);
+            if (index < 0)
+                return null;
+            Variant metadata = GetItemMetadata(index);
+            return metadata.VariantType == Variant.Type.String ? metadata.AsString() : null;
+        }
+    }
+
 
     private LineEdit _actorSearchField = null!;
     private CheckBox _showActorCopiesToggle = null!;
@@ -14,36 +78,18 @@ public partial class GameBuilderApp
     private bool _showActorCopies = true;
     private bool _sortActorListByDistance;
     private double _actorListSortRefreshSeconds;
-    private enum ActorStageFilter
-    {
-        OnStage,
-        OffStage
-    }
-
-    private OptionButton _actorStageFilterPicker = null!;
     private Button _actorStageToggleButton = null!;
-    private ActorStageFilter _actorStageFilter;
 
     private Control BuildActorStageControls()
     {
         var controls = new HBoxContainer { Name = "ActorStageControls" };
-        _actorStageFilterPicker = new OptionButton
-        {
-            Name = "ActorStageFilter",
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            TooltipText = "Show actors on stage or off stage."
-        };
-        _actorStageFilterPicker.AddItem("On stage");
-        _actorStageFilterPicker.AddItem("Off stage");
-        _actorStageFilterPicker.Select((int)_actorStageFilter);
-        _actorStageFilterPicker.ItemSelected += SetActorStageFilter;
-        controls.AddChild(_actorStageFilterPicker);
         _actorStageToggleButton = new Button
         {
             Name = "ActorStageToggleButton",
             Text = "Move offstage",
             TooltipText = "Move the selected unparented actor off stage.",
-            CustomMinimumSize = new Vector2(148f, 28f)
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            CustomMinimumSize = new Vector2(0f, 28f)
         };
         _actorStageToggleButton.Pressed += ToggleSelectedActorOffstage;
         controls.AddChild(_actorStageToggleButton);
@@ -57,6 +103,7 @@ public partial class GameBuilderApp
         try
         {
             _actorList.Clear();
+            _offstageActorList.Clear();
             string search = _actorSearchField.Text.Trim();
             var actorsByName = _actors.ToDictionary(actor => actor.LegacyName, StringComparer.Ordinal);
             var rows = new List<ActorHierarchyRow>(_actors.Count);
@@ -69,13 +116,10 @@ public partial class GameBuilderApp
                 bool isCopy = cloneParent.Length > 0;
                 if (isCopy && !_showActorCopies)
                     continue;
-                bool isOffstage = path[0].State.IsOffstage;
-                if (isOffstage != (_actorStageFilter == ActorStageFilter.OffStage))
-                    continue;
                 string displayName = GetActorHierarchyDisplayName(actor);
                 if (search.Length > 0 && !displayName.Contains(search, StringComparison.OrdinalIgnoreCase))
                     continue;
-                rows.Add(new ActorHierarchyRow(actor, path, isCopy));
+                rows.Add(new ActorHierarchyRow(actor, path, isCopy, actor.IsOffstageEffective));
             }
 
             WorldActorNode? localPlayer = WorldActorNode.FindPlayerActorAtSlot(_actors, 1);
@@ -86,8 +130,9 @@ public partial class GameBuilderApp
                 string indentation = new(' ', Math.Max(0, row.Path.Length - 1) * 2);
                 string branchMarker = row.Path.Length > 1 ? "↳ " : string.Empty;
                 string copyMarker = row.IsCopy ? "(copy) " : string.Empty;
-                _actorList.AddItem($"{indentation}{branchMarker}{copyMarker}{GetActorHierarchyDisplayName(row.Actor)}");
-                _actorList.SetItemMetadata(_actorList.ItemCount - 1, row.Actor.LegacyName);
+                ActorHierarchyItemList list = row.IsOffstage ? _offstageActorList : _actorList;
+                list.AddItem($"{indentation}{branchMarker}{copyMarker}{GetActorHierarchyDisplayName(row.Actor)}");
+                list.SetItemMetadata(list.ItemCount - 1, row.Actor.LegacyName);
             }
         }
         finally
@@ -95,6 +140,8 @@ public partial class GameBuilderApp
             _syncingActorList = false;
         }
     }
+
+
 
     private static WorldActorNode[] BuildActorHierarchyPath(
         WorldActorNode actor,
@@ -144,14 +191,6 @@ public partial class GameBuilderApp
     private static string GetActorHierarchyDisplayName(WorldActorNode actor)
         => actor.State.DisplayName.Length > 0 ? actor.State.DisplayName : actor.LegacyName;
 
-    private void SetActorStageFilter(long selectedIndex)
-    {
-        if (selectedIndex < 0 || selectedIndex > (long)ActorStageFilter.OffStage)
-            return;
-        _actorStageFilter = (ActorStageFilter)selectedIndex;
-        RefreshActorList();
-    }
-
     private void UpdateActorStageToggleButton()
     {
         if (_actorStageToggleButton is null)
@@ -170,6 +209,7 @@ public partial class GameBuilderApp
                 ? "Bring the selected actor and its descendants on stage."
                 : "Move the selected unparented actor and its descendants off stage.";
     }
+
 
     private void ToggleSelectedActorOffstage()
     {
@@ -205,11 +245,9 @@ public partial class GameBuilderApp
             if (candidate == actor || actor.IsAncestorOf(candidate))
                 candidate.ApplyLegacyPhysicsSettings();
         }
-
-        _actorStageFilter = offstage ? ActorStageFilter.OffStage : ActorStageFilter.OnStage;
-        _actorStageFilterPicker.Select((int)_actorStageFilter);
         RefreshActorList();
     }
+
 
     private void ToggleActorListSort()
         => SetActorListSortMode(!_sortActorListByDistance, persist: true);

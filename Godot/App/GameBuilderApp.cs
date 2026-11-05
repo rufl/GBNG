@@ -23,7 +23,8 @@ public partial class GameBuilderApp : Node3D
     private LegacyActionPrompt _actionPrompt = null!;
     private Node3D _world = null!;
     private Camera3D _camera = null!;
-    private ItemList _actorList = null!;
+    private ActorHierarchyItemList _actorList = null!;
+    private ActorHierarchyItemList _offstageActorList = null!;
     private Button _actorListToggleButton = null!;
     private CheckBox _parentOnResetToggle = null!;
     private bool _parentOnReset = true;
@@ -137,9 +138,10 @@ public partial class GameBuilderApp : Node3D
     private sealed record HistoryEntry(string Label, Action Undo, Action Redo);
     private sealed record ActorDeletionSnapshot(string Name, string DisplayName, string ActorJson, int Index, string[] ChildNames);
     private readonly record struct ActorMotionSnapshot(Transform3D Transform, Vector3 Velocity, Vector3 AngularVelocity);
-    private readonly record struct ActorParentSnapshot(
+    private readonly record struct ActorHierarchySnapshot(
         string TransformParent,
         string SpawnTransformParent,
+        bool PreferOffstage,
         Transform3D Transform,
         Vector3 Velocity,
         Vector3 AngularVelocity);
@@ -903,15 +905,34 @@ public partial class GameBuilderApp : Node3D
         _showActorCopiesToggle.Toggled += SetShowActorCopiesPreference;
         left.AddChild(_showActorCopiesToggle);
         left.AddChild(BuildActorStageControls());
-        _actorList = new ItemList
+        left.AddChild(CreateLabel("On stage", 14));
+        _actorList = new ActorHierarchyItemList
         {
-            CustomMinimumSize = new Vector2(0f, 140f),
+            Name = "OnStageActorList",
+            CustomMinimumSize = new Vector2(0f, 120f),
             SizeFlagsVertical = Control.SizeFlags.ExpandFill,
             SelectMode = ItemList.SelectModeEnum.Multi
         };
-        _actorList.MultiSelected += SelectActorByIndex;
+        _actorList.Configure(
+            false,
+            (actorName, targetName) => CanDropHierarchyActor(actorName, targetName, destinationOffstage: false),
+            (actorName, targetName) => DropHierarchyActor(actorName, targetName, destinationOffstage: false));
+        _actorList.MultiSelected += (index, selected) => SelectActorByIndex(_actorList, index, selected);
         left.AddChild(_actorList);
-        left.AddChild(CreateLabel("Asset Store · offline", 14));
+        left.AddChild(CreateLabel("Off stage", 14));
+        _offstageActorList = new ActorHierarchyItemList
+        {
+            Name = "OffStageActorList",
+            CustomMinimumSize = new Vector2(0f, 120f),
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+            SelectMode = ItemList.SelectModeEnum.Multi
+        };
+        _offstageActorList.Configure(
+            true,
+            (actorName, targetName) => CanDropHierarchyActor(actorName, targetName, destinationOffstage: true),
+            (actorName, targetName) => DropHierarchyActor(actorName, targetName, destinationOffstage: true));
+        _offstageActorList.MultiSelected += (index, selected) => SelectActorByIndex(_offstageActorList, index, selected);
+        left.AddChild(_offstageActorList);
         var browseAssetStore = new Button { Text = "Browse catalog…" };
         browseAssetStore.Pressed += OpenAssetStore;
         left.AddChild(browseAssetStore);
@@ -1714,6 +1735,7 @@ public partial class GameBuilderApp : Node3D
         _actors.Clear();
         _selectedActor = null;
         _actorList?.Clear();
+        _offstageActorList?.Clear();
     }
     public override void _ExitTree()
     {
@@ -2614,35 +2636,61 @@ public partial class GameBuilderApp : Node3D
     private void SyncActorListSelection()
     {
         _syncingActorList = true;
-        _actorList.DeselectAll();
         var selectedNames = _selectedActors.Select(actor => actor.LegacyName).ToHashSet(StringComparer.Ordinal);
-        for (int index = 0; index < _actorList.ItemCount; index++)
-        {
-            string actorName = _actorList.GetItemMetadata(index).AsString();
-            if (selectedNames.Contains(actorName))
-                _actorList.Select(index, false);
-        }
+        SyncActorListSelection(_actorList, selectedNames);
+        SyncActorListSelection(_offstageActorList, selectedNames);
         _syncingActorList = false;
     }
 
-    private void SelectActorByIndex(long index, bool selected)
+    private static void SyncActorListSelection(ActorHierarchyItemList list, HashSet<string> selectedNames)
     {
-        if (_syncingActorList || (ulong)index >= (ulong)_actorList.ItemCount)
+        list.DeselectAll();
+        for (int index = 0; index < list.ItemCount; index++)
+        {
+            string actorName = list.GetItemMetadata(index).AsString();
+            if (selectedNames.Contains(actorName))
+                list.Select(index, false);
+        }
+    }
+
+    private void SelectActorByIndex(ActorHierarchyItemList list, long index, bool selected)
+    {
+        if (_syncingActorList || (ulong)index >= (ulong)list.ItemCount)
             return;
-        string actorName = _actorList.GetItemMetadata((int)index).AsString();
+        string actorName = list.GetItemMetadata((int)index).AsString();
         if (actorName.Length == 0)
             return;
-        WorldActorNode[] selectedActors = _actorList.GetSelectedItems()
-            .Select(itemIndex => _actorList.GetItemMetadata(itemIndex).AsString())
-            .Select(name => _actors.FirstOrDefault(actor => actor.LegacyName == name))
-            .OfType<WorldActorNode>()
-            .ToArray();
+        if (selected
+            && !Input.IsKeyPressed(Key.Ctrl)
+            && !Input.IsKeyPressed(Key.Shift)
+            && !Input.IsKeyPressed(Key.Meta))
+        {
+            _syncingActorList = true;
+            (list == _actorList ? _offstageActorList : _actorList).DeselectAll();
+            _syncingActorList = false;
+        }
+        var selectedActors = new List<WorldActorNode>();
+        AppendSelectedActors(_actorList, selectedActors);
+        AppendSelectedActors(_offstageActorList, selectedActors);
         WorldActorNode? actor = selected
             ? _actors.FirstOrDefault(candidate => candidate.LegacyName == actorName)
             : null;
         WorldActorNode? focus = actor
-            ?? (selectedActors.Contains(_selectedActor) ? _selectedActor : selectedActors.LastOrDefault());
+            ?? (_selectedActor is not null && selectedActors.Contains(_selectedActor)
+                ? _selectedActor
+                : selectedActors.LastOrDefault());
         SetActorSelection(selectedActors, focus);
+    }
+
+    private void AppendSelectedActors(ActorHierarchyItemList list, List<WorldActorNode> selectedActors)
+    {
+        foreach (int itemIndex in list.GetSelectedItems())
+        {
+            string name = list.GetItemMetadata(itemIndex).AsString();
+            WorldActorNode? actor = _actors.FirstOrDefault(candidate => candidate.LegacyName == name);
+            if (actor is not null && !selectedActors.Contains(actor))
+                selectedActors.Add(actor);
+        }
     }
 
     private bool SelectActorAt(Vector2 screenPosition, bool addToSelection = false, bool toggleSelection = false)
@@ -3004,6 +3052,7 @@ public partial class GameBuilderApp : Node3D
     {
         _actorListVisible = !_actorListVisible;
         _actorList.Visible = _actorListVisible && !_playMode;
+        _offstageActorList.Visible = _actorListVisible && !_playMode;
         _actorListToggleButton.Text = _actorListVisible ? "Hide" : "Show";
         string tooltipText = _actorListVisible
             ? "Hide the actor list (Ctrl/Cmd+L)"
@@ -3078,6 +3127,7 @@ public partial class GameBuilderApp : Node3D
         _playButton.Disabled = _lanSession.IsClient;
         _behaviorUi.Visible = enabled;
         _actorList.Visible = !enabled && _actorListVisible;
+        _offstageActorList.Visible = !enabled && _actorListVisible;
         _actorListToggleButton.Disabled = enabled;
         _positionFields[0].Editable = !enabled && _selectedActor is not null;
         _positionFields[1].Editable = !enabled && _selectedActor is not null;
@@ -3701,15 +3751,9 @@ public partial class GameBuilderApp : Node3D
         }
 
         string parentName = parent?.LegacyName ?? string.Empty;
-        actor.SaveTransform();
-        var before = new ActorParentSnapshot(
-            actor.State.TransformParent,
-            LegacySaveDocument.ReadString(actor.State.Data["spawnTransformParent"]),
-            actor.GlobalTransform,
-            actor.LinearVelocity,
-            actor.AngularVelocity);
-        Node targetParent = parent ?? _world;
+        ActorHierarchySnapshot before = CaptureActorHierarchySnapshot(actor);
         string spawnParentName = _parentOnReset ? parentName : before.SpawnTransformParent;
+        Node targetParent = parent ?? _world;
         if (before.TransformParent == parentName
             && before.SpawnTransformParent == spawnParentName
             && actor.GetParent() == targetParent)
@@ -3718,23 +3762,90 @@ public partial class GameBuilderApp : Node3D
             return;
         }
 
-        var after = new ActorParentSnapshot(
+        var after = new ActorHierarchySnapshot(
             parentName,
             spawnParentName,
+            before.PreferOffstage,
             before.Transform,
             before.Velocity,
             before.AngularVelocity);
         string actorName = actor.LegacyName;
-        ApplyActorParentSnapshot(actorName, after);
+        ApplyActorHierarchySnapshot(actorName, after);
         RecordHistory("Set actor parent",
-            () => ApplyActorParentSnapshot(actorName, before),
-            () => ApplyActorParentSnapshot(actorName, after));
+            () => ApplyActorHierarchySnapshot(actorName, before),
+            () => ApplyActorHierarchySnapshot(actorName, after));
         _status.Text = parent is null
             ? $"Unparented {actor.State.DisplayName}."
             : $"Parented {actor.State.DisplayName} to {parent.State.DisplayName}.";
     }
 
-    private void ApplyActorParentSnapshot(string actorName, ActorParentSnapshot snapshot)
+    private ActorHierarchySnapshot CaptureActorHierarchySnapshot(WorldActorNode actor)
+    {
+        actor.SaveTransform();
+        return new ActorHierarchySnapshot(
+            actor.State.TransformParent,
+            LegacySaveDocument.ReadString(actor.State.Data["spawnTransformParent"]),
+            actor.State.IsOffstage,
+            actor.GlobalTransform,
+            actor.LinearVelocity,
+            actor.AngularVelocity);
+    }
+
+    private bool CanDropHierarchyActor(string actorName, string? targetName, bool destinationOffstage)
+    {
+        if (_document is null || _playMode)
+            return false;
+        WorldActorNode? actor = FindActor(actorName);
+        if (actor is null || !_actors.Contains(actor))
+            return false;
+
+        string spawnParentName = LegacySaveDocument.ReadString(actor.State.Data["spawnTransformParent"]);
+        if (targetName is null)
+        {
+            return actor.State.TransformParent.Length > 0
+                || spawnParentName.Length > 0
+                || actor.State.IsOffstage != destinationOffstage
+                || actor.GetParent() != _world;
+        }
+
+        WorldActorNode? target = FindActor(targetName);
+        if (target is null || !_actors.Contains(target) || target == actor || actor.IsAncestorOf(target))
+            return false;
+        return actor.State.TransformParent != targetName
+            || spawnParentName != targetName
+            || actor.GetParent() != target;
+    }
+
+    private void DropHierarchyActor(string actorName, string? targetName, bool destinationOffstage)
+    {
+        if (!CanDropHierarchyActor(actorName, targetName, destinationOffstage))
+            return;
+        WorldActorNode actor = FindActor(actorName)!;
+        ActorHierarchySnapshot before = CaptureActorHierarchySnapshot(actor);
+        string parentName = targetName ?? string.Empty;
+        var after = new ActorHierarchySnapshot(
+            parentName,
+            parentName,
+            targetName is null ? destinationOffstage : before.PreferOffstage,
+            before.Transform,
+            before.Velocity,
+            before.AngularVelocity);
+        string displayName = actor.State.DisplayName.Length > 0 ? actor.State.DisplayName : actor.LegacyName;
+        string description = targetName is null
+            ? destinationOffstage
+                ? $"Move {displayName} offstage"
+                : $"Move {displayName} on stage"
+            : $"Parent {displayName}";
+        ApplyActorHierarchySnapshot(actorName, after);
+        RecordHistory(description,
+            () => ApplyActorHierarchySnapshot(actorName, before),
+            () => ApplyActorHierarchySnapshot(actorName, after));
+        _status.Text = targetName is null
+            ? destinationOffstage ? $"Moved {displayName} offstage." : $"Moved {displayName} on stage."
+            : $"Parented {displayName} to {FindActor(targetName)?.State.DisplayName ?? targetName}.";
+    }
+
+    private void ApplyActorHierarchySnapshot(string actorName, ActorHierarchySnapshot snapshot)
     {
         WorldActorNode? actor = FindActor(actorName);
         if (actor is null)
@@ -3748,6 +3859,7 @@ public partial class GameBuilderApp : Node3D
 
         actor.State.SetTransformParent(snapshot.TransformParent);
         actor.State.WriteString("spawnTransformParent", snapshot.SpawnTransformParent);
+        actor.State.WriteBool("preferOffstage", snapshot.PreferOffstage);
         Node targetParent = parent ?? _world;
         if (actor.GetParent() != targetParent)
             actor.Reparent(targetParent, keepGlobalTransform: false);
@@ -3755,6 +3867,11 @@ public partial class GameBuilderApp : Node3D
         actor.LinearVelocity = snapshot.Velocity;
         actor.AngularVelocity = snapshot.AngularVelocity;
         actor.SaveTransform();
+        foreach (WorldActorNode candidate in _actors)
+        {
+            if (candidate == actor || actor.IsAncestorOf(candidate))
+                candidate.ApplyLegacyPhysicsSettings();
+        }
         RefreshActorList();
         if (_selectedActor == actor)
             SelectActor(actor);

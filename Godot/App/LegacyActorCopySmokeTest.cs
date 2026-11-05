@@ -48,21 +48,21 @@ public partial class GameBuilderApp
             _actorList.GrabFocus();
             _UnhandledInput(new InputEventKey { Keycode = Key.L, CtrlPressed = true, Pressed = true });
             await WaitForUiFrames(1);
-            if (_actorList.Visible
+            if (_actorList.Visible || _offstageActorList.Visible
                 || _actors.Count != actorCountBeforeListToggle
                 || _selectedActors.Count != selectedCountBeforeListToggle
                 || _selectedActor != focusBeforeListToggle)
-                throw new InvalidOperationException("Ctrl+L did not hide the actor list without changing the world selection.");
+                throw new InvalidOperationException("Ctrl+L did not hide the actor hierarchy without changing the world selection.");
             string actorListScreenshot = ProjectSettings.GlobalizePath("res://.godot/actor-list-toggle-smoke.png");
             if (GetViewport().GetTexture().GetImage().SavePng(actorListScreenshot) != Error.Ok)
                 throw new InvalidOperationException("The hidden actor-list surface screenshot could not be saved.");
             actorListToggleButton.EmitSignal("pressed");
             await WaitForUiFrames(1);
-            if (!_actorList.Visible
+            if (!_actorList.Visible || !_offstageActorList.Visible
                 || _actors.Count != actorCountBeforeListToggle
                 || _selectedActors.Count != selectedCountBeforeListToggle
                 || _selectedActor != focusBeforeListToggle)
-                throw new InvalidOperationException("The actor-list Show button did not restore the list and selection.");
+                throw new InvalidOperationException("The actor-list Show button did not restore both lists and selection.");
 
             WorldActorNode source = _actors
                 .Where(actor => !actor.LegacyName.StartsWith("builtin:", StringComparison.Ordinal)
@@ -166,7 +166,8 @@ public partial class GameBuilderApp
             AssertActorSelectionForSmoke(source);
             ClickActorForSmoke(independent, addToSelection: true);
             AssertActorSelectionForSmoke(source, independent);
-            if (_selectedActor != independent || _actorList.GetSelectedItems().Length != 2)
+            if (_selectedActor != independent
+                || _actorList.GetSelectedItems().Length + _offstageActorList.GetSelectedItems().Length != 2)
                 throw new InvalidOperationException("Shift-click did not add and focus the second actor in the world and actor list.");
             ClickActorForSmoke(independent, toggleSelection: true);
             AssertActorSelectionForSmoke(source);
@@ -961,11 +962,12 @@ public partial class GameBuilderApp
             WorldActorNode persistenceSource = _actors.Single(actor => actor.LegacyName == sourceName);
             WorldActorNode persistenceParent = _actors.Single(actor => actor.LegacyName == independentName);
             SetActorSelection(new[] { persistenceSource }, persistenceSource);
-            ApplyActorParentSnapshot(
+            ApplyActorHierarchySnapshot(
                 persistenceSource.LegacyName,
-                new ActorParentSnapshot(
+                new ActorHierarchySnapshot(
                     independentName,
                     independentName,
+                    persistenceSource.State.IsOffstage,
                     persistenceSource.GlobalTransform,
                     persistenceSource.LinearVelocity,
                     persistenceSource.AngularVelocity));
@@ -1277,7 +1279,7 @@ public partial class GameBuilderApp
     {
         if (_selectedActors.Count != expectedActors.Length
             || expectedActors.Any(actor => !_selectedActors.Contains(actor))
-            || _actorList.GetSelectedItems().Length != expectedActors.Length)
+            || _actorList.GetSelectedItems().Length + _offstageActorList.GetSelectedItems().Length != expectedActors.Length)
             throw new InvalidOperationException("The actor world selection and actor-list multi-selection diverged.");
     }
 
