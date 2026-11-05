@@ -76,6 +76,12 @@ public class GameBuilderMenu
       throw new System.Exception($"Build failed for {target}: {report.summary.result}");
     }
 
+    if (target == BuildTarget.StandaloneLinux64)
+    {
+      string managedDirectory = Path.Combine(outDir, Path.GetFileNameWithoutExtension(buildTargetPath) + "_Data", "Managed");
+      PatchLinuxAssimpImports(Path.Combine(managedDirectory, "AssimpNet.dll"));
+    }
+
 
     // Get the GIT commit version and write it to a text file
     SD.Process gitCall = new SD.Process();
@@ -131,6 +137,66 @@ Build is located at: {outDir}
       }
     }
   }
+
+  static void PatchLinuxAssimpImports(string assemblyPath)
+  {
+    if (!File.Exists(assemblyPath))
+    {
+      throw new FileNotFoundException("The Linux player is missing AssimpNet.dll.", assemblyPath);
+    }
+
+    string patchedPath = assemblyPath + ".patched";
+    int legacyImports = 0;
+    int supportedImports = 0;
+    using (Mono.Cecil.ModuleDefinition module = Mono.Cecil.ModuleDefinition.ReadModule(assemblyPath))
+    {
+      foreach (Mono.Cecil.TypeDefinition type in module.Types)
+      {
+        PatchLinuxAssimpImports(type, ref legacyImports, ref supportedImports);
+      }
+
+      if (legacyImports + supportedImports != 4)
+      {
+        throw new InvalidDataException($"Expected four Assimp libdl imports, found {legacyImports + supportedImports}.");
+      }
+      if (legacyImports > 0)
+      {
+        module.Write(patchedPath);
+      }
+    }
+
+    if (legacyImports > 0)
+    {
+      File.Copy(patchedPath, assemblyPath, true);
+      File.Delete(patchedPath);
+      Debug.Log("Updated Assimp's libdl binding to libdl.so.2 for Linux.");
+    }
+  }
+
+  static void PatchLinuxAssimpImports(Mono.Cecil.TypeDefinition type, ref int legacyImports, ref int supportedImports)
+  {
+    foreach (Mono.Cecil.MethodDefinition method in type.Methods)
+    {
+      Mono.Cecil.PInvokeInfo import = method.PInvokeInfo;
+      if (import == null) continue;
+      if (import.Module.Name == "libdl.so")
+      {
+        import.Module.Name = "libdl.so.2";
+        legacyImports++;
+      }
+      else if (import.Module.Name == "libdl.so.2")
+      {
+        supportedImports++;
+      }
+    }
+
+    foreach (Mono.Cecil.TypeDefinition nestedType in type.NestedTypes)
+    {
+      PatchLinuxAssimpImports(nestedType, ref legacyImports, ref supportedImports);
+    }
+  }
+
+
 
   // [MenuItem("Game Builder/Gen Simple-Data Terrain")]
   public static void GenSimpleDataTerrain()

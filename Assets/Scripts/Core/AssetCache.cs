@@ -19,6 +19,7 @@ using System.Linq;
 using System.Collections.Generic;
 using System.IO;
 using System;
+using System.Runtime.InteropServices;
 using UnityEngine;
 
 // Asset cache for built-in, local, image, and legacy online assets.
@@ -33,6 +34,9 @@ public class AssetCache : MonoBehaviour
 
   private Dictionary<string, List<ProcessAsset>> activeDownloadWaiters = new Dictionary<string, List<ProcessAsset>>();
 
+  private static IntPtr linuxMinizipHandle;
+  private const int RtldNow = 2;
+  private const int RtldGlobal = 0x100;
 
   private Transform cacheRoot;
 
@@ -285,7 +289,32 @@ public class AssetCache : MonoBehaviour
       cache.CreateCacheEntry(uri, imported, null);
     }
 
-    private static void EnsureAssimpLibraryAvailable()
+    [DllImport("libdl.so.2", EntryPoint = "dlopen", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+    private static extern IntPtr OpenLinuxLibrary(string path, int flags);
+
+    [DllImport("libdl.so.2", EntryPoint = "dlerror", CallingConvention = CallingConvention.Cdecl)]
+    private static extern IntPtr GetLinuxLoaderError();
+
+    // Preload Assimp's minizip SONAME dependency globally before loading libassimp.
+    private static void EnsureLinuxAssimpDependencies(string nativePath)
+    {
+      if (Application.platform != RuntimePlatform.LinuxPlayer || linuxMinizipHandle != IntPtr.Zero) return;
+
+      string minizipPath = Path.Combine(nativePath, "libminizip.so");
+      if (!File.Exists(minizipPath))
+      {
+        throw new DllNotFoundException($"Assimp dependency was not found: {minizipPath}");
+      }
+
+      linuxMinizipHandle = OpenLinuxLibrary(minizipPath, RtldNow | RtldGlobal);
+      if (linuxMinizipHandle == IntPtr.Zero)
+      {
+        string detail = Marshal.PtrToStringAnsi(GetLinuxLoaderError());
+        throw new DllNotFoundException($"Could not preload Assimp dependency '{minizipPath}': {detail}");
+      }
+    }
+
+    internal static void EnsureAssimpLibraryAvailable()
     {
       Assimp.Unmanaged.AssimpLibrary library = Assimp.Unmanaged.AssimpLibrary.Instance;
       if (library.IsLibraryLoaded)
@@ -298,6 +327,7 @@ public class AssetCache : MonoBehaviour
       {
         throw new DirectoryNotFoundException($"Assimp native library directory was not found: {nativePath}");
       }
+      EnsureLinuxAssimpDependencies(nativePath);
 
       if (Application.platform == RuntimePlatform.OSXEditor ||
           Application.platform == RuntimePlatform.OSXPlayer)
@@ -326,6 +356,7 @@ public class AssetCache : MonoBehaviour
         throw new DllNotFoundException($"Assimp could not load its native library from: {nativePath}");
       }
     }
+
 
     private static string GetAssimpNativePath()
     {
@@ -371,8 +402,11 @@ public class AssetCache : MonoBehaviour
       {
         return Path.Combine(pluginsPath, "x86_64");
       }
-      if (Application.platform == RuntimePlatform.LinuxPlayer ||
-          Application.platform == RuntimePlatform.OSXPlayer)
+      if (Application.platform == RuntimePlatform.LinuxPlayer)
+      {
+        return Path.Combine(pluginsPath, "AnyCPU");
+      }
+      if (Application.platform == RuntimePlatform.OSXPlayer)
       {
         return pluginsPath;
       }

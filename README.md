@@ -167,15 +167,16 @@ instead of resizing the browser process.
 
 The bundled CEF runtime increases desktop build size and requires the Mono
 scripting backend; UnityWebBrowser does not support IL2CPP. Linux x64 now has a
-pinned `libv8_in_unity.so` artifact, and a Unity 6000.6.6f1 Mono player on Ubuntu
-22.04 under WSL2 successfully called the plugin and evaluated `6 * 7 == 42`.
-This verifies native V8 loading and C# interop, not interactive CEF/Monaco use.
-The Linux player smoke also exposed a separate AssimpNet limitation: it could
-not resolve `libdl` in the minimal runtime, so Linux model import remains
-unverified. For IPv6, the player now falls back to libc's `if_nametoindex`
-when Mono lacks `GetIPv6Properties`; the Linux smoke exercised discovery
-without that exception. Cross-host IPv6 multicast behavior and interactive
-CEF/Monaco use remain untested.
+pinned `libv8_in_unity.so` artifact. A Unity 6000.6.6f1 Mono player on Ubuntu
+26.04 under WSL2 loaded it, evaluated `6 * 7 == 42`, and exercised
+`DirectHostDiscovery` without the former `GetIPv6Properties` exception; Linux
+falls back to libc's `if_nametoindex` when Mono lacks that API.
+Linux x64 builds rewrite AssimpNet's four `libdl.so` imports to `libdl.so.2`
+and bundle `libminizip.so` beside Assimp, preloading it globally to satisfy
+Assimp's `libminizip.so.1` dependency without `LD_LIBRARY_PATH`.
+A Linux player smoke imported a one-triangle OBJ through Assimp. This verifies
+native loading and mesh import, not the full FBX asset workflow. Cross-host
+IPv6 multicast and interactive CEF/Monaco use remain untested.
 The checked-in macOS V8 bundle is x86_64-only, so Apple Silicon players also
 cannot execute behavior scripts yet. macOS CEF apps are unsigned and must be
 signed/notarized for public distribution.
