@@ -902,6 +902,7 @@ public partial class GameBuilderApp : Node3D
         };
         _showActorCopiesToggle.Toggled += SetShowActorCopiesPreference;
         left.AddChild(_showActorCopiesToggle);
+        left.AddChild(BuildActorStageControls());
         _actorList = new ItemList
         {
             CustomMinimumSize = new Vector2(0f, 140f),
@@ -2607,6 +2608,7 @@ public partial class GameBuilderApp : Node3D
     {
         PopulateHierarchyActorList();
         SyncActorListSelection();
+        UpdateActorStageToggleButton();
     }
 
     private void SyncActorListSelection()
@@ -2936,6 +2938,7 @@ public partial class GameBuilderApp : Node3D
         SetInspectorInputsEnabled(hasActor && !_playMode);
         _behaviorEditorButton.Disabled = !hasActor || _playMode;
         _updatingInspector = false;
+        UpdateActorStageToggleButton();
     }
 
     private void UpdateSelectedPosition(int axis, float value)
@@ -3067,6 +3070,7 @@ public partial class GameBuilderApp : Node3D
         _spawnParentButton.Disabled = enabled || _selectedActors.Count != 1;
         _transformParentButton.Disabled = enabled || _selectedActors.Count != 1;
         UpdateCameraFollowButton();
+        UpdateActorStageToggleButton();
         Input.MouseMode = Input.MouseModeEnum.Visible;
         foreach (WorldActorNode actor in _actors)
             actor.SetPlayMode(enabled);

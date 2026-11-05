@@ -12,6 +12,7 @@ public partial class GameBuilderApp
         int exitCode = 0;
         bool originalShowCopies = _showActorCopies;
         bool originalSortByDistance = _sortActorListByDistance;
+        ActorStageFilter originalStageFilter = _actorStageFilter;
         try
         {
             await WaitForUiFrames(2);
@@ -21,6 +22,8 @@ public partial class GameBuilderApp
                 || !_showActorCopiesToggle.IsVisibleInTree()
                 || !_actorListSortButton.IsVisibleInTree())
                 throw new InvalidOperationException("The actor hierarchy search, copy filter, or sort control is not visible.");
+            if (!_actorStageFilterPicker.IsVisibleInTree() || !_actorStageToggleButton.IsVisibleInTree())
+                throw new InvalidOperationException("The on/offstage filter or stage toggle is not visible.");
             if (_actorList.Size.Y < 120f)
                 throw new InvalidOperationException($"The actor hierarchy has insufficient visible height: {_actorList.Size.Y}px.");
 
@@ -110,12 +113,72 @@ public partial class GameBuilderApp
             if (_sortActorListByDistance
                 || FindActorHierarchyItem(alphaRoot.LegacyName) >= FindActorHierarchyItem(zetaRoot.LegacyName))
                 throw new InvalidOperationException("The sort control did not switch back to alphabetical hierarchy order.");
+            SetActorStageFilter((long)ActorStageFilter.OnStage);
+            int stageRootIndex = FindActorHierarchyItem(zetaRoot.LegacyName);
+            if (stageRootIndex < 0)
+                throw new InvalidOperationException("The root actor is missing from the onstage view.");
+            _actorList.DeselectAll();
+            _actorList.Select(stageRootIndex, false);
+            _actorList.EmitSignal(ItemList.SignalName.MultiSelected, (long)stageRootIndex, true);
+            if (_selectedActor != zetaRoot || _actorStageToggleButton.Disabled)
+                throw new InvalidOperationException("The unparented stage root is not eligible for an on/offstage move.");
+            zetaRoot.SetPlayMode(true);
+            child.SetPlayMode(true);
+            if (zetaRoot.Freeze || child.Freeze)
+                throw new InvalidOperationException("Onstage actors did not enter physics simulation.");
+            _actorStageToggleButton.EmitSignal(BaseButton.SignalName.Pressed);
+            if (!zetaRoot.State.IsOffstage
+                || !child.IsOffstageEffective
+                || _actorStageFilter != ActorStageFilter.OffStage
+                || FindActorHierarchyItem(zetaRoot.LegacyName) < 0
+                || FindActorHierarchyItem(child.LegacyName) < 0
+                || FindActorHierarchyItem(alphaRoot.LegacyName) >= 0
+                || FindActorHierarchyItem(clone.LegacyName) >= 0
+                || !zetaRoot.Freeze
+                || !child.Freeze)
+                throw new InvalidOperationException("Moving the hierarchy root offstage did not move its descendants out of physics and into the offstage view.");
+
+            int offstageChildIndex = FindActorHierarchyItem(child.LegacyName);
+            _actorList.DeselectAll();
+            _actorList.Select(offstageChildIndex, false);
+            _actorList.EmitSignal(ItemList.SignalName.MultiSelected, (long)offstageChildIndex, true);
+            if (!_actorStageToggleButton.Disabled)
+                throw new InvalidOperationException("A parented actor could be toggled independently of its stage root.");
+
+            _actorStageFilterPicker.Select((int)ActorStageFilter.OnStage);
+            _actorStageFilterPicker.EmitSignal(OptionButton.SignalName.ItemSelected, (long)ActorStageFilter.OnStage);
+            if (FindActorHierarchyItem(zetaRoot.LegacyName) >= 0
+                || FindActorHierarchyItem(child.LegacyName) >= 0
+                || FindActorHierarchyItem(alphaRoot.LegacyName) < 0)
+                throw new InvalidOperationException("The onstage filter did not exclude offstage hierarchies.");
+
+            UndoEdit();
+            if (zetaRoot.State.IsOffstage
+                || child.IsOffstageEffective
+                || _actorStageFilter != ActorStageFilter.OnStage
+                || FindActorHierarchyItem(zetaRoot.LegacyName) < 0
+                || FindActorHierarchyItem(child.LegacyName) < 0
+                || zetaRoot.Freeze
+                || child.Freeze)
+                throw new InvalidOperationException("Undo did not restore the original stage state, physics, and hierarchy view.");
+            RedoEdit();
+            if (!zetaRoot.State.IsOffstage
+                || !child.IsOffstageEffective
+                || _actorStageFilter != ActorStageFilter.OffStage
+                || FindActorHierarchyItem(zetaRoot.LegacyName) < 0
+                || FindActorHierarchyItem(child.LegacyName) < 0
+                || !zetaRoot.Freeze
+                || !child.Freeze)
+                throw new InvalidOperationException("Redo did not reapply the offstage hierarchy and physics state.");
+            UndoEdit();
+            zetaRoot.SetPlayMode(false);
+            child.SetPlayMode(false);
 
             string screenshot = ProjectSettings.GlobalizePath("res://.godot/actor-hierarchy-smoke.png");
             Directory.CreateDirectory(Path.GetDirectoryName(screenshot)!);
             if (GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
                 throw new InvalidOperationException("Could not save the actor hierarchy screenshot.");
-            GD.Print($"ACTOR_HIERARCHY_SMOKE_OK search=case-insensitive=true clones=toggle=true order=parent-first=true sort=name+distance=true selection=filtered-refresh=true screenshot={screenshot}");
+            GD.Print($"ACTOR_HIERARCHY_SMOKE_OK search=case-insensitive=true clones=toggle=true order=parent-first=true sort=name+distance=true selection=filtered-refresh=true stage=filter+toggle+undo+redo=true inherited=true screenshot={screenshot}");
         }
         catch (Exception exception)
         {
@@ -129,6 +192,7 @@ public partial class GameBuilderApp
             _showActorCopiesToggle.SetPressedNoSignal(originalShowCopies);
             SetActorListSortMode(originalSortByDistance, persist: false);
             SaveEditorPreferences();
+            SetActorStageFilter((long)originalStageFilter);
             GetTree().Quit(exitCode);
         }
     }
@@ -149,6 +213,8 @@ public partial class GameBuilderApp
         data["cloneParent"] = cloneParent;
         data["wasClonedByScript"] = false;
         data["preferOffstage"] = false;
+        data["enablePhysics"] = true;
+        data["enableGravity"] = false;
         LegacyActorData state = _document!.InsertActor(data, _document.Actors.Count);
         state.SetWorldTransform(new Transform3D(source.GlobalTransform.Basis, position));
         return CreateActorNode(state, _actors.Count);

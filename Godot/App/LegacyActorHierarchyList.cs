@@ -14,6 +14,42 @@ public partial class GameBuilderApp
     private bool _showActorCopies = true;
     private bool _sortActorListByDistance;
     private double _actorListSortRefreshSeconds;
+    private enum ActorStageFilter
+    {
+        OnStage,
+        OffStage
+    }
+
+    private OptionButton _actorStageFilterPicker = null!;
+    private Button _actorStageToggleButton = null!;
+    private ActorStageFilter _actorStageFilter;
+
+    private Control BuildActorStageControls()
+    {
+        var controls = new HBoxContainer { Name = "ActorStageControls" };
+        _actorStageFilterPicker = new OptionButton
+        {
+            Name = "ActorStageFilter",
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            TooltipText = "Show actors on stage or off stage."
+        };
+        _actorStageFilterPicker.AddItem("On stage");
+        _actorStageFilterPicker.AddItem("Off stage");
+        _actorStageFilterPicker.Select((int)_actorStageFilter);
+        _actorStageFilterPicker.ItemSelected += SetActorStageFilter;
+        controls.AddChild(_actorStageFilterPicker);
+        _actorStageToggleButton = new Button
+        {
+            Name = "ActorStageToggleButton",
+            Text = "Move offstage",
+            TooltipText = "Move the selected unparented actor off stage.",
+            CustomMinimumSize = new Vector2(148f, 28f)
+        };
+        _actorStageToggleButton.Pressed += ToggleSelectedActorOffstage;
+        controls.AddChild(_actorStageToggleButton);
+        UpdateActorStageToggleButton();
+        return controls;
+    }
 
     private void PopulateHierarchyActorList()
     {
@@ -32,6 +68,9 @@ public partial class GameBuilderApp
                 string cloneParent = LegacySaveDocument.ReadString(actor.State.Data["cloneParent"]);
                 bool isCopy = cloneParent.Length > 0;
                 if (isCopy && !_showActorCopies)
+                    continue;
+                bool isOffstage = path[0].State.IsOffstage;
+                if (isOffstage != (_actorStageFilter == ActorStageFilter.OffStage))
                     continue;
                 string displayName = GetActorHierarchyDisplayName(actor);
                 if (search.Length > 0 && !displayName.Contains(search, StringComparison.OrdinalIgnoreCase))
@@ -104,6 +143,73 @@ public partial class GameBuilderApp
 
     private static string GetActorHierarchyDisplayName(WorldActorNode actor)
         => actor.State.DisplayName.Length > 0 ? actor.State.DisplayName : actor.LegacyName;
+
+    private void SetActorStageFilter(long selectedIndex)
+    {
+        if (selectedIndex < 0 || selectedIndex > (long)ActorStageFilter.OffStage)
+            return;
+        _actorStageFilter = (ActorStageFilter)selectedIndex;
+        RefreshActorList();
+    }
+
+    private void UpdateActorStageToggleButton()
+    {
+        if (_actorStageToggleButton is null)
+            return;
+        bool hasSingleSelection = _selectedActors.Count == 1 && _selectedActor is not null;
+        bool isParented = hasSingleSelection && _selectedActor!.State.TransformParent.Length > 0;
+        _actorStageToggleButton.Text = !hasSingleSelection
+            ? "Move offstage"
+            : isParented
+                ? "Inherits stage"
+                : _selectedActor!.State.IsOffstage ? "Bring on stage" : "Move offstage";
+        _actorStageToggleButton.Disabled = _document is null || _playMode || !hasSingleSelection || isParented;
+        _actorStageToggleButton.TooltipText = isParented
+            ? "A parented actor inherits its stage from its hierarchy root."
+            : _selectedActor?.State.IsOffstage == true
+                ? "Bring the selected actor and its descendants on stage."
+                : "Move the selected unparented actor and its descendants off stage.";
+    }
+
+    private void ToggleSelectedActorOffstage()
+    {
+        if (_document is null || _playMode || _selectedActors.Count != 1 || _selectedActor is not WorldActorNode actor)
+            return;
+        if (actor.State.TransformParent.Length > 0)
+        {
+            _status.Text = "A parented actor inherits its stage from the hierarchy root.";
+            return;
+        }
+
+        string actorName = actor.LegacyName;
+        string displayName = GetActorHierarchyDisplayName(actor);
+        bool oldOffstage = actor.State.IsOffstage;
+        bool newOffstage = !oldOffstage;
+        ApplyActorOffstagePreference(actorName, newOffstage);
+        RecordHistory(
+            newOffstage ? $"Move {displayName} offstage" : $"Bring {displayName} on stage",
+            () => ApplyActorOffstagePreference(actorName, oldOffstage),
+            () => ApplyActorOffstagePreference(actorName, newOffstage));
+        _status.Text = newOffstage ? $"Moved {displayName} offstage." : $"Brought {displayName} on stage.";
+    }
+
+    private void ApplyActorOffstagePreference(string actorName, bool offstage)
+    {
+        WorldActorNode? actor = FindActor(actorName);
+        if (actor is null || actor.State.IsOffstage == offstage)
+            return;
+
+        actor.State.WriteBool("preferOffstage", offstage);
+        foreach (WorldActorNode candidate in _actors)
+        {
+            if (candidate == actor || actor.IsAncestorOf(candidate))
+                candidate.ApplyLegacyPhysicsSettings();
+        }
+
+        _actorStageFilter = offstage ? ActorStageFilter.OffStage : ActorStageFilter.OnStage;
+        _actorStageFilterPicker.Select((int)_actorStageFilter);
+        RefreshActorList();
+    }
 
     private void ToggleActorListSort()
         => SetActorListSortMode(!_sortActorListByDistance, persist: true);

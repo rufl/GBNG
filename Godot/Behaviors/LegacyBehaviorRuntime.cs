@@ -345,7 +345,7 @@ function __gbSyncActors(states) {
     actor.tempId_ = i;
     actor.brainName = state.brainName;
     actor.isOffstage = state.preferOffstage;
-    actor.isOffstageEffective = state.preferOffstage;
+    actor.isOffstageEffective = state.isOffstageEffective;
     actor.spawnPosition = new THREE.Vector3(state.spawnPosition.x, state.spawnPosition.y, state.spawnPosition.z);
     actor.spawnRotation = new THREE.Quaternion(state.spawnRotation.x, state.spawnRotation.y, state.spawnRotation.z, state.spawnRotation.w);
     actor.transformParent = state.transformParent;
@@ -727,6 +727,7 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
                 brainName = actor.State.BrainName,
                 memoryJson = _actorsKnownToRuntime.Contains(actor.LegacyName) ? null : actor.State.MemoryJson,
                 preferOffstage = actor.State.IsOffstage,
+                isOffstageEffective = actor.IsOffstageEffective,
                 transformParent = actor.State.TransformParent,
                 spawnPosition = ToVectorJson(spawnPosition),
                 spawnRotation = ToQuaternionJson(spawnRotation),
@@ -1124,7 +1125,18 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
         if (property is not null)
         {
             actor.State.WriteBool(property, value);
-            actor.ApplyLegacyPhysicsSettings();
+            if (property == "preferOffstage")
+            {
+                foreach (WorldActorNode candidate in _actors)
+                {
+                    if (candidate == actor || actor.IsAncestorOf(candidate))
+                        candidate.ApplyLegacyPhysicsSettings();
+                }
+            }
+            else
+            {
+                actor.ApplyLegacyPhysicsSettings();
+            }
             return;
         }
 

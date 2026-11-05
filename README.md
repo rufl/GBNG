@@ -124,7 +124,9 @@ The smoke prints `PROJECT_TEMPLATE_PICKER_SMOKE_OK` and writes welcome and templ
 
 The editor's **Actors** pane presents a parent-first hierarchy with indentation and a case-insensitive display-name filter. **Show copies** includes user-created copies; script-created copies remain hidden. **Sort: name/distance** orders siblings alphabetically or by distance from the local player (the editor camera when no player exists), refreshing distance order every two seconds. Selection remains tied to actor identity while the list is filtered or reordered. The sidebar scrolls to keep the hierarchy usable alongside asset tools.
 
-To exercise actor search, copy visibility, parent-first ordering, distance sorting, and selection preservation:
+The **On stage / Off stage** selector filters the hierarchy, and the stage button moves one selected unparented root between views. Descendants inherit their transform-hierarchy root's stage; parented actors cannot be toggled independently. The action supports Undo/Redo and saves the existing `preferOffstage` field in `.voos` files. Runtime offstage state, physics freeze, and collision handling follow the hierarchy root.
+
+To exercise actor search, copy visibility, parent-first ordering, distance sorting, stage inheritance, stage changes, Undo/Redo, and selection preservation:
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\godot\run.ps1 --path . -- res://Assets/StreamingAssets/ExampleGames/Public/sample-platformer.voos --smoke-actor-hierarchy

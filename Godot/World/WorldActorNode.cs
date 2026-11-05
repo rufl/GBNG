@@ -26,6 +26,16 @@ public partial class WorldActorNode : RigidBody3D
     public string LegacyName => State.Name;
     public string RenderableUri => State.RenderableUri;
     public bool IsGrounded => _groundProbe?.IsColliding() ?? false;
+    public bool IsOffstageEffective
+    {
+        get
+        {
+            WorldActorNode root = this;
+            while (root.GetParent() is WorldActorNode parent)
+                root = parent;
+            return root.State.IsOffstage;
+        }
+    }
     public Vector3 DesiredVelocity { get; set; }
     public Vector3 StickyDesiredVelocity { get; set; }
     public Vector3 StickyForce { get; set; }
@@ -186,7 +196,7 @@ public partial class WorldActorNode : RigidBody3D
         if (State is null)
             return;
 
-        Freeze = !_playMode || !State.EnablePhysics;
+        Freeze = !_playMode || !State.EnablePhysics || IsOffstageEffective;
         ContactMonitor = _playMode && State.IsSolid && _hasLegacyCollisionHandlers;
         MaxContactsReported = ContactMonitor ? 16 : 0;
         GravityScale = State.EnableGravity ? 1f : 0f;
@@ -297,6 +307,12 @@ public partial class WorldActorNode : RigidBody3D
         SetTint(state.Tint);
     }
 
+    public override void _EnterTree()
+    {
+        if (State is not null && _playMode)
+            ApplyLegacyPhysicsSettings();
+    }
+
     public override void _Ready()
     {
         CreateBodyCollider();
@@ -320,7 +336,7 @@ public partial class WorldActorNode : RigidBody3D
             WorldActorNode? otherActor = FindActorAncestor(collider);
             if (otherActor is not null)
             {
-                if (otherActor == this || State.IsOffstage || otherActor.State.IsOffstage)
+                if (otherActor == this || IsOffstageEffective || otherActor.IsOffstageEffective)
                     continue;
                 QueueBehaviorMessage("Collision", otherActor.LegacyName);
                 if (!_previousTriggerOverlapIds.Contains(colliderId))
@@ -329,7 +345,7 @@ public partial class WorldActorNode : RigidBody3D
             }
 
             if ((FindTerrainAncestor(collider) is not null || collider.Name == "StageGroundCollision")
-                && !State.IsOffstage
+                && !IsOffstageEffective
                 && physicsFrame > _triggerStartPhysicsFrame + 1)
                 QueueBehaviorMessage("TerrainCollision", blockStyle: 255);
         }
@@ -364,7 +380,7 @@ public partial class WorldActorNode : RigidBody3D
                 WorldActorNode? otherActor = FindActorAncestor(collider);
                 if (otherActor is not null)
                 {
-                    if (otherActor == this || State.IsOffstage || otherActor.State.IsOffstage)
+                    if (otherActor == this || IsOffstageEffective || otherActor.IsOffstageEffective)
                         continue;
                     QueueBehaviorMessage("Collision", otherActor.LegacyName);
                     if (!_previousContactColliderIds.Contains(colliderId))
@@ -376,7 +392,7 @@ public partial class WorldActorNode : RigidBody3D
                 bool isStageGround = collider.Name == "StageGroundCollision";
                 if (terrain is null && !isStageGround)
                     continue;
-                if (State.IsOffstage)
+                if (IsOffstageEffective)
                     continue;
 
                 Vector3 contactPoint = GlobalTransform * state.GetContactLocalPosition(contact);
