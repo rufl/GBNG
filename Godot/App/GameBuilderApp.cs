@@ -189,6 +189,7 @@ public partial class GameBuilderApp : Node3D
         BuildWorldServices();
         _windowedSize = GetWindow().Size;
         LoadEditorPreferences();
+        LoadRecentProjects();
         ApplyGraphicsQuality(_graphicsQuality);
         RestoreWindowedSize();
         InitializeWindowedDisplayTracking();
@@ -238,6 +239,8 @@ public partial class GameBuilderApp : Node3D
             RunParticleLanClientSmoke();
         if (commandLineArgs.Contains("--smoke-autosave", StringComparer.Ordinal))
             RunAutoSaveSmoke();
+        if (commandLineArgs.Contains("--smoke-recent-projects", StringComparer.Ordinal))
+            RunRecentProjectsSmoke();
         if (commandLineArgs.Contains("--smoke-world-settings", StringComparer.Ordinal))
             RunWorldSettingsSmoke();
         if (commandLineArgs.Contains("--smoke-world-map-size", StringComparer.Ordinal))
@@ -674,7 +677,7 @@ public partial class GameBuilderApp : Node3D
             AnchorRight = 1f,
             AnchorBottom = 1f
         };
-        var panel = new PanelContainer { CustomMinimumSize = new Vector2(520f, 320f), MouseFilter = Control.MouseFilterEnum.Stop };
+        var panel = new PanelContainer { CustomMinimumSize = new Vector2(560f, 460f), MouseFilter = Control.MouseFilterEnum.Stop };
         panel.AddThemeStyleboxOverride("panel", MakePanelStyle("#1b2734", "#566e83"));
         center.AddChild(panel);
         var margin = new MarginContainer();
@@ -695,6 +698,19 @@ public partial class GameBuilderApp : Node3D
         var recoverAutosave = new Button { Text = "Recover autosave…", CustomMinimumSize = new Vector2(0f, 40f) };
         recoverAutosave.Pressed += OpenAutoSaveRecovery;
         box.AddChild(recoverAutosave);
+        box.AddChild(CreateLabel("Recent projects", 14));
+        var recentProjects = new HBoxContainer { Name = "RecentProjects" };
+        _recentProjectPicker = new OptionButton
+        {
+            Name = "RecentProjectPicker",
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+        };
+        recentProjects.AddChild(_recentProjectPicker);
+        _openRecentProjectButton = new Button { Text = "Open", CustomMinimumSize = new Vector2(80f, 36f) };
+        _openRecentProjectButton.Pressed += OpenSelectedRecentProject;
+        recentProjects.AddChild(_openRecentProjectButton);
+        box.AddChild(recentProjects);
+        RefreshRecentProjectPicker();
 
         var samples = new HBoxContainer();
         _samplePicker = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, Name = "SamplePicker" };
@@ -1560,6 +1576,7 @@ public partial class GameBuilderApp : Node3D
             _welcome.Visible = false;
             _editor.Visible = true;
             _status.Text = $"Loaded {Path.GetFileName(path)} — {document.Actors.Count} actors; save version {document.Version}.";
+            AddRecentProject(path);
             ResetAutoSaveTimer();
             SelectActor(_actors.FirstOrDefault());
             _cameraTarget = ComputeWorldCenter();
@@ -3117,6 +3134,7 @@ public partial class GameBuilderApp : Node3D
             PopulateAssetPicker();
             ReleaseRetainedHostAssetsAfterSave();
             _status.Text = $"Saved {Path.GetFileName(path)} — {_actors.Count} actors.";
+            AddRecentProject(path);
             ResetAutoSaveTimer();
         }
         catch (Exception exception)
