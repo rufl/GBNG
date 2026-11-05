@@ -40,6 +40,10 @@ public partial class GameBuilderApp
             }
         }
 
+        GetViewport().AnisotropicFilteringLevel = quality == GraphicsQuality.Low
+            ? Viewport.AnisotropicFiltering.Disabled
+            : Viewport.AnisotropicFiltering.Anisotropy4X;
+
         DisplayServer.WindowSetVsyncMode(quality == GraphicsQuality.Low
             ? DisplayServer.VSyncMode.Disabled
             : DisplayServer.VSyncMode.Enabled);

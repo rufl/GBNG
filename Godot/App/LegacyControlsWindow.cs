@@ -189,7 +189,7 @@ public sealed partial class LegacyControlsWindow : Window
         layout.AddChild(qualityRow);
         layout.AddChild(new Label
         {
-            Text = "High: SSAO + 4 shadow splits. Medium: 2 splits. Low: no shadows or VSync. Motion blur is not built into Godot.",
+            Text = "High: SSAO, 4 shadow splits, 4× anisotropy. Medium: 2 splits, 4× anisotropy, no SSAO. Low: no shadows, VSync, or anisotropy. Texture resolution is unchanged; motion blur is unavailable.",
             AutowrapMode = TextServer.AutowrapMode.Word
         });
 

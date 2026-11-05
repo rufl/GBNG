@@ -247,7 +247,10 @@ public sealed class LegacyRenderableCatalog
                     return null;
                 Node? gltfRoot = document.GenerateScene(state);
                 if (gltfRoot is Node3D modelRoot)
+                {
+                    EnableAnisotropicTextureFiltering(modelRoot);
                     return modelRoot;
+                }
                 gltfRoot?.Free();
                 return null;
             }
@@ -255,7 +258,10 @@ public sealed class LegacyRenderableCatalog
             PackedScene? packedScene = ResourceLoader.Load<PackedScene>(modelPath);
             Node? instance = packedScene?.Instantiate();
             if (instance is Node3D model)
+            {
+                EnableAnisotropicTextureFiltering(model);
                 return model;
+            }
             instance?.Free();
             return null;
         }
@@ -265,6 +271,51 @@ public sealed class LegacyRenderableCatalog
             return null;
         }
     }
+    internal static void EnableAnisotropicTextureFiltering(Node3D modelRoot)
+    {
+        if (modelRoot is MeshInstance3D rootMesh)
+            EnableAnisotropicTextureFiltering(rootMesh);
+
+        foreach (Node node in modelRoot.FindChildren("*", "MeshInstance3D", true, false))
+        {
+            if (node is MeshInstance3D meshInstance)
+                EnableAnisotropicTextureFiltering(meshInstance);
+        }
+    }
+
+    private static void EnableAnisotropicTextureFiltering(MeshInstance3D meshInstance)
+    {
+        if (meshInstance.MaterialOverride is Material materialOverride)
+        {
+            if (materialOverride is BaseMaterial3D baseOverride)
+                EnableAnisotropicTextureFiltering(baseOverride);
+            return;
+        }
+
+        if (meshInstance.Mesh is not Mesh mesh)
+            return;
+
+        for (int surface = 0; surface < mesh.GetSurfaceCount(); surface++)
+        {
+            Material? material = meshInstance.GetSurfaceOverrideMaterial(surface)
+                ?? mesh.SurfaceGetMaterial(surface);
+            if (material is BaseMaterial3D baseMaterial)
+                EnableAnisotropicTextureFiltering(baseMaterial);
+        }
+    }
+
+    private static void EnableAnisotropicTextureFiltering(BaseMaterial3D material)
+    {
+        material.TextureFilter = material.TextureFilter switch
+        {
+            BaseMaterial3D.TextureFilterEnum.NearestWithMipmaps
+                => BaseMaterial3D.TextureFilterEnum.NearestWithMipmapsAnisotropic,
+            BaseMaterial3D.TextureFilterEnum.LinearWithMipmaps
+                => BaseMaterial3D.TextureFilterEnum.LinearWithMipmapsAnisotropic,
+            _ => material.TextureFilter
+        };
+    }
+
 
     private static string GetProjectAssetDirectory(string projectPath)
     {

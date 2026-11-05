@@ -123,6 +123,41 @@ public partial class GameBuilderApp
             Godot.Environment qualityEnvironment = GetNode<WorldEnvironment>("WorldEnvironment").Environment
                 ?? throw new InvalidOperationException("The quality smoke requires the editor world environment.");
             DirectionalLight3D qualitySun = GetNode<DirectionalLight3D>("Sun");
+            Viewport qualityViewport = GetViewport();
+            var anisotropicMaterialFixture = new Node3D();
+            var linearMipmappedMaterial = new StandardMaterial3D
+            {
+                TextureFilter = BaseMaterial3D.TextureFilterEnum.LinearWithMipmaps
+            };
+            var nearestMipmappedMaterial = new StandardMaterial3D
+            {
+                TextureFilter = BaseMaterial3D.TextureFilterEnum.NearestWithMipmaps
+            };
+            var nonMipmappedMaterial = new StandardMaterial3D
+            {
+                TextureFilter = BaseMaterial3D.TextureFilterEnum.Linear
+            };
+            anisotropicMaterialFixture.AddChild(new MeshInstance3D
+            {
+                Mesh = new BoxMesh(),
+                MaterialOverride = linearMipmappedMaterial
+            });
+            anisotropicMaterialFixture.AddChild(new MeshInstance3D
+            {
+                Mesh = new BoxMesh(),
+                MaterialOverride = nearestMipmappedMaterial
+            });
+            anisotropicMaterialFixture.AddChild(new MeshInstance3D
+            {
+                Mesh = new BoxMesh(),
+                MaterialOverride = nonMipmappedMaterial
+            });
+            LegacyRenderableCatalog.EnableAnisotropicTextureFiltering(anisotropicMaterialFixture);
+            if (linearMipmappedMaterial.TextureFilter != BaseMaterial3D.TextureFilterEnum.LinearWithMipmapsAnisotropic
+                || nearestMipmappedMaterial.TextureFilter != BaseMaterial3D.TextureFilterEnum.NearestWithMipmapsAnisotropic
+                || nonMipmappedMaterial.TextureFilter != BaseMaterial3D.TextureFilterEnum.Linear)
+                throw new InvalidOperationException("3D model anisotropic filtering changed the wrong mipmap sampling modes.");
+            anisotropicMaterialFixture.Free();
             for (int qualityIndex = 0; qualityIndex < graphicsQuality.ItemCount; qualityIndex++)
             {
                 graphicsQuality.Select(qualityIndex);
@@ -140,6 +175,9 @@ public partial class GameBuilderApp
                 DisplayServer.VSyncMode expectedVsync = lowQuality
                     ? DisplayServer.VSyncMode.Disabled
                     : DisplayServer.VSyncMode.Enabled;
+                Viewport.AnisotropicFiltering expectedAnisotropy = lowQuality
+                    ? Viewport.AnisotropicFiltering.Disabled
+                    : Viewport.AnisotropicFiltering.Anisotropy4X;
                 savedDisplayPreferences = new ConfigFile();
                 if (_graphicsQuality != (GraphicsQuality)qualityIndex
                     || graphicsQuality.Selected != qualityIndex
@@ -148,6 +186,7 @@ public partial class GameBuilderApp
                     || qualitySun.DirectionalShadowMode != expectedShadowMode
                     || !Mathf.IsEqualApprox(qualitySun.DirectionalShadowMaxDistance, expectedShadowDistance)
                     || DisplayServer.WindowGetVsyncMode() != expectedVsync
+                    || qualityViewport.AnisotropicFilteringLevel != expectedAnisotropy
                     || savedDisplayPreferences.Load(EditorSettingsPath) != Error.Ok
                     || (int)savedDisplayPreferences.GetValue("display", "graphics_quality", -1).AsDouble() != qualityIndex)
                     throw new InvalidOperationException($"The {graphicsQuality.GetItemText(qualityIndex)} quality preset did not apply and persist its Godot rendering profile.");

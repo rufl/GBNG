@@ -552,6 +552,7 @@ public partial class LegacyTerrainNode : Node3D
                         Roughness = style == 26 ? 0.35f : 0.82f,
                         Uv1Triplanar = true,
                         Uv1TriplanarSharpness = 1f,
+                        TextureFilter = BaseMaterial3D.TextureFilterEnum.LinearWithMipmapsAnisotropic,
                         CullMode = BaseMaterial3D.CullModeEnum.Disabled
                     };
                 }
