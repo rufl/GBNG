@@ -177,9 +177,7 @@ falls back to libc's `if_nametoindex` when Mono lacks that API.
 Linux x64 builds rewrite AssimpNet's four `libdl.so` imports to `libdl.so.2`
 and bundle `libminizip.so` beside Assimp, preloading it globally to satisfy
 Assimp's `libminizip.so.1` dependency without `LD_LIBRARY_PATH`.
-A Linux player smoke imported a one-triangle OBJ through Assimp. This verifies
-native loading and mesh import, not the full FBX asset workflow. Cross-host
-IPv6 multicast across hosts remains untested.
+A Linux Mono player smoke on Ubuntu 26.04 under WSL2/WSLg imported the repository's animated Fox FBX through Assimp and ran the asset-preparation step. It resolved the FBX's absolute Windows texture references to sibling files, producing a skinned mesh with 1,733 vertices and 19 bones, three animation clips, two diffuse textures, and a generated mesh collider; sampling the RunForward clip changed the rig pose. This covers FBX import and model preparation, not the asynchronous `AssetCache.Get` path or physical Linux GPU rendering. Cross-host IPv6 multicast remains untested.
 The checked-in macOS V8 bundle is x86_64-only, so Apple Silicon players also
 cannot execute behavior scripts yet. macOS CEF apps are unsigned and must be
 signed/notarized for public distribution.

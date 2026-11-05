@@ -150,9 +150,16 @@ internal static class AssimpModelLoader
     if (source.HasTextureDiffuse)
     {
       string textureReference = source.TextureDiffuse.FilePath;
-      string texturePath = Path.IsPathRooted(textureReference)
-        ? textureReference
-        : Path.Combine(modelDirectory ?? string.Empty, textureReference);
+      string normalizedReference = textureReference.Replace('\\', Path.DirectorySeparatorChar);
+      string texturePath = Path.IsPathRooted(normalizedReference)
+        ? normalizedReference
+        : Path.Combine(modelDirectory ?? string.Empty, normalizedReference);
+      if (!File.Exists(texturePath))
+      {
+        // FBX files often retain an absolute Windows source path; use the local sibling texture on other OSes.
+        string siblingTexturePath = Path.Combine(modelDirectory ?? string.Empty, Path.GetFileName(normalizedReference));
+        if (File.Exists(siblingTexturePath)) texturePath = siblingTexturePath;
+      }
       if (File.Exists(texturePath))
       {
         try
