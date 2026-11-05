@@ -31,6 +31,35 @@ The script checks the exact git revision, rejects tracked source edits, checks V
 
 `v8_use_external_startup_data=false` is intentional: the shipped plugin has no separate V8 startup-data blobs under `StreamingAssets`; the native initialization/evaluation smoke succeeds with a nonexistent runtime-data directory.
 
+
+## Linux x86_64
+
+Requirements: Ubuntu 22.04 x86_64, depot_tools, Python 2.7 and Python 3, `ninja-build`, and the standard C++ build tools. The script creates a Python 2 shim under `out.gn/x64.release/maintenance-bin` for V8 7.1's legacy build helpers.
+
+From a directory outside this repository, fetch and sync the exact engine revision and install its pinned sysroot/toolchain:
+
+```sh
+fetch v8
+cd v8
+git checkout --detach d2e0166ded485df126c765b9196f7edd1ce50f82
+gclient sync --nohooks --revision v8@d2e0166ded485df126c765b9196f7edd1ce50f82
+python2.7 build/linux/sysroot_scripts/install-sysroot.py --arch=x64
+python2.7 tools/clang/scripts/update.py
+
+export PATH="$DEPOT_TOOLS:$PATH"
+python3 "$DEPOT_TOOLS/download_from_google_storage.py" \
+  --no_resume --platform=linux --no_auth --bucket chromium-gn \
+  -s buildtools/linux64/gn.sha1
+```
+
+From the Game Builder repository root, build V8, compile the Linux shared library and native regression harness, run the harness, and install the plugin only after it passes:
+
+```sh
+python3 tools/maintenance/build_v8_in_unity.py --v8-root /path/to/v8
+```
+
+Validated in Ubuntu 22.04 x86_64 under WSL2: the script builds the pinned V8 monolith, passes all 99 native regression checks, then loads `libv8_in_unity.so` and verifies initialization, `6 * 7 == 42`, and deinitialization before installation. The Linux importer enables Standalone Linux64 only; a Unity Linux player smoke remains outstanding.
+
 ## macOS
 
 The Xcode projects now use `V8_ROOT` and `V8_OUT` instead of the original developer's absolute paths. Build the same pinned V8 revision and `v8_monolith` for the architecture supported by the target Unity player, then pass those settings to Xcode, for example:
@@ -41,17 +70,18 @@ xcodebuild -project v8_in_unity/xcode_projects/v8_in_unity/v8_in_unity.xcodeproj
   V8_ROOT="$V8_ROOT" V8_OUT="$V8_ROOT/out.gn/x64.release" build
 ```
 
-Run the native test target before replacing the checked-in bundle. The automated build/install script currently covers Windows x64 only; macOS bundle architecture and Unity integration still require a macOS smoke run.
+Run the native test target before replacing the checked-in bundle. The automated build/install script covers Windows x64 and Linux x86_64; macOS bundle architecture and Unity integration still require a macOS smoke run.
 
 ## ABI and artifact validation
 
 The C++ regression harness checks V8 initialization, evaluation, brain/module updates, callbacks, and the exported wrapper functions. The Unity `V8InUnity.UnitTests` add managed interop coverage, but the native DLL is disabled for the Unity Editor; run those tests in a supported standalone player after replacing a plugin.
 
-The checked-in Windows and macOS binaries are prebuilt artifacts. A successful native rebuild does not prove that every platform bundle was rebuilt; update and test each target separately. Record the SHA-256 printed by the Windows script with the build environment when producing a release artifact.
+The checked-in Windows and macOS binaries remain prebuilt artifacts. A successful native rebuild does not prove that every platform bundle was rebuilt; update and test each target separately. Record the SHA-256 printed by the build script with its toolchain environment when producing a release artifact.
 
 Current checked-in artifact hashes:
 
 - Windows x64 DLL: `89536122a2130754aea0c80a22862126bcd1baef89bf6668f47fa31141e29ced`
 - macOS bundle executable: `9280f920c820a04afa5846790869867ed29836509f7dd196a52957303555c4e5`
+- Linux x86_64 shared library: `34c9b0c7ccc715aa07e0e667cc6b3358e93e6f9369bc32e5fe9658be8aad44a9`
 
 These hashes identify the current files; they do not prove the build provenance.

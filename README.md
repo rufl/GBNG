@@ -166,12 +166,11 @@ code panel's pixel dimensions; Unity scales that texture after layout changes
 instead of resizing the browser process.
 
 The bundled CEF runtime increases desktop build size and requires the Mono
-scripting backend; UnityWebBrowser does not support IL2CPP. Linux x64 is not
-yet a full-function player: the repository has no Linux `v8_in_unity` native
-plugin, and the behavior runtime raises `DllNotFoundException` when it loads
-scripts. The checked-in macOS V8 bundle is x86_64-only, so Apple Silicon players
-also cannot execute behavior scripts yet. macOS CEF apps are unsigned and must
-be signed/notarized for public distribution.
+scripting backend; UnityWebBrowser does not support IL2CPP. Linux x64 now has a
+pinned `libv8_in_unity.so` artifact for behavior scripting, but it has not yet
+been smoke-tested in a Unity Linux player. The checked-in macOS V8 bundle is
+x86_64-only, so Apple Silicon players also cannot execute behavior scripts yet.
+macOS CEF apps are unsigned and must be signed/notarized for public distribution.
 
 UnityWebBrowser and the CEF engine packages are pinned at 2.2.8. Windows
 players contain `LICENSE.UWB.txt`, `LICENSE.CEF.txt` and `README.CEF.txt`
