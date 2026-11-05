@@ -14,6 +14,7 @@ public partial class GameBuilderApp
     private async void RunControlsSmoke()
     {
         int exitCode = 0;
+        int motionBlurChangedPixels = 0;
         string settingsPath = ProjectSettings.GlobalizePath(EditorSettingsPath);
         byte[]? originalSettings = File.Exists(settingsPath) ? File.ReadAllBytes(settingsPath) : null;
         Window.ModeEnum originalWindowMode = GetWindow().Mode;
@@ -162,7 +163,7 @@ public partial class GameBuilderApp
             {
                 graphicsQuality.Select(qualityIndex);
                 graphicsQuality.EmitSignal("item_selected", (long)qualityIndex);
-                await WaitForUiFrames(1);
+                await WaitForUiFrames(qualityIndex == (int)GraphicsQuality.High ? 4 : 1);
                 bool highQuality = qualityIndex == (int)GraphicsQuality.High;
                 bool lowQuality = qualityIndex == (int)GraphicsQuality.Low;
                 DirectionalLight3D.ShadowMode expectedShadowMode = qualityIndex switch
@@ -177,6 +178,10 @@ public partial class GameBuilderApp
                     ? Viewport.AnisotropicFiltering.Disabled
                     : Viewport.AnisotropicFiltering.Anisotropy4X;
                 float expectedTextureMipmapBias = lowQuality ? 1f : 0f;
+                bool motionBlurEnabled = highQuality && _motionBlurReady;
+                string motionBlurState = _motionBlurEffect is null
+                    ? "unsupported"
+                    : $"ready={_motionBlurReady}, enabled={_motionBlurEffect.Enabled}, vectors={_motionBlurEffect.NeedsMotionVectors}, callback={_motionBlurEffect.Call("has_rendered_frame").AsBool()}";
                 savedDisplayPreferences = new ConfigFile();
                 if (_graphicsQuality != (GraphicsQuality)qualityIndex
                     || graphicsQuality.Selected != qualityIndex
@@ -187,9 +192,62 @@ public partial class GameBuilderApp
                     || DisplayServer.WindowGetVsyncMode() != expectedVsync
                     || qualityViewport.AnisotropicFilteringLevel != expectedAnisotropy
                     || !Mathf.IsEqualApprox(qualityViewport.TextureMipmapBias, expectedTextureMipmapBias)
+                    || (_motionBlurEffect is not null
+                        && (!_motionBlurReady
+                            || _motionBlurEffect.Enabled != motionBlurEnabled
+                            || _motionBlurEffect.NeedsMotionVectors != motionBlurEnabled
+                            || (motionBlurEnabled && !_motionBlurEffect.Call("has_rendered_frame").AsBool())))
                     || savedDisplayPreferences.Load(EditorSettingsPath) != Error.Ok
                     || (int)savedDisplayPreferences.GetValue("display", "graphics_quality", -1).AsDouble() != qualityIndex)
-                    throw new InvalidOperationException($"The {graphicsQuality.GetItemText(qualityIndex)} quality preset did not apply and persist its Godot rendering profile.");
+                    throw new InvalidOperationException($"The {graphicsQuality.GetItemText(qualityIndex)} quality preset did not apply and persist its Godot rendering profile (motion blur: {motionBlurState}).");
+            }
+
+            if (_motionBlurEffect is not null)
+            {
+                float originalCameraYaw = _cameraYaw;
+                window.Hide();
+                try
+                {
+                    graphicsQuality.Select((int)GraphicsQuality.High);
+                    graphicsQuality.EmitSignal("item_selected", (long)GraphicsQuality.High);
+                    await WaitForUiFrames(3);
+                    if (!_motionBlurReady || !_motionBlurEffect.Enabled || !_motionBlurEffect.NeedsMotionVectors)
+                        throw new InvalidOperationException("High quality did not activate the desktop Forward+ motion-blur effect.");
+
+                    _cameraYaw = originalCameraYaw - 0.02f;
+                    UpdateOrbitCamera();
+                    await WaitForUiFrames(2);
+                    _cameraYaw = originalCameraYaw + 0.02f;
+                    UpdateOrbitCamera();
+                    await WaitForUiFrames(1);
+                    using Image blurredFrame = GetViewport().GetTexture().GetImage();
+
+                    _cameraYaw = originalCameraYaw - 0.02f;
+                    UpdateOrbitCamera();
+                    await WaitForUiFrames(2);
+                    _motionBlurEffect.Enabled = false;
+                    _motionBlurEffect.NeedsMotionVectors = false;
+                    await WaitForUiFrames(1);
+                    _cameraYaw = originalCameraYaw + 0.02f;
+                    UpdateOrbitCamera();
+                    await WaitForUiFrames(1);
+                    using Image sharpFrame = GetViewport().GetTexture().GetImage();
+                    motionBlurChangedPixels = CountDifferentPixels(blurredFrame, sharpFrame);
+                    if (motionBlurChangedPixels < 20)
+                        throw new InvalidOperationException($"Motion blur did not visibly change the rendered frame during camera motion ({motionBlurChangedPixels} changed pixels).");
+
+                    string motionBlurScreenshot = ProjectSettings.GlobalizePath("res://.godot/motion-blur-smoke.png");
+                    if (blurredFrame.SavePng(motionBlurScreenshot) != Error.Ok)
+                        throw new InvalidOperationException("The motion-blur screenshot could not be saved.");
+                }
+                finally
+                {
+                    _cameraYaw = originalCameraYaw;
+                    UpdateOrbitCamera();
+                    ApplyGraphicsQuality(GraphicsQuality.High);
+                    window.Show();
+                    await WaitForUiFrames(2);
+                }
             }
 
             showTooltips.SetPressedNoSignal(true);
@@ -271,7 +329,7 @@ public partial class GameBuilderApp
             string screenshot = ProjectSettings.GlobalizePath("res://.godot/controls-preferences-smoke.png");
             if (window.GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
                 throw new InvalidOperationException("Could not save the controls preferences screenshot.");
-            GD.Print($"CONTROLS_SMOKE_OK fullscreenToggle=true windowedRestore=true windowedResolution=true fullscreenSizeRestore=true graphicsQualityProfiles=true qualityPersistence=true showTooltips={_showTooltips} tooltipSuppression=true tooltipRestoration=true futureControls=true invert=true lookSensitivity=true wheelSensitivity=true persistence=true reset=true screenshot={screenshot}");
+            GD.Print($"CONTROLS_SMOKE_OK fullscreenToggle=true windowedRestore=true windowedResolution=true fullscreenSizeRestore=true graphicsQualityProfiles=true qualityPersistence=true motionBlurChangedPixels={motionBlurChangedPixels} showTooltips={_showTooltips} tooltipSuppression=true tooltipRestoration=true futureControls=true invert=true lookSensitivity=true wheelSensitivity=true persistence=true reset=true screenshot={screenshot}");
         }
         catch (System.Exception exception)
         {

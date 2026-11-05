@@ -189,7 +189,7 @@ public sealed partial class LegacyControlsWindow : Window
         layout.AddChild(qualityRow);
         layout.AddChild(new Label
         {
-            Text = "High: SSAO, 4 shadow splits. Medium: no SSAO, 2 splits. Both: 4× anisotropy. Low: no shadows or anisotropy; +1 mip bias (softer, same memory). VSync stays on; motion blur unavailable.",
+            Text = "High: SSAO, 4 shadow splits, motion blur (desktop Forward+). Medium: no SSAO, 2 splits, no blur. Both: 4× anisotropy. Low: no shadows or anisotropy; +1 mip bias (softer, same memory). VSync stays on.",
             AutowrapMode = TextServer.AutowrapMode.Word
         });
 

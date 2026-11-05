@@ -508,6 +508,8 @@ public partial class GameBuilderApp : Node3D
                 AmbientLightEnergy = 0.65f
             }
         };
+        ConfigureMotionBlur(environment);
+
         AddChild(environment);
 
         var light = new DirectionalLight3D
@@ -1590,6 +1592,12 @@ public partial class GameBuilderApp : Node3D
     }
     public override void _ExitTree()
     {
+        if (_motionBlurEffect is not null && IsInstanceValid(_motionBlurEffect))
+        {
+            _motionBlurEffect.Enabled = false;
+            _motionBlurEffect.NeedsMotionVectors = false;
+            _motionBlurEffect.Call("release_gpu_resources");
+        }
         CleanupWindowedDisplayTracking();
         CleanupApplicationFocusHandling();
         _tooltipPolicy?.Dispose();

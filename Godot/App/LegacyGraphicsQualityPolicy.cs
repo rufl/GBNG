@@ -12,6 +12,8 @@ public partial class GameBuilderApp
     }
 
     private GraphicsQuality _graphicsQuality = GraphicsQuality.High;
+    private CompositorEffect? _motionBlurEffect;
+    private bool _motionBlurReady;
 
     private void ApplyGraphicsQuality(GraphicsQuality quality)
     {
@@ -46,6 +48,35 @@ public partial class GameBuilderApp
         GetViewport().TextureMipmapBias = quality == GraphicsQuality.Low ? 1f : 0f;
 
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Enabled);
+        if (_motionBlurEffect is not null)
+        {
+            bool motionBlurEnabled = quality == GraphicsQuality.High && _motionBlurReady;
+            _motionBlurEffect.Enabled = motionBlurEnabled;
+            _motionBlurEffect.NeedsMotionVectors = motionBlurEnabled;
+        }
+
+    }
+
+    private void ConfigureMotionBlur(WorldEnvironment worldEnvironment)
+    {
+        if (OS.HasFeature("mobile")
+            || ProjectSettings.GetSetting("rendering/renderer/rendering_method").AsString() != "forward_plus"
+            || RenderingServer.GetRenderingDevice() is null)
+            return;
+
+        GDScript script = GD.Load<GDScript>("res://Godot/App/LegacyMotionBlurEffect.gd")
+            ?? throw new System.InvalidOperationException("The native motion-blur compositor effect is missing.");
+        _motionBlurEffect = script.New().AsGodotObject() as CompositorEffect
+            ?? throw new System.InvalidOperationException("The native motion-blur compositor effect could not be instantiated.");
+        _motionBlurReady = _motionBlurEffect.Call("is_ready").AsBool();
+
+        var compositor = new Compositor();
+        var effects = new Godot.Collections.Array<CompositorEffect>();
+        effects.Add(_motionBlurEffect);
+        compositor.CompositorEffects = effects;
+        worldEnvironment.Compositor = compositor;
+        if (!_motionBlurReady)
+            GD.PushError("The desktop Forward+ motion-blur compositor could not initialize; High quality will continue without motion blur.");
     }
 
     private void SetGraphicsQuality(int qualityIndex)
