@@ -358,22 +358,21 @@ public sealed partial class LegacyBehaviorRuntime
         if (_pendingPlayerControlTransfer is not { } request)
             return;
         _pendingPlayerControlTransfer = null;
+        _playerControlSlots.Reconcile(_actors);
 
-        WorldActorNode? current = _actors.FirstOrDefault(actor => actor.State.IsPlayerControllable);
+        int localPlayerSlot = GetLocalPlayerSlot();
+        WorldActorNode? current = _playerControlSlots.GetActorAtSlot(_actors, localPlayerSlot);
         if (current is null || current.LegacyName != request.FromActor)
             return;
         WorldActorNode? target = request.ToActor.Length > 0 ? FindActor(request.ToActor) : null;
         if (target == current)
             return;
 
-        foreach (WorldActorNode actor in _actors)
-        {
-            bool isPlayer = actor == target;
-            if (actor.State.IsPlayerControllable == isPlayer)
-                continue;
-            actor.State.WriteBool("isPlayerControllable", isPlayer);
-            actor.ApplyLegacyPhysicsSettings();
-        }
+        bool targetNeedsPhysics = target is not null && !target.State.IsPlayerControllable;
+        if (!_playerControlSlots.TryTransferControl(localPlayerSlot, request.FromActor, target))
+            return;
+        if (targetNeedsPhysics)
+            target!.ApplyLegacyPhysicsSettings();
 
         if (request.Destroy)
             QueueActorDestruction(current.LegacyName);
@@ -383,7 +382,8 @@ public sealed partial class LegacyBehaviorRuntime
     private string TransferPlayerControl(JsonObject args)
     {
         string fromName = LegacySaveDocument.ReadString(args["fromActor"]);
-        WorldActorNode? current = _actors.FirstOrDefault(actor => actor.State.IsPlayerControllable);
+        int localPlayerSlot = GetLocalPlayerSlot();
+        WorldActorNode? current = _playerControlSlots.GetActorAtSlot(_actors, localPlayerSlot);
         if (current is not null && current.LegacyName == fromName)
         {
             _pendingPlayerControlTransfer = (
@@ -403,11 +403,14 @@ public sealed partial class LegacyBehaviorRuntime
         return "true";
     }
 
+    private int GetLocalPlayerSlot()
+        => _lanSession?.IsClient == true ? _lanSession.LocalPlayerSlot : 1;
+
     private WorldActorNode? GetLocalPlayerActor()
-    {
-        int targetSlot = _lanSession?.IsClient == true ? _lanSession.LocalPlayerSlot : 1;
-        return WorldActorNode.FindPlayerActorAtSlot(_actors, targetSlot);
-    }
+        => _playerControlSlots.GetActorAtSlot(_actors, GetLocalPlayerSlot());
+
+    internal WorldActorNode? GetPlayerActorAtSlot(int targetSlot)
+        => _playerControlSlots.GetActorAtSlot(_actors, targetSlot);
 
     private string ProjectPoint(JsonObject args)
     {

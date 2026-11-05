@@ -87,7 +87,7 @@ Actor-attached sound effects honor the legacy `spatialized` flag: enabled uses 3
 When the main window loses focus, the app caps its frame rate at 30 FPS to reduce background load; regaining focus restores unlimited foreground rendering.
 
 In play mode, legacy player tooltips for `Action1` and `Action2` render as bottom-center LMB/RMB prompts for the local player. LAN hosts forward each player's prompts to the matching client; stopping play clears them.
-Behavior APIs for the controlled player and camera actor, plus temporary camera offsets, resolve against the local LAN player slot; clients do not default to the first player actor.
+Behavior APIs for the controlled player and camera actor, plus temporary camera offsets, resolve against the local LAN player slot; clients do not default to the first player actor. `TransferPlayerControl` migrates only that local slot, preserves other actors' controllable flags, and keeps remote input slots stable when the target actor appears elsewhere in the actor list.
 
 The visual card library supports text/category filtering, card-icon previews, hidden-card filtering, and drag-and-drop deck assignment. The canvas edits panels, card uses, notes, and panel layout while preserving legacy `.voos` references. A card manager creates, copies, edits, and deletes embedded cards and imports/exports legacy card-pack folders; conflicting IDs can be overwritten, duplicated, or canceled.
 

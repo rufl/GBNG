@@ -23,6 +23,7 @@ public sealed partial class LegacyBehaviorRuntime : IDisposable
     private const string ScriptingSystemsPath = "res://Assets/Prefabs/Services/ScriptingSystems.prefab";
 
     private readonly List<WorldActorNode> _actors;
+    private readonly LegacyPlayerControlSlots _playerControlSlots;
     private readonly LegacySaveDocument _document;
     private readonly LegacyRenderableCatalog _catalog;
     private readonly Node3D _world;
@@ -74,8 +75,38 @@ public sealed partial class LegacyBehaviorRuntime : IDisposable
         Action<Vector3>? requestCameraOffset = null,
         LegacyLanSession? lanSession = null,
         Action<int, string>? reportBehaviorException = null)
+        : this(
+            actors,
+            document,
+            catalog,
+            world,
+            terrain,
+            camera,
+            requestUi,
+            actorsChanged,
+            requestCameraOffset,
+            lanSession,
+            reportBehaviorException,
+            new LegacyPlayerControlSlots(actors))
+    {
+    }
+
+    internal LegacyBehaviorRuntime(
+        List<WorldActorNode> actors,
+        LegacySaveDocument document,
+        LegacyRenderableCatalog catalog,
+        Node3D world,
+        LegacyTerrainNode? terrain,
+        Camera3D camera,
+        Action<JsonArray> requestUi,
+        Action? actorsChanged,
+        Action<Vector3>? requestCameraOffset,
+        LegacyLanSession? lanSession,
+        Action<int, string>? reportBehaviorException,
+        LegacyPlayerControlSlots? playerControlSlots)
     {
         _actors = actors;
+        _playerControlSlots = playerControlSlots ?? new LegacyPlayerControlSlots(actors);
         _document = document;
         _catalog = catalog;
         _world = world;
@@ -107,6 +138,7 @@ public sealed partial class LegacyBehaviorRuntime : IDisposable
 
     }
     public event Action<JsonArray>? PlayerToolTipsUpdated;
+    internal LegacyPlayerControlSlots PlayerControlSlots => _playerControlSlots;
     public void Tick(double deltaSeconds)
     {
         if (deltaSeconds <= 0d)
@@ -539,6 +571,7 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
 
     private void SyncActors()
     {
+        _playerControlSlots.Reconcile(_actors);
         _actorsByName.Clear();
         _actorsById.Clear();
         List<object> states = _actorStatesBuffer;
@@ -580,21 +613,20 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
         Vector3 localMouseRayOrigin = _camera.ProjectRayOrigin(_mousePosition);
         Vector3 localMouseRayDirection = _camera.ProjectRayNormal(_mousePosition);
 
-        int playerSlotNumber = 0;
         bool networkHost = _lanSession?.IsHost == true;
         foreach (WorldActorNode actor in _actors)
         {
             _actorsByName.Add(actor.LegacyName, actor);
             actor.SetLegacyCollisionHandling(_collisionHandlingBrainIds.Contains(actor.State.BrainName));
             _actorsById.Add(actor);
-            bool isPlayer = actor.State.IsPlayerControllable;
-            int playerSlot = isPlayer ? ++playerSlotNumber : 0;
-            bool remoteControlled = isPlayer && networkHost && playerSlot > 1;
+            int playerSlot = _playerControlSlots.GetSlotForActor(actor.LegacyName);
+            bool hasPlayerControl = playerSlot > 0;
+            bool remoteControlled = hasPlayerControl && networkHost && playerSlot > 1;
             LegacyLanInputFrame? remoteInput = remoteControlled ? _lanSession!.GetRemoteInputForSlot(playerSlot) : null;
             RemoteInputHistory? remoteHistory = hasInputFrame && remoteControlled
                 ? UpdateRemoteInputHistory(actor.LegacyName, remoteInput)
                 : null;
-            bool hasPlayerInput = isPlayer && hasInputFrame;
+            bool hasPlayerInput = hasPlayerControl && hasInputFrame;
             List<string> actorKeysHeld = remoteControlled ? remoteHistory?.KeysHeld ?? EmptyInputKeys : keysHeld;
             List<string> actorKeysJustPressed = remoteControlled ? remoteHistory?.KeysJustPressed ?? EmptyInputKeys : keysJustPressed;
             List<string> actorKeysJustReleased = remoteControlled ? remoteHistory?.KeysJustReleased ?? EmptyInputKeys : keysJustReleased;
@@ -625,7 +657,7 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
             Vector3 actorCameraPosition = remoteInput is null
                 ? remoteControlled ? actor.GlobalPosition : _camera.GlobalPosition
                 : new Vector3(remoteInput.CameraPositionX, remoteInput.CameraPositionY, remoteInput.CameraPositionZ);
-            Vector3 playerInput = !isPlayer
+            Vector3 playerInput = !hasPlayerControl
                 ? Vector3.Zero
                 : remoteControlled
                     ? remoteInput is null ? Vector3.Zero : ReadRemotePlayerThrottle(remoteHistory!.HeldKeys)
@@ -634,11 +666,11 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
             Vector3 worldThrottle = CoordinateSpace.ToLegacy(worldThrottleGodot.Normalized());
             Vector3 spawnPosition = actor.State.ReadLegacyVector("spawnPosition", actor.State.ReadLegacyVector("position", Vector3.Zero));
             Quaternion spawnRotation = actor.State.ReadLegacyQuaternion("spawnRotation");
-            Vector3 aimDirectionGodot = isPlayer ? -actorCameraBasis.Z : -actor.GlobalBasis.Z;
-            Vector3 aimOriginGodot = isPlayer ? actorCameraPosition : actor.GlobalPosition + new Vector3(0f, 0.5f, 0f);
+            Vector3 aimDirectionGodot = hasPlayerControl ? -actorCameraBasis.Z : -actor.GlobalBasis.Z;
+            Vector3 aimOriginGodot = hasPlayerControl ? actorCameraPosition : actor.GlobalPosition + new Vector3(0f, 0.5f, 0f);
             Vector3 lastAimHitPoint = Vector3.Zero;
             string? aimingAtName = null;
-            bool aimingEnabled = isPlayer && LegacySaveDocument.ReadBool(actor.State.Data["enableAiming"]);
+            bool aimingEnabled = hasPlayerControl && LegacySaveDocument.ReadBool(actor.State.Data["enableAiming"]);
             if (aimingEnabled && _physicsQueryAvailable)
             {
                 var query = PhysicsRayQueryParameters3D.Create(
@@ -695,14 +727,14 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
                 transformParent = actor.State.TransformParent,
                 spawnPosition = ToVectorJson(spawnPosition),
                 spawnRotation = ToQuaternionJson(spawnRotation),
-                isSprinting = isPlayer && (remoteInput?.Sprinting ?? (!remoteControlled && Input.IsKeyPressed(Key.Shift))),
+                isSprinting = hasPlayerControl && (remoteInput?.Sprinting ?? (!remoteControlled && Input.IsKeyPressed(Key.Shift))),
                 worldSpaceThrottle = ToVectorJson(worldThrottle),
                 inputThrottle = ToVectorJson(playerInput),
                 aimDirection = ToVectorJson(CoordinateSpace.ToLegacy(aimDirectionGodot.Normalized())),
                 aimOrigin = ToVectorJson(CoordinateSpace.ToLegacy(aimOriginGodot)),
                 lastAimHitPoint = ToVectorJson(lastAimHitPoint),
                 aimingAtName,
-                lookAxes = ToVectorJson(isPlayer ? new Vector3(actorLookAxes.X, actorLookAxes.Y, 0f) : Vector3.Zero),
+                lookAxes = ToVectorJson(hasPlayerControl ? new Vector3(actorLookAxes.X, actorLookAxes.Y, 0f) : Vector3.Zero),
                 hasInputState = hasPlayerInput,
                 inputState = hasPlayerInput
                     ? new

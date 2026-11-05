@@ -218,7 +218,7 @@ public partial class GameBuilderApp
             return;
         try
         {
-            LegacyBehaviorRuntime updatedRuntime = CreateBehaviorRuntime(_document);
+            LegacyBehaviorRuntime updatedRuntime = CreateBehaviorRuntime(_document, _behaviorRuntime?.PlayerControlSlots);
             _behaviorRuntime?.Dispose();
             _behaviorRuntime = updatedRuntime;
             _behaviorRuntimeError = null;

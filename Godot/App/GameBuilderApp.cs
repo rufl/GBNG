@@ -1272,7 +1272,7 @@ public partial class GameBuilderApp : Node3D
             return;
         try
         {
-            LegacyBehaviorRuntime updatedRuntime = CreateBehaviorRuntime(_document);
+            LegacyBehaviorRuntime updatedRuntime = CreateBehaviorRuntime(_document, _behaviorRuntime?.PlayerControlSlots);
             _behaviorRuntime?.Dispose();
             _behaviorRuntime = updatedRuntime;
             _behaviorRuntimeError = null;
@@ -1290,7 +1290,7 @@ public partial class GameBuilderApp : Node3D
         NotifyCollaborativeEdits();
     }
 
-    private LegacyBehaviorRuntime CreateBehaviorRuntime(LegacySaveDocument document)
+    private LegacyBehaviorRuntime CreateBehaviorRuntime(LegacySaveDocument document, LegacyPlayerControlSlots? playerControlSlots = null)
     {
         var runtime = new LegacyBehaviorRuntime(
             _actors,
@@ -1303,7 +1303,8 @@ public partial class GameBuilderApp : Node3D
             RefreshRuntimeActors,
             SetTemporaryCameraOffset,
             _lanSession,
-            ReportBehaviorRuntimeException);
+            ReportBehaviorRuntimeException,
+            playerControlSlots);
         runtime.PlayerToolTipsUpdated += playerToolTips =>
         {
             string playerName = GetPlayerActor()?.LegacyName ?? string.Empty;
@@ -3777,7 +3778,9 @@ public partial class GameBuilderApp : Node3D
     private WorldActorNode? GetPlayerActor()
     {
         int targetSlot = _lanSession.IsClient ? _lanSession.LocalPlayerSlot : 1;
-        return WorldActorNode.FindPlayerActorAtSlot(_actors, targetSlot);
+        return _behaviorRuntime is null
+            ? WorldActorNode.FindPlayerActorAtSlot(_actors, targetSlot)
+            : _behaviorRuntime.GetPlayerActorAtSlot(targetSlot);
     }
     private WorldActorNode? GetCameraActor(WorldActorNode player)
     {
