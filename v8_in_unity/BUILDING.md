@@ -58,7 +58,7 @@ From the Game Builder repository root, build V8, compile the Linux shared librar
 python3 tools/maintenance/build_v8_in_unity.py --v8-root /path/to/v8
 ```
 
-Validated in Ubuntu 22.04 x86_64 under WSL2: the script builds the pinned V8 monolith, passes all 99 native regression checks, then loads `libv8_in_unity.so` and verifies initialization, `6 * 7 == 42`, and deinitialization before installation. A Unity 6000.6.6f1 Mono Linux player also loaded the plugin through the managed `Native.Evaluate` call and evaluated `6 * 7 == 42`. This does not validate interactive CEF/Monaco behavior; the same minimal runtime exposed separate Assimp `libdl` loading and IPv6 `GetIPv6Properties` exceptions.
+Validated in Ubuntu 22.04 x86_64 under WSL2: the script builds the pinned V8 monolith, passes all 99 native regression checks, then loads `libv8_in_unity.so` and verifies initialization, `6 * 7 == 42`, and deinitialization before installation. A Unity 6000.6.6f1 Mono Linux player also loaded the plugin through managed `Native.Evaluate`, evaluated `6 * 7 == 42`, and exercised `DirectHostDiscovery` browsing without the former `GetIPv6Properties` exception; Linux uses libc `if_nametoindex` as that API's fallback. This does not validate cross-host IPv6 multicast or interactive CEF/Monaco behavior. AssimpNet still fails to resolve `libdl` in the minimal runtime, so Linux model import remains unverified.
 
 ## macOS
 

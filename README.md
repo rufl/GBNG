@@ -170,9 +170,12 @@ scripting backend; UnityWebBrowser does not support IL2CPP. Linux x64 now has a
 pinned `libv8_in_unity.so` artifact, and a Unity 6000.6.6f1 Mono player on Ubuntu
 22.04 under WSL2 successfully called the plugin and evaluated `6 * 7 == 42`.
 This verifies native V8 loading and C# interop, not interactive CEF/Monaco use.
-The Linux smoke also exposed unrelated startup gaps: AssimpNet could not resolve
-`libdl` in the minimal runtime, and IPv6 discovery hit Mono's unimplemented
-`GetIPv6Properties`; model import and IPv6 LAN discovery remain unverified.
+The Linux player smoke also exposed a separate AssimpNet limitation: it could
+not resolve `libdl` in the minimal runtime, so Linux model import remains
+unverified. For IPv6, the player now falls back to libc's `if_nametoindex`
+when Mono lacks `GetIPv6Properties`; the Linux smoke exercised discovery
+without that exception. Cross-host IPv6 multicast behavior and interactive
+CEF/Monaco use remain untested.
 The checked-in macOS V8 bundle is x86_64-only, so Apple Silicon players also
 cannot execute behavior scripts yet. macOS CEF apps are unsigned and must be
 signed/notarized for public distribution.

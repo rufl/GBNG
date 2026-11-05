@@ -5,6 +5,7 @@ using System.IO;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using Unity.Netcode;
@@ -23,6 +24,24 @@ public sealed class DirectHostDiscovery : MonoBehaviour
   const float AdvertisementInterval = 1f;
   const float HostExpirationSeconds = 6f;
   const float SocketRetryInterval = 5f;
+
+  [DllImport("libc.so.6", EntryPoint = "if_nametoindex", CharSet = CharSet.Ansi)]
+  static extern uint IfNameToIndex(string interfaceName);
+
+  static int GetIpv6InterfaceIndex(NetworkInterface networkInterface)
+  {
+    try
+    {
+      IPv6InterfaceProperties properties = networkInterface.GetIPProperties().GetIPv6Properties();
+      return properties == null ? 0 : properties.Index;
+    }
+    catch (NotImplementedException)
+    {
+      if (Application.platform != RuntimePlatform.LinuxEditor &&
+          Application.platform != RuntimePlatform.LinuxPlayer) throw;
+      return unchecked((int)IfNameToIndex(networkInterface.Name));
+    }
+  }
 
   public sealed class HostInfo
   {
@@ -272,13 +291,13 @@ public sealed class DirectHostDiscovery : MonoBehaviour
       foreach (NetworkInterface networkInterface in NetworkInterface.GetAllNetworkInterfaces())
       {
         if (networkInterface.OperationalStatus != OperationalStatus.Up || !networkInterface.SupportsMulticast) continue;
-        IPv6InterfaceProperties ipv6Properties;
-        try { ipv6Properties = networkInterface.GetIPProperties().GetIPv6Properties(); }
+        int interfaceIndex;
+        try { interfaceIndex = GetIpv6InterfaceIndex(networkInterface); }
         catch (NetworkInformationException) { continue; }
-        if (ipv6Properties == null || ipv6Properties.Index <= 0) continue;
+        if (interfaceIndex <= 0) continue;
         try
         {
-          IPAddress groupAddress = new IPAddress(Ipv6DiscoveryGroupBytes, ipv6Properties.Index);
+          IPAddress groupAddress = new IPAddress(Ipv6DiscoveryGroupBytes, interfaceIndex);
           ipv6AdvertisementSocket.SendTo(packet, new IPEndPoint(groupAddress, DiscoveryPort));
         }
         catch (SocketException)
@@ -313,16 +332,16 @@ public sealed class DirectHostDiscovery : MonoBehaviour
           foreach (NetworkInterface networkInterface in NetworkInterface.GetAllNetworkInterfaces())
           {
             if (networkInterface.OperationalStatus != OperationalStatus.Up || !networkInterface.SupportsMulticast) continue;
-            IPv6InterfaceProperties ipv6Properties;
-            try { ipv6Properties = networkInterface.GetIPProperties().GetIPv6Properties(); }
+            int interfaceIndex;
+            try { interfaceIndex = GetIpv6InterfaceIndex(networkInterface); }
             catch (NetworkInformationException) { continue; }
-            if (ipv6Properties == null || ipv6Properties.Index <= 0) continue;
+            if (interfaceIndex <= 0) continue;
             try
             {
               ipv6DiscoverySocket.SetSocketOption(
                 SocketOptionLevel.IPv6,
                 SocketOptionName.AddMembership,
-                new IPv6MulticastOption(Ipv6DiscoveryGroup, ipv6Properties.Index));
+                new IPv6MulticastOption(Ipv6DiscoveryGroup, interfaceIndex));
               joinedInterfaces++;
             }
             catch (SocketException)
