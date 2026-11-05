@@ -83,6 +83,10 @@ local OBJ/FBX model loading, the built-in and saved actor libraries, and in-app
 project saving are part of the baseline. Optional integrations below may
 require separate plugins, accounts, or API keys.
 
+The built-in UGUI replacement resolves the archived procedural-image component
+references, including rounded-corner modifiers, borders, stencil masks, and UI
+clipping. It does not require the paid Asset Store package.
+
 The free 2D renderer now uses the original ProggyCleanTT BMFont metrics and
 bitmap atlas from the archived release; those font assets are distributed under
 the font's MIT license. The in-tree Unity GL renderer reads the BMFont XML

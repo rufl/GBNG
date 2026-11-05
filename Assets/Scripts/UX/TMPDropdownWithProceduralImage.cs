@@ -25,6 +25,7 @@ public class TMPDropdownWithProceduralImage : TMPro.TMP_Dropdown
     GameObject dropdown = base.CreateDropdownList(template);
     Canvas canvas = dropdown.GetComponentInChildren<Canvas>();
     if (canvas == null) return dropdown;
+    canvas.additionalShaderChannels |= AdditionalCanvasShaderChannels.Normal;
     canvas.additionalShaderChannels |= AdditionalCanvasShaderChannels.TexCoord1;
     canvas.additionalShaderChannels |= AdditionalCanvasShaderChannels.TexCoord2;
     canvas.additionalShaderChannels |= AdditionalCanvasShaderChannels.TexCoord3;
