@@ -168,6 +168,7 @@ public partial class GameBuilderApp : Node3D
                 SetPlayMode(enabled, fromHost: true);
         };
         _lanSession.ActorStructureReceived += ApplyNetworkActorStructure;
+        _lanSession.PlayerControlSlotsReceived += ApplyNetworkPlayerControlSlots;
         _lanSession.ClientDocumentPatchReceived += ApplyClientDocumentPatch;
         _lanSession.DocumentPatchReceived += ApplyNetworkDocumentPatch;
         _lanSession.DocumentPatchRejected += message =>
@@ -341,6 +342,8 @@ public partial class GameBuilderApp : Node3D
             _behaviorRuntime?.SetPointerState(pointerPosition, _mouseWheelRaw, IsPointerOverUi(pointerPosition));
             _behaviorRuntime?.Tick(delta);
         }
+        if (_behaviorRuntime is not null)
+            _lanSession.UpdatePlayerControlSlots(_behaviorRuntime.GetPlayerControlSlotsJson());
         _lanSession.Tick(delta, _playMode, _actors);
         _lookAxes = Vector2.Zero;
         _mouseWheelRaw = 0f;
@@ -2996,6 +2999,14 @@ public partial class GameBuilderApp : Node3D
             return;
         string playerName = GetPlayerActor()?.LegacyName ?? string.Empty;
         _actionPrompt.SetPrompts(playerToolTips, playerName);
+    }
+
+    private void ApplyNetworkPlayerControlSlots(string json)
+    {
+        if (!_lanSession.IsClient || _behaviorRuntime is null)
+            return;
+        if (!_behaviorRuntime.ApplyNetworkPlayerControlSlots(json))
+            GD.PushWarning("Ignored invalid LAN player-control slot mapping.");
     }
     private void OpenReceivedNetworkProject(string path)
     {

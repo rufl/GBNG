@@ -51,6 +51,7 @@ public sealed partial class LegacyLanSession : Node
     private long _nextAssetBundleTransferId;
     private long _nextDocumentPatchTransferId;
     private string _playerToolTipsJson = "[]";
+    private string? _playerControlSlotsJson;
     private int _nextSnapshotSequence;
     private int _lastCompletedSnapshotSequence;
     private bool _hasCompletedSnapshot;
@@ -90,6 +91,7 @@ public sealed partial class LegacyLanSession : Node
     public event Action<string>? DocumentPatchReceived;
     public event Action<long>? ClientProjectReadyReceived;
     public event Action<JsonArray>? PlayerToolTipsReceived;
+    public event Action<string>? PlayerControlSlotsReceived;
     public event Action<string, Vector3, Vector3, float>? ParticleEffectReceived;
     public event Action<string, bool>? HostProjectCopyEnding;
     public event Action<string>? DocumentPatchRejected;
@@ -206,6 +208,7 @@ public sealed partial class LegacyLanSession : Node
             return Fail("Port must be between 1 and 65535.");
 
         Leave();
+        _playerControlSlotsJson = null;
         _localPlayerName = NormalizePlayerName(playerName);
         var peer = new ENetMultiplayerPeer();
         Error error = peer.CreateClient(normalizedAddress, port);
@@ -389,6 +392,25 @@ public sealed partial class LegacyLanSession : Node
         _playerToolTipsJson = json;
         foreach (long peerId in _projectReadyPeers)
             RpcId(peerId, nameof(ReceivePlayerToolTips), json);
+    }
+
+    public void UpdatePlayerControlSlots(string json)
+    {
+        if (IsClient || string.Equals(_playerControlSlotsJson, json, StringComparison.Ordinal))
+            return;
+        if (Encoding.UTF8.GetByteCount(json) > MaximumActorStructureBytes)
+            return;
+
+        _playerControlSlotsJson = json;
+        if (!IsHost)
+            return;
+        foreach (long peerId in _projectReadyPeers)
+        {
+            if (_actorStructureTransfers.TryGetValue(peerId, out ActorStructureTransfer? transfer)
+                && transfer.Payload.Length > 0)
+                continue;
+            SendPlayerControlSlots(peerId);
+        }
     }
 
     public void BroadcastParticleEffect(string pfxId, Vector3 position, Vector3 rotation, float scale)
@@ -688,6 +710,8 @@ public sealed partial class LegacyLanSession : Node
         Multiplayer.MultiplayerPeer = null;
         _isHost = false;
         _hostPlayMode = false;
+        if (wasClient)
+            _playerControlSlotsJson = null;
         _playerNames.Clear();
         _inputsByPeer.Clear();
         _lastInputSequences.Clear();
@@ -1011,6 +1035,14 @@ public sealed partial class LegacyLanSession : Node
             return;
         }
         PlayerToolTipsReceived?.Invoke(playerToolTips);
+    }
+    [Rpc(MultiplayerApi.RpcMode.Authority, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void ReceivePlayerControlSlots(string json)
+    {
+        if (!IsClient || string.IsNullOrEmpty(json) || Encoding.UTF8.GetByteCount(json) > MaximumActorStructureBytes)
+            return;
+        _playerControlSlotsJson = json;
+        PlayerControlSlotsReceived?.Invoke(json);
     }
     [Rpc(MultiplayerApi.RpcMode.Authority, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void BeginActorStructure(int characterCount, int chunkCount)
@@ -1420,6 +1452,12 @@ public sealed partial class LegacyLanSession : Node
             RpcId(peerId, nameof(ReceivePlayerToolTips), _playerToolTipsJson);
     }
 
+    private void SendPlayerControlSlots(long peerId)
+    {
+        if (_projectReadyPeers.Contains(peerId) && _playerControlSlotsJson is not null)
+            RpcId(peerId, nameof(ReceivePlayerControlSlots), _playerControlSlotsJson);
+    }
+
     private void SendActorStructure(long peerId, IReadOnlyList<GBNG.World.WorldActorNode> actors)
     {
         string[] actorData = actors.Select(actor => actor.State.Data.ToJsonString()).ToArray();
@@ -1456,6 +1494,7 @@ public sealed partial class LegacyLanSession : Node
             {
                 transfer.Payload = string.Empty;
                 SendPlayerToolTips(entry.Key);
+                SendPlayerControlSlots(entry.Key);
             }
         }
     }

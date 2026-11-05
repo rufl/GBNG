@@ -139,6 +139,9 @@ public sealed partial class LegacyBehaviorRuntime : IDisposable
     }
     public event Action<JsonArray>? PlayerToolTipsUpdated;
     internal LegacyPlayerControlSlots PlayerControlSlots => _playerControlSlots;
+    internal string GetPlayerControlSlotsJson() => _playerControlSlots.ToJson();
+    internal bool ApplyNetworkPlayerControlSlots(string json)
+        => _playerControlSlots.TryApplyNetworkSlots(_actors, json);
     public void Tick(double deltaSeconds)
     {
         if (deltaSeconds <= 0d)

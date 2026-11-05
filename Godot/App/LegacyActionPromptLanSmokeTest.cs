@@ -15,8 +15,15 @@ public partial class GameBuilderApp
         LegacyBehaviorAuthoringWindow? editor = null;
         try
         {
-            await WaitForUiFrames(2);
             LegacySaveDocument document = _document ?? throw new InvalidOperationException("The LAN action-prompt smoke project did not load.");
+            WorldActorNode hostPlayer = GetPlayerActor()
+                ?? throw new InvalidOperationException("The LAN action-prompt smoke project has no local host player.");
+            WorldActorNode? transferTarget = _actors.FirstOrDefault(actor =>
+                !actor.State.IsPlayerControllable
+                && !actor.LegacyName.StartsWith("builtin:", StringComparison.Ordinal));
+            if (transferTarget is null)
+                throw new InvalidOperationException("The LAN action-prompt smoke project has no unassigned transfer target.");
+
             WorldActorNode? remotePlayer = null;
             int playerSlot = 0;
             foreach (WorldActorNode actor in _actors)
@@ -36,9 +43,17 @@ public partial class GameBuilderApp
             await WaitForUiFrames(2);
             InvokeSmoke(editor, "CreateCustomBehavior");
             var behaviorCode = (LegacyJavaScriptCodeEdit)editor.FindChild("BehaviorJavaScript", true, false);
-            behaviorCode.Text = "export function OnTick(api) {\n"
+            behaviorCode.Text = "let transferRequested = false;\n"
+                + "export function OnTick(api) {\n"
                 + "  api.addPlayerToolTip(api.name, 'action1', 'Remote action');\n"
                 + "  api.addPlayerToolTip(api.name, 'action2', 'Remote secondary');\n"
+                + "  if (!transferRequested) {\n"
+                + "    transferRequested = true;\n"
+                + "    callVoosService('TransferPlayerControl', { fromActor: "
+                + System.Text.Json.JsonSerializer.Serialize(hostPlayer.LegacyName)
+                + ", toActor: " + System.Text.Json.JsonSerializer.Serialize(transferTarget.LegacyName)
+                + ", destroy: false });\n"
+                + "  }\n"
                 + "}";
             InvokeSmoke(editor, "ApplyScript");
             editor.QueueFree();
@@ -65,6 +80,12 @@ public partial class GameBuilderApp
                 await WaitForUiFrames(1);
             if (!clientReady)
                 throw new TimeoutException("The LAN action-prompt smoke client did not finish loading the hosted project.");
+            ulong transferDeadline = Time.GetTicksMsec() + 10_000UL;
+            while (GetPlayerActor()?.LegacyName != transferTarget.LegacyName
+                && Time.GetTicksMsec() < transferDeadline)
+                await WaitForUiFrames(1);
+            if (GetPlayerActor()?.LegacyName != transferTarget.LegacyName)
+                throw new TimeoutException("The host did not apply the scripted local control transfer.");
             await WaitForUiFrames(180);
             remotePlayer.SetTint(ActionPromptLanSnapshotTint);
             await WaitForUiFrames(30);
@@ -99,6 +120,14 @@ public partial class GameBuilderApp
         try
         {
             await WaitForUiFrames(2);
+            WorldActorNode? expectedRemotePlayer = WorldActorNode.FindPlayerActorAtSlot(_actors, 2);
+            WorldActorNode? expectedTransferTarget = _actors.FirstOrDefault(actor =>
+                !actor.State.IsPlayerControllable
+                && !actor.LegacyName.StartsWith("builtin:", StringComparison.Ordinal));
+            if (expectedRemotePlayer is null || expectedTransferTarget is null)
+                throw new InvalidOperationException("The LAN action-prompt smoke project has no actors for the slot-transfer check.");
+            string expectedRemotePlayerName = expectedRemotePlayer.LegacyName;
+            string expectedTransferTargetName = expectedTransferTarget.LegacyName;
             string? receivedPromptsJson = null;
             _lanSession.PlayerToolTipsReceived += prompts => receivedPromptsJson = prompts.ToJsonString();
             int port = ReadActionPromptSmokePort();
@@ -114,15 +143,22 @@ public partial class GameBuilderApp
             while (Time.GetTicksMsec() < deadline
                 && (!_playMode || !_actionPrompt.Visible || !action1Panel.Visible || !action2Panel.Visible
                     || action1Text.Text != "Remote action" || action2Text.Text != "Remote secondary"
+                    || _behaviorRuntime?.GetPlayerActorAtSlot(1)?.LegacyName != expectedTransferTargetName
+                    || _behaviorRuntime?.GetPlayerActorAtSlot(2)?.LegacyName != expectedRemotePlayerName
                     || GetPlayerActor()?.State.Tint != ActionPromptLanSnapshotTint))
                 await WaitForUiFrames(1);
             if (!_playMode || !_actionPrompt.Visible || !action1Panel.Visible || !action2Panel.Visible
                 || action1Text.Text != "Remote action" || action2Text.Text != "Remote secondary"
+                || _behaviorRuntime?.GetPlayerActorAtSlot(1)?.LegacyName != expectedTransferTargetName
+                || _behaviorRuntime?.GetPlayerActorAtSlot(2)?.LegacyName != expectedRemotePlayerName
                 || GetPlayerActor()?.State.Tint != ActionPromptLanSnapshotTint)
                 throw new TimeoutException(
-                    $"The client did not receive its host-authored prompts and live snapshot: playMode={_playMode}, "
+                    $"The client did not receive host prompts, control slots, and live snapshot: playMode={_playMode}, "
                     + $"isClient={_lanSession.IsClient}, status='{_lanSession.Status}', "
                     + $"promptVisible={_actionPrompt.Visible}, action1='{action1Text.Text}', action2='{action2Text.Text}', "
+                    + $"controlSlot1={_behaviorRuntime?.GetPlayerActorAtSlot(1)?.LegacyName ?? "<none>"}, "
+                    + $"controlSlot2={_behaviorRuntime?.GetPlayerActorAtSlot(2)?.LegacyName ?? "<none>"}, "
+                    + $"expectedSlot1={expectedTransferTargetName}, expectedSlot2={expectedRemotePlayerName}, "
                     + $"playerTint={GetPlayerActor()?.State.Tint}, expectedTint={ActionPromptLanSnapshotTint}, "
                     + $"received={receivedPromptsJson ?? "<none>"}.");
             await WaitForUiFrames(2);
@@ -130,7 +166,11 @@ public partial class GameBuilderApp
             string screenshot = ProjectSettings.GlobalizePath("res://.godot/action-prompts-lan-client-smoke.png");
             if (GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
                 throw new InvalidOperationException("Could not save the LAN client action-prompt screenshot.");
-            GD.Print($"ACTION_PROMPTS_LAN_CLIENT_OK localPlayer={GetPlayerActor()?.LegacyName} action1=true action2=true snapshotTint=true screenshot={screenshot}");
+            GD.Print(
+                $"ACTION_PROMPTS_LAN_CLIENT_OK localPlayer={GetPlayerActor()?.LegacyName} "
+                + $"controlSlot1={_behaviorRuntime?.GetPlayerActorAtSlot(1)?.LegacyName} "
+                + $"controlSlot2={_behaviorRuntime?.GetPlayerActorAtSlot(2)?.LegacyName} "
+                + $"action1=true action2=true snapshotTint=true screenshot={screenshot}");
         }
         catch (System.Exception exception)
         {
