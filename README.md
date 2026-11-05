@@ -33,6 +33,14 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\godot\run.ps1 --path . -- 
 
 The smoke prints `TERRAIN_COPY_SMOKE_OK` and `TERRAIN_EDITOR_SMOKE_OK` on success and writes screenshots under `.godot/`.
 
+To verify behavior-requested camera shake offsets, including camera-local direction and one-frame restoration, run:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\godot\run.ps1 --path . -- res://Assets/StreamingAssets/ExampleGames/Public/sample-platformer.voos --smoke-camera-offset
+```
+
+The smoke prints `CAMERA_OFFSET_SMOKE_OK` on success.
+
 To open the editor without a bundled example, run `pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\godot\run.ps1 --path .` on Windows, or `godot --path .` on other platforms.
 
 Bundled examples are read-only project resources; use **Save as…** to create a writable `.voos` copy.

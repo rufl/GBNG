@@ -104,7 +104,7 @@ public partial class GameBuilderApp : Node3D
     private float _cameraPitch = Mathf.DegToRad(-28f);
     private float _cameraDistance = 26f;
     private Vector3 _cameraTarget = new(0f, 2f, 0f);
-    private Vector3 _temporaryCameraOffset;
+    private Vector3 _pendingCameraOffset;
     private Vector2 _lookAxes;
     private float _mouseWheelRaw;
     private Vector2 _networkLookAxes;
@@ -235,6 +235,8 @@ public partial class GameBuilderApp : Node3D
             RunWorldMapSizeSmoke();
         if (commandLineArgs.Contains("--smoke-camera-effects", StringComparer.Ordinal))
             RunCameraEffectsSmoke();
+        if (commandLineArgs.Contains("--smoke-camera-offset", StringComparer.Ordinal))
+            RunCameraOffsetSmoke();
         if (commandLineArgs.Contains("--smoke-terrain", StringComparer.Ordinal))
             RunTerrainEditorSmokeStandalone();
         if (commandLineArgs.Contains("--smoke-copy-actors", StringComparer.Ordinal))
@@ -245,6 +247,8 @@ public partial class GameBuilderApp : Node3D
 
     public override void _Process(double delta)
     {
+        Vector3 cameraOffset = _pendingCameraOffset;
+        _pendingCameraOffset = Vector3.Zero;
         if (!_playMode)
         {
             if (_cameraFollowingActor)
@@ -267,15 +271,19 @@ public partial class GameBuilderApp : Node3D
         WorldActorNode? cameraActor = GetCameraActor(player);
         if (cameraActor is not null)
         {
-            _camera.GlobalPosition = cameraActor.GlobalPosition + _temporaryCameraOffset;
+            _camera.GlobalPosition = cameraActor.GlobalPosition;
             _camera.GlobalRotation = cameraActor.GlobalRotation;
             _camera.Fov = ReadCameraFieldOfView(cameraActor);
-            return;
+        }
+        else
+        {
+            Vector3 target = player.GlobalPosition + new Vector3(0f, 3f, 0f);
+            _cameraTarget = _cameraTarget.Lerp(target, 1f - Mathf.Exp(-5f * (float)delta));
+            UpdateOrbitCamera();
         }
 
-        Vector3 target = player.GlobalPosition + new Vector3(0f, 3f, 0f) + _temporaryCameraOffset;
-        _cameraTarget = _cameraTarget.Lerp(target, 1f - Mathf.Exp(-5f * (float)delta));
-        UpdateOrbitCamera();
+        if (cameraOffset != Vector3.Zero)
+            _camera.GlobalPosition += _camera.GlobalBasis * cameraOffset;
     }
 
     public override void _PhysicsProcess(double delta)
@@ -2358,7 +2366,7 @@ public partial class GameBuilderApp : Node3D
 
     private void SetTemporaryCameraOffset(Vector3 legacyOffset)
     {
-        _temporaryCameraOffset = CoordinateSpace.ToGodot(legacyOffset);
+        _pendingCameraOffset = CoordinateSpace.ToGodot(legacyOffset);
     }
 
 

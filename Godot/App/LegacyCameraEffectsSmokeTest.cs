@@ -86,6 +86,53 @@ public partial class GameBuilderApp
         GetTree().Quit(exitCode);
     }
 
+    private async void RunCameraOffsetSmoke()
+    {
+        int exitCode = 0;
+        bool wasPlaying = _playMode;
+        try
+        {
+            await WaitForUiFrames(2);
+            if (_document is null)
+                throw new InvalidOperationException("Open a project before running the camera-offset smoke test.");
+
+            SetPlayMode(true);
+            await WaitForUiFrames(3);
+            if (!_playMode || GetPlayerActor() is null)
+                throw new InvalidOperationException("Play mode did not provide a controllable actor for the camera-offset smoke test.");
+
+            Vector3 legacyOffset = new(0.25f, 0f, 0f);
+            Vector3 baseline = _camera.GlobalPosition;
+            Vector3 expectedGlobalOffset = _camera.GlobalBasis * legacyOffset;
+            SetTemporaryCameraOffset(legacyOffset);
+            await WaitForUiFrames(1);
+            float displacementError = (_camera.GlobalPosition - baseline - expectedGlobalOffset).Length();
+            if (displacementError > 0.08f)
+                throw new InvalidOperationException($"A camera-local offset was not applied for one frame (displacement error {displacementError:F4}).");
+
+            await WaitForUiFrames(1);
+            float restorationError = (_camera.GlobalPosition - baseline).Length();
+            if (restorationError > 0.08f)
+                throw new InvalidOperationException($"The camera offset did not clear after one frame (restoration error {restorationError:F4}).");
+
+            GD.Print($"CAMERA_OFFSET_SMOKE_OK oneFrame=true cameraLocal=true displacementError={displacementError:F4} restorationError={restorationError:F4}");
+        }
+        catch (Exception exception)
+        {
+            exitCode = 1;
+            GD.PushError($"CAMERA_OFFSET_SMOKE_FAILED: {exception}");
+        }
+        finally
+        {
+            _pendingCameraOffset = Vector3.Zero;
+            if (!wasPlaying && _playMode)
+                SetPlayMode(false);
+        }
+
+        GetTree().Quit(exitCode);
+    }
+
+
     private static int CountDifferentPixels(Image baseline, Image filtered)
     {
         Vector2I size = baseline.GetSize();
