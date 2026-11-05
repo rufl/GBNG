@@ -536,6 +536,9 @@ the `renderuri` command above. No Poly API key or SDK setup is available.
   published ID in the content folder for later updates.
 * If an existing `WorkshopItemInfo.xml` has no readable published ID, its
   upload stops rather than silently creating a duplicate Workshop item.
+* Workshop queries default to fresh Steam results (`IsSteamCacheEnabled` is
+  false); set it to opt into Steam's cached responses. Tag searches default to
+  matching any required tag (`SearchMatchAnyTag`), consistent with LapinerTools.
 
 
 * Without Steam initialization, Workshop search and upload are unavailable;
