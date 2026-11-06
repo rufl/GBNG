@@ -36,6 +36,32 @@ public class GameBuilderMenu
     BuildInternal(Path.GetFullPath("./build_output"), 0);
   }
 
+  [MenuItem("Game Builder/Build macOS Intel (Rosetta)")]
+  public static void BuildMacOSIntelForRosetta()
+  {
+    if (EditorUserBuildSettings.activeBuildTarget != BuildTarget.StandaloneOSX)
+    {
+      throw new System.InvalidOperationException("Select the macOS Standalone build target before building for Intel (Rosetta).");
+    }
+
+    UnityEditor.Build.OSArchitecture previousArchitecture = UnityEditor.OSXStandalone.UserBuildSettings.architecture;
+    try
+    {
+      UnityEditor.OSXStandalone.UserBuildSettings.architecture = UnityEditor.Build.OSArchitecture.x64;
+      BuildInternal(Path.GetFullPath("./build_output_macos_intel_rosetta"), 0);
+    }
+    finally
+    {
+      UnityEditor.OSXStandalone.UserBuildSettings.architecture = previousArchitecture;
+    }
+  }
+
+  [MenuItem("Game Builder/Build macOS Intel (Rosetta)", true)]
+  static bool BuildMacOSIntelForRosettaValidate()
+  {
+    return EditorUserBuildSettings.activeBuildTarget == BuildTarget.StandaloneOSX;
+  }
+
   static void BuildInternal(string outDir, BuildOptions extraBuildOpts)
   {
     if (Directory.Exists(outDir))

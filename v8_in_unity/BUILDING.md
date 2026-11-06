@@ -62,7 +62,14 @@ Validated in Ubuntu 22.04 x86_64 under WSL2: the script builds the pinned V8 mon
 
 ## macOS
 
-The Xcode projects now use `V8_ROOT` and `V8_OUT` instead of the original developer's absolute paths. Build the same pinned V8 revision and `v8_monolith` for the architecture supported by the target Unity player, then pass those settings to Xcode, for example:
+The checked-in V8 bundle is x86_64-only. The pinned V8 7.1 build configuration
+does not provide a native macOS arm64 toolchain, and the automated build/install
+script does not build macOS artifacts. Keep the pinned V8 revision and ABI;
+do not replace it with an unvalidated V8 release to obtain ARM64 support.
+
+For the existing bundle, build `v8_monolith` and the plugin for x86_64 with the
+same pinned V8 revision, then run the native test target before replacing the
+checked-in bundle. Example:
 
 ```sh
 xcodebuild -project v8_in_unity/xcode_projects/v8_in_unity/v8_in_unity.xcodeproj \
@@ -70,7 +77,12 @@ xcodebuild -project v8_in_unity/xcode_projects/v8_in_unity/v8_in_unity.xcodeproj
   V8_ROOT="$V8_ROOT" V8_OUT="$V8_ROOT/out.gn/x64.release" build
 ```
 
-Run the native test target before replacing the checked-in bundle. The automated build/install script covers Windows x64 and Linux x86_64; macOS bundle architecture and Unity integration still require a macOS smoke run.
+To package a player that can also run on Apple Silicon, select the `StandaloneOSX`
+build target and use `Game Builder > Build macOS Intel (Rosetta)`. This explicitly
+builds an x86_64 app and restores Unity's previous architecture setting afterward.
+Apple Silicon requires Rosetta 2 to run it; behavior scripts are not supported in
+a native ARM64 player. macOS bundle architecture and Unity integration still
+require a macOS smoke run.
 
 ## ABI and artifact validation
 

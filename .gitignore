@@ -46,5 +46,6 @@ Assets/TextMesh Pro.meta
 
 # Ignore build destination
 /build_output
+/build_output_macos_intel_rosetta
 
 unity-asset-deps.txt
