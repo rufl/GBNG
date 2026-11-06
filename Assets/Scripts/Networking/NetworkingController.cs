@@ -69,6 +69,7 @@ public class NetworkingController : Photon.PunBehaviour
   string directHostShareAddress;
   string directHostShareAddressAddress;
   ushort directHostShareAddressPort;
+  byte[] directHostPasswordBytes;
 
   public static string SteamIdPlayerProperty = "SteamID";
   public static string SteamProfileNamePlayerProperty = "SteamProfileName";
@@ -665,6 +666,12 @@ public class NetworkingController : Photon.PunBehaviour
 #else
     EnsureDirectNetworkManager();
     GameBuilderApplication.GameOptions options = GameBuilderApplication.CurrentGameOptions;
+    if (!DirectHostPassword.TryEncode(options.directHostPassword, out directHostPasswordBytes))
+    {
+      OnFatalError("Host passwords must be empty or 8–128 UTF-8 bytes.");
+      return;
+    }
+    directNetworkManager.NetworkConfig.ConnectionData = directHostPasswordBytes;
     if (string.IsNullOrEmpty(options.directHostMigrationSessionId))
     {
       DirectSessionDirectory.ClearMigrationTicket();
@@ -861,6 +868,9 @@ public class NetworkingController : Photon.PunBehaviour
         directRpcRouter = directNetworkManager.gameObject.AddComponent<DirectHostRpcRouter>();
       }
     }
+    if (!directNetworkManager.IsListening)
+      directNetworkManager.NetworkConfig.ConnectionApproval = true;
+    directNetworkManager.ConnectionApprovalCallback = ApproveDirectHostConnection;
     PhotonView.InitializeSceneViews();
     DirectHostDiscovery.EnsureAvailable();
     DirectHostPortMapper.EnsureAvailable();
@@ -869,6 +879,19 @@ public class NetworkingController : Photon.PunBehaviour
     DirectHostUdpRelay.EnsureAvailable();
 #endif
   }
+  void ApproveDirectHostConnection(
+    NetworkManager.ConnectionApprovalRequest request,
+    NetworkManager.ConnectionApprovalResponse response)
+  {
+    response.Approved = request.ClientNetworkId == NetworkManager.ServerClientId
+      || DirectHostPassword.Matches(directHostPasswordBytes, request.Payload);
+    response.CreatePlayerObject = false;
+    response.Pending = false;
+    response.Reason = response.Approved
+      ? string.Empty
+      : "The shared host password is incorrect.";
+  }
+
 
   void RegisterDirectNetworkHandlers()
   {
@@ -1648,6 +1671,7 @@ public class NetworkingController : Photon.PunBehaviour
     GameBuilderApplication.GameOptions options = new GameBuilderApplication.GameOptions
     {
       displayName = migrationName,
+      directHostPassword = current.directHostPassword,
       directHostMigrationName = migrationName,
       playOptions = new GameBuilderApplication.PlayOptions
       {
@@ -2502,6 +2526,7 @@ public class NetworkingController : Photon.PunBehaviour
       joinPort = currentOptions.joinPort,
       directHostUsesIpv6 = currentOptions.directHostUsesIpv6,
       trustedHostCertificatePem = currentOptions.trustedHostCertificatePem,
+      directHostPassword = currentOptions.directHostPassword,
       directRelaySessionId = currentOptions.directRelaySessionId,
       directRelayAddress = currentOptions.directRelayAddress,
       directRelayPort = currentOptions.directRelayPort,

@@ -269,6 +269,16 @@ falls back to `::1`, which is only reachable from the host itself.
   Public directory listings carry each game's zipped JPEG thumbnail when it
   fits the 16 KiB limit; missing or oversized thumbnails use the generic image.
 
+Direct-host sessions may require an optional shared password. Hosts choose it
+when creating the game; players joining from LAN discovery, public listings, or
+a direct invite are prompted to enter it. Leave it blank when the host has not
+set one. Passwords must be empty or 8–128 UTF-8 bytes. The host checks the
+password before admitting a remote connection; it travels inside the encrypted
+Unity Transport session authenticated by the host's pinned certificate.
+It is never included in an invite, public listing, or directory record; share it
+separately with players. This is shared-secret access control, not account
+identity: player names remain client-supplied.
+
 #### Self-hosted public session directory
 
 The dependency-free directory service is `tools/public-session-directory/server.py`.

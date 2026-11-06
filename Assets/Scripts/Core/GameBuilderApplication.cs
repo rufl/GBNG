@@ -141,6 +141,8 @@ public class GameBuilderApplication
     public bool directHostUsesIpv6;
     // Public host certificate pin distributed to joining clients; never a private key.
     public string trustedHostCertificatePem;
+    // Optional shared password for player-hosted sessions; never included in invites or listings.
+    public string directHostPassword;
     // Public relay address and session identity; the relay carries encrypted UTP datagrams.
     public string directRelaySessionId;
     public string directRelayAddress;

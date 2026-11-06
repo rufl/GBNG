@@ -295,6 +295,7 @@ public class MultiplayerMenu : ThumbnailMenu
   }
 #else
   GameBuilderSceneController scenes;
+  DynamicPopup popups;
   LoadingScreen loadingScreen;
   public static string LastJoinedRoomPrefsKey = "LAST_DIRECT_HOST_ADDRESS";
   int lastDiscoveryRevision = -1;
@@ -308,6 +309,7 @@ public class MultiplayerMenu : ThumbnailMenu
     searchClear.onClick.AddListener(() => searchField.text = "");
     Util.FindIfNotSet(this, ref scenes);
     Util.FindIfNotSet(this, ref loadingScreen);
+    Util.FindIfNotSet(this, ref popups);
     joinCodeButton.onClick.AddListener(JoinMultiplayerPopup);
     refreshButton.onClick.AddListener(Refresh);
     joinMultiplayerPopup.confirmWithInputEvent = JoinMultiplayer;
@@ -487,40 +489,82 @@ public class MultiplayerMenu : ThumbnailMenu
       ? DirectHostTls.CreateRelayInvite(
         host.Address, host.Port, host.ServerCertificatePem, relayAddress, relayPort, relaySessionId)
       : DirectHostTls.CreateInvite(host.Address, host.Port, host.ServerCertificatePem);
-    PlayerPrefs.SetString(LastJoinedRoomPrefsKey, invite);
-    PlayerPrefs.Save();
-    var options = new GameBuilderApplication.GameOptions
+    AskForJoinPassword(password =>
     {
-      joinAddress = host.Address,
-      joinPort = host.Port,
-      directHostUsesIpv6 = System.Net.IPAddress.TryParse(host.Address, out System.Net.IPAddress parsedPublicAddress)
-        && parsedPublicAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6,
-      trustedHostCertificatePem = host.ServerCertificatePem,
-      directRelaySessionId = relaySessionId,
-      directRelayAddress = relayAddress,
-      directRelayPort = relayPort,
-      playOptions = new GameBuilderApplication.PlayOptions { isMultiplayer = true }
-    };
-    loadingScreen.ShowAndDo(() => scenes.LoadMainSceneAsync(options));
+      PlayerPrefs.SetString(LastJoinedRoomPrefsKey, invite);
+      PlayerPrefs.Save();
+      var options = new GameBuilderApplication.GameOptions
+      {
+        joinAddress = host.Address,
+        joinPort = host.Port,
+        directHostUsesIpv6 = System.Net.IPAddress.TryParse(host.Address, out System.Net.IPAddress parsedPublicAddress)
+          && parsedPublicAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6,
+        trustedHostCertificatePem = host.ServerCertificatePem,
+        directHostPassword = password,
+        directRelaySessionId = relaySessionId,
+        directRelayAddress = relayAddress,
+        directRelayPort = relayPort,
+        playOptions = new GameBuilderApplication.PlayOptions { isMultiplayer = true }
+      };
+      loadingScreen.ShowAndDo(() => scenes.LoadMainSceneAsync(options));
+    });
   }
 
   void OpenNew()
   {
-    var options = new GameBuilderApplication.GameOptions
-    {
-      playOptions = new GameBuilderApplication.PlayOptions { isMultiplayer = true }
-    };
-    loadingScreen.ShowAndDo(() => scenes.RestartAndLoadMinimalScene(options));
+    AskForHostPassword(false);
   }
 
   void OpenNewIpv6()
   {
-    var options = new GameBuilderApplication.GameOptions
-    {
-      directHostUsesIpv6 = true,
-      playOptions = new GameBuilderApplication.PlayOptions { isMultiplayer = true }
-    };
-    loadingScreen.ShowAndDo(() => scenes.RestartAndLoadMinimalScene(options));
+    AskForHostPassword(true);
+  }
+
+  void AskForHostPassword(bool useIpv6, string initialPassword = "", string prompt = null)
+  {
+    popups.ShowPasswordInput(
+      prompt ?? "Choose a shared password for invited players. Leave it blank for an open game. Share it separately from the invite.",
+      initialPassword,
+      password =>
+      {
+        if (!DirectHostPassword.TryEncode(password, out _))
+        {
+          AskForHostPassword(
+            useIpv6,
+            password,
+            "Password must be empty or 8–128 UTF-8 bytes. Choose a shared password for invited players; leave it blank for an open game.");
+          return;
+        }
+        popups.AskHowToPlayMultiplayer(playOptions =>
+        {
+          var options = new GameBuilderApplication.GameOptions
+          {
+            directHostUsesIpv6 = useIpv6,
+            directHostPassword = password,
+            playOptions = playOptions
+          };
+          loadingScreen.ShowAndDo(() => scenes.RestartAndLoadMinimalScene(options));
+        });
+      });
+  }
+
+  void AskForJoinPassword(System.Action<string> onPassword, string initialPassword = "", string prompt = null)
+  {
+    popups.ShowPasswordInput(
+      prompt ?? "Enter the shared host password. Leave it blank if the host has not set one.",
+      initialPassword,
+      password =>
+      {
+        if (!DirectHostPassword.TryEncode(password, out _))
+        {
+          AskForJoinPassword(
+            onPassword,
+            password,
+            "Password must be empty or 8–128 UTF-8 bytes. Enter the shared host password, or leave it blank if none was set.");
+          return;
+        }
+        onPassword(password);
+      });
   }
 
 
@@ -676,19 +720,23 @@ public class MultiplayerMenu : ThumbnailMenu
     }
 
     string invite = inviteText.Trim();
-    if (!string.IsNullOrEmpty(relaySessionId))
+    CancelMultiplayerPopup();
+    AskForJoinPassword(password =>
     {
-      JoinMultiplayerByAddress(
-        address, port, certificatePem, invite, relayAddress, relayPort, relaySessionId);
-      return;
-    }
-    if (System.Net.IPAddress.TryParse(address, out System.Net.IPAddress parsedAddress))
-    {
-      JoinMultiplayerByAddress(parsedAddress.ToString(), port, certificatePem, invite, null, 0, null);
-      return;
-    }
+      if (!string.IsNullOrEmpty(relaySessionId))
+      {
+        JoinMultiplayerByAddress(
+          address, port, certificatePem, invite, relayAddress, relayPort, relaySessionId, password);
+        return;
+      }
+      if (System.Net.IPAddress.TryParse(address, out System.Net.IPAddress parsedAddress))
+      {
+        JoinMultiplayerByAddress(parsedAddress.ToString(), port, certificatePem, invite, null, 0, null, password);
+        return;
+      }
 
-    StartCoroutine(ResolveAndJoinHost(address, port, certificatePem, invite));
+      StartCoroutine(ResolveAndJoinHost(address, port, certificatePem, invite, password));
+    });
   }
 
 
@@ -696,7 +744,8 @@ public class MultiplayerMenu : ThumbnailMenu
     string hostName,
     ushort port,
     string certificatePem,
-    string originalInvite)
+    string originalInvite,
+    string sharedPassword)
   {
     System.Threading.Tasks.Task<System.Net.IPAddress[]> resolution;
     try
@@ -723,7 +772,8 @@ public class MultiplayerMenu : ThumbnailMenu
       Util.LogError($"Host '{hostName}' has no IPv4 or IPv6 address.");
       yield break;
     }
-    JoinMultiplayerByAddress(resolvedAddress.ToString(), port, certificatePem, originalInvite, null, 0, null);
+    JoinMultiplayerByAddress(
+      resolvedAddress.ToString(), port, certificatePem, originalInvite, null, 0, null, sharedPassword);
   }
 
   void JoinMultiplayerByAddress(
@@ -733,7 +783,8 @@ public class MultiplayerMenu : ThumbnailMenu
     string savedInvite,
     string relayAddress,
     ushort relayPort,
-    string relaySessionId)
+    string relaySessionId,
+    string sharedPassword)
   {
     PlayerPrefs.SetString(LastJoinedRoomPrefsKey, savedInvite);
     PlayerPrefs.Save();
@@ -745,6 +796,7 @@ public class MultiplayerMenu : ThumbnailMenu
       directHostUsesIpv6 = System.Net.IPAddress.TryParse(address, out System.Net.IPAddress parsedDirectAddress)
         && parsedDirectAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6,
       trustedHostCertificatePem = certificatePem,
+      directHostPassword = sharedPassword,
       directRelaySessionId = relaySessionId,
       directRelayAddress = relayAddress,
       directRelayPort = relayPort,

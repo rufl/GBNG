@@ -29,13 +29,14 @@ public class DynamicPopup : MonoBehaviour
 
     // If not null, this will be polled every frame to decide if the popup should keep showing or not.
     public System.Func<bool> keepShowing;
+    public List<PopupButton.Params> buttons;
 
     public bool isCancellable = false;
 
     public System.Action onCancel = null;
 
-    public List<PopupButton.Params> buttons;
     public string textFieldText = null;  // null means no text field; otherwise, it's the text in it.
+    public bool passwordField = false;
 
     public bool fullWidthButtons = false;
 
@@ -150,6 +151,8 @@ public class DynamicPopup : MonoBehaviour
       {
         var obj = GameObject.Instantiate(popupMessageUI.textFieldPrefab, popupMessageUI.buttonParent);
         textFieldInstance = obj.GetComponent<TMPro.TMP_InputField>();
+        if (currentPopup.passwordField)
+          textFieldInstance.contentType = TMPro.TMP_InputField.ContentType.Password;
         textFieldInstance.text = currentPopup.textFieldText;
       }
 
@@ -215,15 +218,29 @@ public class DynamicPopup : MonoBehaviour
     buttons.Add(new PopupButton.Params { getLabel = () => "Cancel", onClick = () => onCancelAction.Invoke() });
     Show(new Popup { getMessage = () => message, buttons = buttons, textFieldText = inputText, isCancellable = true });
   }
+  public void ShowPasswordInput(
+    string message,
+    string inputText,
+    System.Action<string> onOkAction,
+    System.Action onCancelAction = null)
+  {
+    onCancelAction = onCancelAction ?? (() => { });
+    var buttons = new List<PopupButton.Params>();
+    buttons.Add(new PopupButton.Params { getLabel = () => "OK", onClick = () => onOkAction.Invoke(GetTextFieldText()) });
+    buttons.Add(new PopupButton.Params { getLabel = () => "Cancel", onClick = () => onCancelAction.Invoke() });
+    Show(new Popup
+    {
+      getMessage = () => message,
+      buttons = buttons,
+      textFieldText = inputText,
+      passwordField = true,
+      isCancellable = true
+    });
+  }
 
   private string GetTextFieldText()
   {
-    if (textFieldInstance != null)
-    {
-      var field = GameObject.FindObjectOfType<TMPro.TMP_InputField>();
-      return field.text;
-    }
-    return null;
+    return textFieldInstance == null ? null : textFieldInstance.text;
   }
 
   public void Show(Popup popup)
