@@ -170,15 +170,15 @@ When the main window loses focus, the app caps its frame rate at 30 FPS to reduc
 
 In play mode, legacy player tooltips for `Action1` and `Action2` render as bottom-center LMB/RMB prompts for the local player. LAN hosts forward each player's prompts to the matching client; stopping play clears them.
 Behavior APIs for the controlled player and camera actor, plus temporary camera offsets, resolve against the local LAN player slot; clients do not default to the first player actor. `TransferPlayerControl` migrates only that local slot, preserves other actors' controllable flags, keeps remote input slots stable when the target actor appears elsewhere in the actor list, and broadcasts the resulting slot map reliably to ready LAN peers.
-Actor float setter field 0 updates both saved bounciness and the live Godot physics material immediately. Actor Boolean behavior accessors preserve the legacy getter/setter IDs: setter field 16 controls speculative continuous collision detection, field 17 controls sticky desired velocity, and field 18 remains getter-only. `keepUpright` locks angular X/Z while leaving Y rotation available.
+Actor float setter field 0 updates both saved bounciness and the live Godot physics material immediately. Boolean field 15 applies concave triangle-mesh collision to static, solid actors; actors with physics enabled or non-solid actors retain the convex box fallback. Boolean fields 16, 17, and 18 preserve the legacy mapping: speculative continuous collision detection, sticky desired velocity, and a getter-only field, respectively. `keepUpright` locks angular X/Z while leaving Y rotation available.
 
-To exercise live bounciness updates, Boolean setter IDs, `keepUpright`, and continuous collision detection:
+To exercise concave-collider mode transitions, live bounciness updates, Boolean setter IDs, `keepUpright`, and continuous collision detection:
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\godot\run.ps1 --path . -- res://Assets/StreamingAssets/ExampleGames/Public/sample-platformer.voos --smoke-actor-fields
 ```
 
-The smoke prints `ACTOR_FIELD_SMOKE_OK` with `bouncinessLive=true`.
+The smoke prints `ACTOR_FIELD_SMOKE_OK` with `concaveColliderLive=true` and `bouncinessLive=true`.
 
 The visual card library supports text/category filtering, card-icon previews, hidden-card filtering, and drag-and-drop deck assignment. The canvas edits panels, card uses, notes, and panel layout while preserving legacy `.voos` references. A card manager creates, copies, edits, and deletes embedded cards and imports/exports legacy card-pack folders; conflicting IDs can be overwritten, duplicated, or canceled.
 

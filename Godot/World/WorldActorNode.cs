@@ -20,6 +20,10 @@ public partial class WorldActorNode : RigidBody3D
     private HashSet<ulong> _previousTriggerOverlapIds = new();
     private HashSet<ulong> _currentTriggerOverlapIds = new();
     private CollisionShape3D? _bodyCollider;
+    private BoxShape3D? _bodyBoxColliderShape;
+    private Vector3 _bodyBoxColliderPosition;
+    private CollisionShape3D? _triggerCollider;
+    private bool? _lastConcaveColliderMode;
     private Area3D? _triggerArea;
     private bool _hasLegacyCollisionHandlers;
     private ulong _triggerStartPhysicsFrame;
@@ -246,6 +250,7 @@ public partial class WorldActorNode : RigidBody3D
             }
         }
         CollisionMask = !hasTransformParent && State.IsSolid ? 3u : 0u;
+        UpdateBodyColliderShape();
         if (_renderableRoot is not null)
             _renderableRoot.Visible = !(_playMode && State.HideInPlayMode);
     }
@@ -584,11 +589,13 @@ public partial class WorldActorNode : RigidBody3D
         bodySize.X = Mathf.Max(bodySize.X, 0.05f);
         bodySize.Y = Mathf.Max(bodySize.Y, 0.05f);
         bodySize.Z = Mathf.Max(bodySize.Z, 0.05f);
+        _bodyBoxColliderShape = new BoxShape3D { Size = bodySize };
+        _bodyBoxColliderPosition = actorBounds.Position + actorBounds.Size * 0.5f;
         var collider = new CollisionShape3D
         {
             Name = "ActorCollision",
-            Shape = new BoxShape3D { Size = bodySize },
-            Position = actorBounds.Position + actorBounds.Size * 0.5f
+            Shape = _bodyBoxColliderShape,
+            Position = _bodyBoxColliderPosition
         };
         _bodyCollider = collider;
         AddChild(collider);
@@ -603,9 +610,63 @@ public partial class WorldActorNode : RigidBody3D
         AddChild(_groundProbe);
     }
 
+    private void UpdateBodyColliderShape()
+    {
+        if (_bodyCollider is null || _bodyBoxColliderShape is null || State is null)
+            return;
+
+        bool useConcaveCollider = State.UseConcaveCollider && State.IsSolid && !State.EnablePhysics;
+        if (_lastConcaveColliderMode == useConcaveCollider)
+            return;
+
+        ConcavePolygonShape3D? concaveShape = useConcaveCollider ? CreateConcaveBodyShape() : null;
+        if (concaveShape is null)
+        {
+            _bodyCollider.Shape = _bodyBoxColliderShape;
+            _bodyCollider.Position = _bodyBoxColliderPosition;
+        }
+        else
+        {
+            _bodyCollider.Shape = concaveShape;
+            _bodyCollider.Position = Vector3.Zero;
+        }
+
+        if (_triggerCollider is not null)
+        {
+            _triggerCollider.Shape = _bodyBoxColliderShape;
+            _triggerCollider.Position = _bodyBoxColliderPosition;
+        }
+        _lastConcaveColliderMode = useConcaveCollider;
+    }
+
+    private ConcavePolygonShape3D? CreateConcaveBodyShape()
+    {
+        List<Vector3> faces = new();
+        Transform3D actorInverse = GlobalTransform.AffineInverse();
+        foreach (Node node in FindChildren("*", "MeshInstance3D", true, false))
+        {
+            if (node is not MeshInstance3D meshInstance || meshInstance.Mesh is not Mesh mesh)
+                continue;
+
+            Vector3[] meshFaces = mesh.GetFaces();
+            if (meshFaces.Length == 0)
+                continue;
+            Transform3D meshToActor = actorInverse * meshInstance.GlobalTransform;
+            foreach (Vector3 faceVertex in meshFaces)
+                faces.Add(meshToActor * faceVertex);
+        }
+
+        if (faces.Count < 3)
+            return null;
+
+        var shape = new ConcavePolygonShape3D { BackfaceCollision = true };
+        shape.SetFaces(faces.ToArray());
+        return shape;
+    }
+
     private void EnsureTriggerArea()
     {
-        if (_triggerArea is not null || _bodyCollider?.Shape is null)
+        if (_triggerArea is not null || _bodyCollider is null || _bodyBoxColliderShape is null)
             return;
 
         _triggerArea = new Area3D
@@ -619,12 +680,14 @@ public partial class WorldActorNode : RigidBody3D
         _triggerArea.AreaEntered += OnTriggerAreaEntered;
         _triggerArea.AreaExited += OnTriggerAreaExited;
         AddChild(_triggerArea);
-        _triggerArea.AddChild(new CollisionShape3D
+        var triggerCollider = new CollisionShape3D
         {
             Name = "ActorTriggerShape",
-            Shape = _bodyCollider.Shape,
-            Position = _bodyCollider.Position
-        });
+            Shape = _bodyBoxColliderShape,
+            Position = _bodyBoxColliderPosition
+        };
+        _triggerCollider = triggerCollider;
+        _triggerArea.AddChild(triggerCollider);
     }
 
     private static void ApplyTint(Node root, Color tint)

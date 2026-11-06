@@ -26,10 +26,36 @@ public partial class GameBuilderApp
 
             WorldActorNode actor = _actors.FirstOrDefault(candidate =>
                     candidate.State.TransformParent.Length == 0
-                    && !candidate.LegacyName.StartsWith("builtin:", StringComparison.Ordinal))
-                ?? throw new InvalidOperationException("The project has no root actor for the actor-field smoke.");
+                    && !candidate.LegacyName.StartsWith("builtin:", StringComparison.Ordinal)
+                    && candidate.FindChildren("*", "MeshInstance3D", true, false).OfType<MeshInstance3D>()
+                        .Any(meshInstance => meshInstance.Mesh is Mesh mesh && mesh.GetFaces().Length >= 3))
+                ?? throw new InvalidOperationException("The project has no root actor with a triangle mesh for the actor-field smoke.");
             int actorId = _actors.IndexOf(actor);
             LegacyBehaviorRuntime runtime = _behaviorRuntime;
+            CollisionShape3D bodyCollider = actor.GetNode<CollisionShape3D>("ActorCollision");
+            actor.State.WriteBool("isSolid", true);
+            actor.State.WriteBool("enablePhysics", false);
+            actor.State.WriteBool("useConcaveCollider", false);
+            actor.ApplyLegacyPhysicsSettings();
+            runtime.SetActorBoolean(actorId, 15, true);
+            if (!actor.State.UseConcaveCollider
+                || !runtime.GetActorBoolean(actorId, 15)
+                || bodyCollider.Shape is not ConcavePolygonShape3D concaveShape
+                || concaveShape.GetFaces().Length < 3)
+                throw new InvalidOperationException("Boolean setter field 15 did not apply a triangle-mesh collider to a static solid actor.");
+            runtime.SetActorBoolean(actorId, 2, true);
+            if (bodyCollider.Shape is ConcavePolygonShape3D)
+                throw new InvalidOperationException("Enabling actor physics did not restore a convex-safe collider mode.");
+            runtime.SetActorBoolean(actorId, 2, false);
+            if (bodyCollider.Shape is not ConcavePolygonShape3D)
+                throw new InvalidOperationException("Disabling actor physics did not restore its requested static concave collider.");
+            runtime.SetActorBoolean(actorId, 1, false);
+            if (bodyCollider.Shape is ConcavePolygonShape3D)
+                throw new InvalidOperationException("A non-solid actor retained a concave collider.");
+            runtime.SetActorBoolean(actorId, 1, true);
+            runtime.SetActorBoolean(actorId, 15, false);
+            if (actor.State.UseConcaveCollider || bodyCollider.Shape is ConcavePolygonShape3D)
+                throw new InvalidOperationException("Disabling useConcaveCollider did not restore the convex box fallback.");
 
             PhysicsMaterial material = actor.PhysicsMaterialOverride
                 ?? throw new InvalidOperationException("The root actor has no physics material override.");
@@ -73,7 +99,7 @@ public partial class GameBuilderApp
             if (actor.AxisLockAngularX || actor.AxisLockAngularY || actor.AxisLockAngularZ)
                 throw new InvalidOperationException("Disabling keepUpright did not release its angular axis locks.");
 
-            GD.Print("ACTOR_FIELD_SMOKE_OK bouncinessLive=true booleanSetterIds=true speculativeCcd=true keepUpright=true");
+            GD.Print("ACTOR_FIELD_SMOKE_OK concaveColliderLive=true bouncinessLive=true booleanSetterIds=true speculativeCcd=true keepUpright=true");
         }
         catch (Exception exception)
         {
