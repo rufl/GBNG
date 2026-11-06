@@ -112,7 +112,7 @@ public partial class GameBuilderApp
         _terrainSelectionOriginCell = new Vector3I(minX, minY, minZ);
         _terrainSelectionData = selectionData;
         _terrainSelectionCellCount = selectedCellCount;
-        _terrainSelectionPreview = LegacyTerrainNode.CreatePreview(selectionData);
+        _terrainSelectionPreview = LegacyTerrainNode.CreatePreview(selectionData, LoadCustomTerrainStyleTextures());
         _terrainSelectionPreview.Name = "TerrainSelectionPreview";
         _world.AddChild(_terrainSelectionPreview);
         PositionTerrainPreview(_terrainSelectionPreview, selectionData, _terrainSelectionOriginCell);
@@ -133,7 +133,7 @@ public partial class GameBuilderApp
         CancelTerrainCopy();
         _terrainCopyActive = true;
         _terrainCopyTargetOrigin = _terrainSelectionOriginCell;
-        _terrainCopyPreview = LegacyTerrainNode.CreatePreview(_terrainSelectionData);
+        _terrainCopyPreview = LegacyTerrainNode.CreatePreview(_terrainSelectionData, LoadCustomTerrainStyleTextures());
         _world.AddChild(_terrainCopyPreview);
         PositionTerrainPreview(_terrainCopyPreview, _terrainSelectionData, _terrainCopyTargetOrigin);
         RefreshTerrainSelectionStatus();

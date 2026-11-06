@@ -12,6 +12,7 @@ public partial class GameBuilderApp
 {
     private readonly HashSet<string> _unsharedAssetUris = new(StringComparer.Ordinal);
     private readonly Dictionary<long, string> _pendingAssetUrisByTransferId = new();
+    private readonly Dictionary<long, Action> _pendingAssetSyncCompletions = new();
     private string? _retainedHostAssetProjectPath;
     private string? _retainedHostAssetsSourcePath;
     private void ResetCollaborativeSnapshot()
@@ -278,11 +279,16 @@ public partial class GameBuilderApp
 
         LegacyTerrainData? terrainData = LegacyTerrainData.Decode(_document?.GridState);
         if (terrainData is null)
+        {
+            RefreshTerrainStylePicker();
             return;
-        _terrain = LegacyTerrainNode.Create(terrainData);
+        }
+        _terrain = LegacyTerrainNode.Create(terrainData, LoadCustomTerrainStyleTextures());
         _world.AddChild(_terrain);
         if (_stageGroundMesh is not null)
             _stageGroundMesh.Visible = false;
+        RefreshTerrainStylePicker();
+
     }
 
     private void RebuildBehaviorRuntimeAfterCollaborativeEdit()
@@ -359,10 +365,15 @@ public partial class GameBuilderApp
             if (_document is null)
                 throw new InvalidOperationException("No project is open to receive shared assets.");
             MergeAssetBundleIntoEditor(bundleProjectPath);
+            Action? completion = null;
             if (_lanSession.ConfirmAssetBundleApplied(originPeerId, originTransferId)
                 && _pendingAssetUrisByTransferId.Remove(originTransferId, out string? uri))
+            {
                 _unsharedAssetUris.Remove(uri);
+                _pendingAssetSyncCompletions.Remove(originTransferId, out completion);
+            }
             _status.Text = "Shared project assets synchronized.";
+            completion?.Invoke();
         }
         catch (Exception exception)
         {
@@ -394,6 +405,7 @@ public partial class GameBuilderApp
             _catalog.CopyProjectAssets(bundleProjectPath, _document.SourcePath);
             _catalog.LoadProjectAssets(_document.SourcePath);
         }
+        RefreshTerrainStylePresentation();
         PopulateAssetPicker();
     }
 
@@ -410,6 +422,7 @@ public partial class GameBuilderApp
             return;
         _unsharedAssetUris.Clear();
         _pendingAssetUrisByTransferId.Clear();
+        _pendingAssetSyncCompletions.Clear();
     }
     private void OnClientProjectReady(long peerId)
     {

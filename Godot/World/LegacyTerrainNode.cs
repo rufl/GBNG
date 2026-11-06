@@ -36,20 +36,36 @@ public partial class LegacyTerrainNode : Node3D
     private MeshInstance3D? _meshInstance;
     private StaticBody3D? _body;
     private CollisionShape3D? _collisionShape;
+    private IReadOnlyDictionary<ushort, Texture2D>? _customStyleTextures;
     private bool _dirty;
     private bool _preview;
 
     private LegacyTerrainNode() { }
 
-    public static LegacyTerrainNode Create(LegacyTerrainData data)
+    public static LegacyTerrainNode Create(
+        LegacyTerrainData data,
+        IReadOnlyDictionary<ushort, Texture2D>? customStyleTextures = null)
     {
-        var terrain = new LegacyTerrainNode { Name = "Terrain", _data = data };
+        var terrain = new LegacyTerrainNode
+        {
+            Name = "Terrain",
+            _data = data,
+            _customStyleTextures = customStyleTextures
+        };
         terrain.Build();
         return terrain;
     }
-    public static LegacyTerrainNode CreatePreview(LegacyTerrainData data)
+    public static LegacyTerrainNode CreatePreview(
+        LegacyTerrainData data,
+        IReadOnlyDictionary<ushort, Texture2D>? customStyleTextures = null)
     {
-        var terrain = new LegacyTerrainNode { Name = "TerrainCopyPreview", _data = data, _preview = true };
+        var terrain = new LegacyTerrainNode
+        {
+            Name = "TerrainCopyPreview",
+            _data = data,
+            _preview = true,
+            _customStyleTextures = customStyleTextures
+        };
         terrain.Build();
         return terrain;
     }
@@ -161,6 +177,26 @@ public partial class LegacyTerrainNode : Node3D
             return;
         _dirty = false;
         Build();
+    }
+    public void SetCustomStyleTextures(IReadOnlyDictionary<ushort, Texture2D>? customStyleTextures)
+    {
+        bool changed = false;
+        foreach (ushort style in _materials.Keys)
+        {
+            Texture2D? previous = null;
+            Texture2D? current = null;
+            bool hadPrevious = _customStyleTextures is not null
+                && _customStyleTextures.TryGetValue(style, out previous);
+            bool hasCurrent = customStyleTextures is not null
+                && customStyleTextures.TryGetValue(style, out current);
+            if (hadPrevious != hasCurrent || (hadPrevious && !ReferenceEquals(previous, current)))
+            {
+                changed = true;
+                break;
+            }
+        }
+        _customStyleTextures = customStyleTextures;
+        _dirty |= changed;
     }
 
     public string Encode() => _data.Encode();
@@ -496,12 +532,15 @@ public partial class LegacyTerrainNode : Node3D
         var surface = new SurfaceTool();
         surface.Begin(Mesh.PrimitiveType.Triangles);
         _surfaces.Add(style, surface);
-        _materials.Add(style, CreateMaterial(style, _preview));
+        _materials.Add(style, CreateMaterial(style, _preview, _customStyleTextures));
         return surface;
     }
 
 
-    private static StandardMaterial3D CreateMaterial(ushort style, bool preview)
+    private static StandardMaterial3D CreateMaterial(
+        ushort style,
+        bool preview,
+        IReadOnlyDictionary<ushort, Texture2D>? customStyleTextures)
     {
         StandardMaterial3D material;
         if (style < Palette.Length)
@@ -515,10 +554,27 @@ public partial class LegacyTerrainNode : Node3D
         }
         else
         {
-            string? textureName = style < StyleTextures.Length ? StyleTextures[style] : null;
-            if (textureName is null)
+            Texture2D? texture = null;
+            if (customStyleTextures is not null)
+                customStyleTextures.TryGetValue(style, out texture);
+            if (texture is null)
             {
-                GD.PushWarning($"Legacy custom terrain style {style} has no local texture; the original project stores that texture in an external workshop item.");
+                string? textureName = style < StyleTextures.Length ? StyleTextures[style] : null;
+                if (textureName is not null)
+                {
+                    bool organicStyle = style is >= 18 and <= 26 or 28;
+                    string directory = organicStyle
+                        ? "res://Assets/GameAssets/Environment/OrganicStyleTextures/"
+                        : "res://Assets/GameAssets/Environment/NonOrganicStyleTextures/";
+                    texture = ResourceLoader.Load<Texture2D>(directory + textureName);
+                    if (texture is null)
+                        GD.PushWarning($"Terrain style {style} texture is missing: {directory + textureName}.");
+                }
+            }
+
+            if (texture is null)
+            {
+                GD.PushWarning($"Terrain style {style} has no local texture. Select it in Terrain and import a local image to restore it.");
                 material = new StandardMaterial3D
                 {
                     AlbedoColor = new Color("#f68946"),
@@ -528,34 +584,16 @@ public partial class LegacyTerrainNode : Node3D
             }
             else
             {
-                bool organicStyle = style is >= 18 and <= 26 or 28;
-                string directory = organicStyle
-                    ? "res://Assets/GameAssets/Environment/OrganicStyleTextures/"
-                    : "res://Assets/GameAssets/Environment/NonOrganicStyleTextures/";
-                string path = directory + textureName;
-                Texture2D? texture = ResourceLoader.Load<Texture2D>(path);
-                if (texture is null)
+                material = new StandardMaterial3D
                 {
-                    GD.PushWarning($"Terrain style {style} texture is missing: {path}.");
-                    material = new StandardMaterial3D
-                    {
-                        AlbedoColor = Colors.White,
-                        CullMode = BaseMaterial3D.CullModeEnum.Disabled
-                    };
-                }
-                else
-                {
-                    material = new StandardMaterial3D
-                    {
-                        AlbedoTexture = texture,
-                        AlbedoColor = Colors.White,
-                        Roughness = style == 26 ? 0.35f : 0.82f,
-                        Uv1Triplanar = true,
-                        Uv1TriplanarSharpness = 1f,
-                        TextureFilter = BaseMaterial3D.TextureFilterEnum.LinearWithMipmapsAnisotropic,
-                        CullMode = BaseMaterial3D.CullModeEnum.Disabled
-                    };
-                }
+                    AlbedoTexture = texture,
+                    AlbedoColor = Colors.White,
+                    Roughness = style == 26 ? 0.35f : 0.82f,
+                    Uv1Triplanar = true,
+                    Uv1TriplanarSharpness = 1f,
+                    TextureFilter = BaseMaterial3D.TextureFilterEnum.LinearWithMipmapsAnisotropic,
+                    CullMode = BaseMaterial3D.CullModeEnum.Disabled
+                };
             }
         }
 
@@ -567,4 +605,5 @@ public partial class LegacyTerrainNode : Node3D
         }
         return material;
     }
+
 }

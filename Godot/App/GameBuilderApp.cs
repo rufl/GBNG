@@ -83,6 +83,8 @@ public partial class GameBuilderApp : Node3D
     private FileDialog _importImageDialog = null!;
     private FileDialog _importAudioDialog = null!;
     private string? _pendingSoundReplacementId;
+    private bool _pendingTerrainStyleImport;
+    private int? _pendingTerrainStyleReplacementId;
     private AcceptDialog _errorDialog = null!;
     private LegacyLanSession _lanSession = null!;
     private LegacyLanNetworkWindow _networkWindow = null!;
@@ -193,6 +195,7 @@ public partial class GameBuilderApp : Node3D
         _lanSession.AssetBundleReceived += ApplyNetworkAssetBundle;
         _lanSession.AssetBundleRejected += message =>
         {
+            _pendingAssetSyncCompletions.Clear();
             _status.Text = $"Project asset sync failed: {message}";
             GD.PushWarning($"Project asset sync failed: {message}");
         };
@@ -280,6 +283,8 @@ public partial class GameBuilderApp : Node3D
             RunCameraOffsetSmoke();
         if (commandLineArgs.Contains("--smoke-terrain", StringComparer.Ordinal))
             RunTerrainEditorSmokeStandalone();
+        if (commandLineArgs.Contains("--smoke-terrain-style", StringComparer.Ordinal))
+            RunTerrainStyleSmokeStandalone();
         if (commandLineArgs.Contains("--smoke-copy-actors", StringComparer.Ordinal))
             RunActorCopySmoke();
         if (commandLineArgs.Contains("--smoke-actor-move", StringComparer.Ordinal))
@@ -830,6 +835,11 @@ public partial class GameBuilderApp : Node3D
         _importImageDialog.AddFilter("*.jpeg", "JPEG image");
         _importImageDialog.AddFilter("*.webp", "WebP image");
         _importImageDialog.FileSelected += ImportImageFromPath;
+        _importImageDialog.Canceled += () =>
+        {
+            _pendingTerrainStyleImport = false;
+            _pendingTerrainStyleReplacementId = null;
+        };
         root.AddChild(_importImageDialog);
         _importAudioDialog = new FileDialog
         {
@@ -1573,12 +1583,38 @@ public partial class GameBuilderApp : Node3D
                 if (brush.Mode != LegacyTerrainBrushMode.Select)
                     ClearTerrainSelection();
             };
+            _terrainEditorWindow.ImportStyleRequested += OpenTerrainStyleImportDialog;
             _terrainEditorWindow.CopySelectionRequested += BeginTerrainCopy;
             _terrainEditorWindow.ClearSelectionRequested += ClearTerrainSelection;
             _terrainEditorWindow.CloseRequested += ClearTerrainSelection;
             AddChild(_terrainEditorWindow);
         }
-        _terrainEditorWindow.PopupCentered(new Vector2I(380, 600));
+        RefreshTerrainStylePicker();
+        _terrainEditorWindow.PopupCentered(new Vector2I(380, 660));
+    }
+
+    private void RefreshTerrainStylePicker(int? selectedStyle = null)
+    {
+        if (_terrainEditorWindow is null)
+            return;
+        int style = selectedStyle ?? _terrainEditorWindow.Brush.Style;
+        _terrainEditorWindow.SetCustomStyles(LegacyTerrainStyles.Read(_document?.GridState, _terrain?.Data), style);
+    }
+
+    private Dictionary<ushort, Texture2D> LoadCustomTerrainStyleTextures()
+        => _document is null ? new Dictionary<ushort, Texture2D>() : LegacyTerrainStyles.LoadTextures(_document.GridState, _catalog);
+
+    private void RefreshTerrainStylePresentation(int? selectedStyle = null)
+    {
+        RefreshTerrainStylePicker(selectedStyle);
+        if (_document is null)
+            return;
+        Dictionary<ushort, Texture2D> textures = LoadCustomTerrainStyleTextures();
+        foreach (LegacyTerrainNode terrain in Descendants<LegacyTerrainNode>(this))
+        {
+            terrain.SetCustomStyleTextures(textures);
+            terrain.FlushUpdates();
+        }
     }
 
     private bool IsTerrainBrushActive
@@ -1901,7 +1937,7 @@ public partial class GameBuilderApp : Node3D
             LegacyTerrainData? terrainData = LegacyTerrainData.Decode(document.GridState);
             if (terrainData is not null)
             {
-                _terrain = LegacyTerrainNode.Create(terrainData);
+                _terrain = LegacyTerrainNode.Create(terrainData, LegacyTerrainStyles.LoadTextures(document.GridState, _catalog));
                 _world.AddChild(_terrain);
             }
             else
@@ -1910,6 +1946,7 @@ public partial class GameBuilderApp : Node3D
                 AddStageGround(document.Stage);
             }
             ApplyStageVisuals();
+            RefreshTerrainStylePicker();
 
             BuildActors(document);
             _behaviorRuntime = CreateBehaviorRuntime(document);
@@ -2261,7 +2298,7 @@ public partial class GameBuilderApp : Node3D
     {
         if (_terrain is not null)
             return;
-        _terrain = LegacyTerrainNode.Create(CreateEmptyTerrainForCurrentMap());
+        _terrain = LegacyTerrainNode.Create(CreateEmptyTerrainForCurrentMap(), LoadCustomTerrainStyleTextures());
         _world.AddChild(_terrain);
         if (_stageGroundMesh is not null)
             _stageGroundMesh.Visible = false;
@@ -2419,11 +2456,20 @@ public partial class GameBuilderApp : Node3D
         }
         _importModelDialog.PopupCentered(new Vector2I(1000, 700));
     }
-    private void OpenImageImportDialog()
+    private void OpenImageImportDialog() => OpenImageImportDialog(asTerrainStyle: false);
+
+    private void OpenTerrainStyleImportDialog() => OpenImageImportDialog(asTerrainStyle: true);
+
+    private void OpenImageImportDialog(bool asTerrainStyle)
     {
         if (_document is null)
         {
             ShowError("Open a .voos project before importing an image.");
+            return;
+        }
+        if (asTerrainStyle && _playMode)
+        {
+            ShowError("Stop play mode before importing a terrain style.");
             return;
         }
         if (GetProjectAssetSourcePath().StartsWith("res://", StringComparison.Ordinal))
@@ -2431,6 +2477,11 @@ public partial class GameBuilderApp : Node3D
             ShowError("Save a writable .voos copy before importing an image.");
             return;
         }
+        _pendingTerrainStyleImport = asTerrainStyle;
+        int selectedStyle = _terrainEditorWindow?.Brush.Style ?? -1;
+        _pendingTerrainStyleReplacementId = asTerrainStyle && selectedStyle >= LegacyTerrainStyles.FirstCustomStyle
+            ? selectedStyle
+            : null;
         _importImageDialog.PopupCentered(new Vector2I(1000, 700));
     }
     private void RequestSoundAudioImport(string? replaceSoundId)
@@ -2553,17 +2604,44 @@ public partial class GameBuilderApp : Node3D
 
     private void ImportImageFromPath(string path)
     {
+        bool asTerrainStyle = _pendingTerrainStyleImport;
+        int? replaceStyleId = _pendingTerrainStyleReplacementId;
+        _pendingTerrainStyleImport = false;
+        _pendingTerrainStyleReplacementId = null;
         if (_document is null)
             return;
+        LegacySaveDocument targetDocument = _document;
         try
         {
             RenderableEntry entry = _catalog.ImportProjectImage(GetProjectAssetSourcePath(), path);
-            CompleteProjectAssetImport(path, entry);
+            CompleteProjectAssetImport(path, entry, asTerrainStyle
+                ? () => ApplyImportedTerrainStyle(targetDocument, path, entry, replaceStyleId)
+                : null);
         }
         catch (Exception exception)
         {
             ShowError($"Could not import image:\n{exception.Message}");
         }
+    }
+
+    private void ApplyImportedTerrainStyle(
+        LegacySaveDocument targetDocument,
+        string path,
+        RenderableEntry entry,
+        int? replaceStyleId)
+    {
+        if (!ReferenceEquals(_document, targetDocument) || _playMode)
+            return;
+        string name = Path.GetFileNameWithoutExtension(path);
+        LegacyTerrainStyleOption style = LegacyTerrainStyles.AddLocalStyle(
+            _document.Root,
+            _terrain?.Data,
+            entry.Uri,
+            name,
+            replaceStyleId);
+        RefreshTerrainStylePresentation(style.Id);
+        NotifyCollaborativeEdits();
+        _status.Text = $"Terrain style '{style.Name}' is ready. Its image is stored in this project.";
     }
 
 
@@ -2582,15 +2660,19 @@ public partial class GameBuilderApp : Node3D
         }
     }
 
-    private void CompleteProjectAssetImport(string path, RenderableEntry entry)
+    private void CompleteProjectAssetImport(string path, RenderableEntry entry, Action? onAssetReady = null)
     {
         string assetProjectPath = GetProjectAssetSourcePath();
+        bool waitingForHostSync = false;
         if (_lanSession.IsClient)
         {
             if (_lanSession.SubmitAssetBundle(assetProjectPath, out long transferId))
             {
                 _unsharedAssetUris.Add(entry.Uri);
                 _pendingAssetUrisByTransferId.Add(transferId, entry.Uri);
+                if (onAssetReady is not null)
+                    _pendingAssetSyncCompletions.Add(transferId, onAssetReady);
+                waitingForHostSync = true;
             }
             else
             {
@@ -2623,6 +2705,17 @@ public partial class GameBuilderApp : Node3D
                 ? $"Imported {Path.GetFileName(path)} locally; wait for host asset sync before using it."
                 : $"Imported {Path.GetFileName(path)} into this project."
             : $"Imported {Path.GetFileName(path)} into this project.";
+        if (onAssetReady is not null)
+        {
+            if (waitingForHostSync)
+                return;
+            if (_lanSession.IsClient)
+            {
+                _status.Text = $"Imported {Path.GetFileName(path)} locally, but the host asset sync could not start; the terrain style was not applied.";
+                return;
+            }
+            onAssetReady();
+        }
     }
 
     private bool AddActor(
