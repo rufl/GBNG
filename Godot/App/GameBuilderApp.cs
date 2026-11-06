@@ -278,6 +278,8 @@ public partial class GameBuilderApp : Node3D
             RunActorHierarchyNavigationSmoke();
         if (commandLineArgs.Contains("--smoke-comment-panels", StringComparer.Ordinal))
             RunCommentPanelSmoke();
+        if (commandLineArgs.Contains("--smoke-text-tool", StringComparer.Ordinal))
+            RunTextToolSmoke();
     }
 
 
@@ -301,6 +303,7 @@ public partial class GameBuilderApp : Node3D
                 _cameraTarget = _cameraTarget.Lerp(followTarget, 1f - Mathf.Exp(-5f * (float)delta));
                 UpdateOrbitCamera();
             }
+            UpdateTextToolPreviewOrientation();
             return;
         }
         if (GetPlayerActor() is not WorldActorNode player)
@@ -390,11 +393,17 @@ public partial class GameBuilderApp : Node3D
         if (@event is InputEventMouseButton mouseButton)
         {
             if (mouseButton.ButtonIndex == MouseButton.Right
-                && !_copyPlacementActive && !_terrainCopyActive && !_terrainSelectionDragging)
+                && !_copyPlacementActive && !_terrainCopyActive && !_terrainSelectionDragging
+                && (!_textToolActive || _textToolEditingActor is null))
                 Input.MouseMode = mouseButton.Pressed ? Input.MouseModeEnum.Captured : Input.MouseModeEnum.Visible;
             if (mouseButton.ButtonIndex == MouseButton.Left && mouseButton.Pressed && !_playMode)
             {
-                if (_settingTransformParent)
+                if (_textToolActive)
+                {
+                    if (!IsPointerOverUi(mouseButton.Position))
+                        HandleTextToolClick(mouseButton.Position);
+                }
+                else if (_settingTransformParent)
                 {
                     if (!IsPointerOverUi(mouseButton.Position))
                         SetSelectedActorTransformParentAtScreenPosition(mouseButton.Position);
@@ -453,7 +462,26 @@ public partial class GameBuilderApp : Node3D
         }
         else if (@event is InputEventMouseMotion motion)
         {
-            if (_copyPlacementActive)
+            if (_textToolActive)
+            {
+                if (_textToolEditingActor is null)
+                {
+                    if (Input.MouseMode == Input.MouseModeEnum.Captured)
+                    {
+                        Vector2 lookDelta = ComputeMouseLookDelta(motion.Relative, _mouseLookSensitivity, _invertMouseLook);
+                        _cameraYaw += lookDelta.X;
+                        _cameraPitch = Mathf.Clamp(_cameraPitch + lookDelta.Y, -1.35f, 0.15f);
+                        _lookAxes += lookDelta;
+                        UpdateOrbitCamera();
+                        UpdateTextToolPreview(GetViewport().GetMousePosition());
+                    }
+                    else
+                    {
+                        UpdateTextToolPreview(motion.Position);
+                    }
+                }
+            }
+            else if (_copyPlacementActive)
             {
                 if (!IsPointerOverUi(motion.Position))
                     UpdateCopyPreview(motion.Position, motion.CtrlPressed || motion.MetaPressed);
@@ -490,7 +518,10 @@ public partial class GameBuilderApp : Node3D
                 return;
             Control? focusedControl = GetViewport().GuiGetFocusOwner();
             bool editingText = focusedControl is LineEdit or TextEdit;
-            if (!_playMode && !editingText && (key.Keycode == Key.Delete || key.Keycode == Key.Backspace))
+            if (!_playMode && !editingText && _textToolActive
+                && key.Keycode == Key.R && !key.CtrlPressed && !key.MetaPressed)
+                RotateTextToolPanel();
+            else if (!_playMode && !editingText && (key.Keycode == Key.Delete || key.Keycode == Key.Backspace))
                 RemoveSelectedActor();
             else if (!_playMode && !editingText && key.Keycode == Key.R && !key.CtrlPressed && !key.MetaPressed)
                 QuickRotateSelectedActors();
@@ -522,6 +553,10 @@ public partial class GameBuilderApp : Node3D
             {
                 if (_playMode)
                     SetPlayMode(false);
+                else if (_textToolEditingActor is not null)
+                    CancelTextToolEditing();
+                else if (_textToolActive)
+                    SetTextToolActive(false);
                 else if (_settingTransformParent)
                     CancelTransformParentSelection();
                 else if (_settingSpawnParent)
@@ -653,6 +688,8 @@ public partial class GameBuilderApp : Node3D
         };
         _selectionMarquee.AddThemeStyleboxOverride("panel", marqueeStyle);
         root.AddChild(_selectionMarquee);
+        root.AddChild(BuildTextToolEditorOverlay());
+        root.AddChild(BuildTextToolHoverHint());
 
         _openDialog = new FileDialog
         {
@@ -822,6 +859,7 @@ public partial class GameBuilderApp : Node3D
         _playButton = new Button { Text = "Play", CustomMinimumSize = new Vector2(84f, 36f) };
         _playButton.Pressed += () => SetPlayMode(!_playMode);
         toolbar.AddChild(_playButton);
+        AddTextToolControls(toolbar);
         var copyActors = new Button { Name = "CopyActorsButton", Text = "Copy", CustomMinimumSize = new Vector2(70f, 36f) };
         copyActors.Pressed += BeginCopyPlacement;
         toolbar.AddChild(copyActors);
@@ -1691,6 +1729,11 @@ public partial class GameBuilderApp : Node3D
             ShowError("Leave the hosted session before opening a different project.");
             return;
         }
+        if (_textToolActive)
+        {
+            CancelTextToolEditing();
+            SetTextToolActive(false);
+        }
         _terrainEditorWindow?.SetBrushActive(false);
         ClearTerrainSelection();
         CancelCopyPlacement(showStatus: false);
@@ -2432,7 +2475,11 @@ public partial class GameBuilderApp : Node3D
             : $"Imported {Path.GetFileName(path)} into this project.";
     }
 
-    private bool AddActor(string? selectedUri = null)
+    private bool AddActor(
+        string? selectedUri = null,
+        Vector3? worldPosition = null,
+        Quaternion? worldRotation = null,
+        bool recordHistory = true)
     {
         if (_document is null || _playMode || (selectedUri is null && _assetPicker.Selected < 0))
             return false;
@@ -2451,6 +2498,8 @@ public partial class GameBuilderApp : Node3D
             return false;
         }
         string name = $"actor-{Guid.NewGuid():N}";
+        Vector3 legacyPosition = CoordinateSpace.ToLegacy(worldPosition ?? new Vector3(0f, 1f, 0f));
+        Quaternion legacyRotation = CoordinateSpace.ToLegacy(worldRotation ?? Quaternion.Identity);
         bool isTextPanel = LegacyCommentPanelRenderer.SupportsRenderable(uri);
         float actorScale = isTextPanel ? 6f : 1f;
         float tintChannel = isTextPanel ? 1f / 255f : 1f;
@@ -2467,8 +2516,8 @@ public partial class GameBuilderApp : Node3D
             ["description"] = "",
             ["tint"] = new JsonObject { ["r"] = tintChannel, ["g"] = tintChannel, ["b"] = tintChannel, ["a"] = tintAlpha },
             ["transformParent"] = "",
-            ["position"] = new JsonObject { ["x"] = 0f, ["y"] = 1f, ["z"] = 0f },
-            ["rotation"] = new JsonObject { ["x"] = 0f, ["y"] = 0f, ["z"] = 0f, ["w"] = 1f },
+            ["position"] = new JsonObject { ["x"] = legacyPosition.X, ["y"] = legacyPosition.Y, ["z"] = legacyPosition.Z },
+            ["rotation"] = new JsonObject { ["x"] = legacyRotation.X, ["y"] = legacyRotation.Y, ["z"] = legacyRotation.Z, ["w"] = legacyRotation.W },
             ["localScale"] = new JsonObject { ["x"] = actorScale, ["y"] = actorScale, ["z"] = actorScale },
             ["renderableOffset"] = new JsonObject { ["x"] = 0f, ["y"] = 0f, ["z"] = 0f },
             ["renderableRotation"] = new JsonObject { ["x"] = 0f, ["y"] = 0f, ["z"] = 0f, ["w"] = 1f },
@@ -2492,14 +2541,17 @@ public partial class GameBuilderApp : Node3D
             ["angularVelocity"] = new JsonObject { ["x"] = 0f, ["y"] = 0f, ["z"] = 0f }
         };
         int index = _document.Actors.Count;
-        string actorJson = actorData.ToJsonString();
         LegacyActorData state = _document.InsertActor(actorData, index);
         WorldActorNode actor = CreateActorNode(state, index);
         RefreshActorList();
         SelectActor(actor);
-        RecordHistory($"Add {state.DisplayName}",
-            () => RemoveActorFromWorld(name),
-            () => RestoreActorFromJson(actorJson, index));
+        if (recordHistory)
+        {
+            string actorJson = actorData.ToJsonString();
+            RecordHistory($"Add {state.DisplayName}",
+                () => RemoveActorFromWorld(name),
+                () => RestoreActorFromJson(actorJson, index));
+        }
         return true;
     }
 
@@ -3162,6 +3214,11 @@ public partial class GameBuilderApp : Node3D
         }
         if (enabled)
         {
+            if (_textToolActive)
+            {
+                FinishTextToolEditing();
+                SetTextToolActive(false);
+            }
             CancelCopyPlacement(showStatus: false);
             ClearTerrainSelection();
             _terrainEditorWindow?.SetBrushActive(false);
@@ -3171,6 +3228,7 @@ public partial class GameBuilderApp : Node3D
             CancelTransformParentSelection(showStatus: false);
         }
         _playMode = enabled;
+        _textToolToggle.Disabled = enabled;
         _actionPrompt.SetPlayMode(enabled);
         if (!enabled && _lanSession.IsHost)
             _lanSession.BroadcastPlayerToolTips("[]");
