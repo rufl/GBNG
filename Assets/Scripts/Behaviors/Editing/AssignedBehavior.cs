@@ -99,8 +99,7 @@ public class AssignedBehavior
     string callResult = CallScriptFunction<int, string>("getDescription", 0).GetOr("");
     if (callResult.IsNullOrEmpty())
     {
-      throw new System.NotImplementedException();
-      // return GetUnassigned().GetIn().GetInlineCommentLabel();
+      return GetUnassigned().GetScriptInlineDocumentation();
     }
     else
     {

@@ -175,6 +175,9 @@ multiline editor remains available. The browser starts lazily at the visible
 code panel's pixel dimensions; Unity scales that texture after layout changes
 instead of resizing the browser process.
 
+Assigned behavior labels use `getDescription()` when it returns a non-empty
+value; otherwise, the first-line `//` comment is the fallback label.
+
 The bundled CEF runtime increases desktop build size and requires the Mono
 scripting backend; UnityWebBrowser does not support IL2CPP. Linux x64 now has a
 pinned `libv8_in_unity.so` artifact. A Unity 6000.6.6f1 Mono player on Ubuntu
