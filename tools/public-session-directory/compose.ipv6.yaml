@@ -20,4 +20,5 @@ networks:
     enable_ipv6: true
     ipam:
       config:
+        - subnet: ${DIRECTORY_SUBNET:-172.30.0.0/24}
         - subnet: ${DIRECTORY_IPV6_SUBNET:-fd30:30:1::/64}

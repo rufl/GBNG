@@ -667,6 +667,7 @@ class UdpRelay:
             if self._control.family == socket.AF_INET6:
                 sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
             ports = [0] if self.port_start == self.port_end == 0 else range(self.port_start, self.port_end + 1)
+            for port in ports:
                 try:
                     sock.bind((self.bind, port))
                     break

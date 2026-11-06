@@ -91,6 +91,7 @@ public class DirectHostRelayInviteTests
     Assert.IsInstanceOf<SocketException>(error.InnerException);
     Assert.AreEqual(SocketError.NetworkUnreachable, ((SocketException)error.InnerException).SocketErrorCode);
   }
+
   static bool TryParse(string invite, out object[] values)
   {
     values = new object[] { invite, null, (ushort)0, null, null, (ushort)0, null };

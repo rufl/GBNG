@@ -177,7 +177,7 @@ Directory/session state, relay routes, and migration tickets are in memory only.
 - Host tunnel heartbeats are authenticated with HMAC-SHA256 derived from the bearer token; tokens are not sent in UDP frames. Public listing exposes session IDs and relay endpoint, not host or migration bearer tokens.
 - Allocation requests are not individually authenticated. A public session ID is discoverable from public listings; an attacker may consume available relay routes for that public game or use relay bandwidth. Source-IP, session-capacity, global-route, data-port, and 60-second idle limits bound but do not eliminate denial-of-service risk. Use host/provider firewall controls and monitor bandwidth.
 - Relay HMAC authenticates host heartbeats, not every forwarded datagram. Do not treat the relay as a game authorization layer. The host game and its pinned encrypted transport remain responsible for peer/session handling.
- - The default Compose relay is IPv4-only; `compose.ipv6.yaml` optionally enables dual-stack UDP when the Docker daemon and host support IPv6. The relay remains single-process, with no UDP proxying through Caddy/Tailscale Funnel, built-in persistence, cluster coordination, metrics dashboard, or SLA.
+- The default Compose relay is IPv4-only; `compose.ipv6.yaml` optionally enables dual-stack UDP when the Docker daemon and host support IPv6. The relay remains single-process, with no UDP proxying through Caddy/Tailscale Funnel, built-in persistence, cluster coordination, metrics dashboard, or SLA.
 - The software avoids paid Unity multiplayer plugins/services. Public server hosting, IPv4, and traffic may still have provider costs.
 
 ## Troubleshooting
