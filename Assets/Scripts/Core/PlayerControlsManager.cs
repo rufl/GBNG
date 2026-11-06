@@ -27,6 +27,7 @@ public class PlayerControlsManager : MonoBehaviour
   string virtualPlayerId;
   float requestOwnershipCooldown;
   bool registeredVirtualPlayerId;
+  bool applicationIsQuitting;
   DynamicPopup popups;
   List<VoosActor> temp = new List<VoosActor>();
   // As last reported to virtualPlayerManager, are we in edit mode?
@@ -65,6 +66,11 @@ public class PlayerControlsManager : MonoBehaviour
     myVirtualPlayerIds.Add(virtualPlayerId);
     engine.onBeforeActorDestroy += OnActorDestroyedOrUncontrollable;
     engine.onActorBecomingUncontrollable += OnActorDestroyedOrUncontrollable;
+  }
+
+  void OnApplicationQuit()
+  {
+    applicationIsQuitting = true;
   }
 
   void OnDestroy()
@@ -204,6 +210,8 @@ public class PlayerControlsManager : MonoBehaviour
 
   private void OnActorDestroyedOrUncontrollable(VoosActor actor)
   {
+    if (applicationIsQuitting) return;
+
     if (userMain != null && userMain.GetPlayerActor() == actor)
     {
       // Our current actor is destroyed, so migrate over to a placeholder for now,

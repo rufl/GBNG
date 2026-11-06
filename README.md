@@ -53,6 +53,8 @@ Run `bash tools/codegen/gen-all.sh` from the repository root with Python 3.15.2.
 1. Open the splash screen scene: `Assets/splash.unity`.
 1. TextMesh Pro essential resources are included under `Assets/TextMesh Pro`; no manual import is required.
 1. Click Play.
+On normal shutdown, player control is not migrated while the controlled actors are being destroyed; the existing save/quit prompt is unchanged.
+
 
 
 ## Building the standalone EXE
