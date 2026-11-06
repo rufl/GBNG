@@ -26,6 +26,81 @@ public partial class GameBuilderApp
     private WorldActorNode[] _actorMoveSelectedActors = Array.Empty<WorldActorNode>();
     private WorldActorNode[] _actorMoveAffectedActors = Array.Empty<WorldActorNode>();
     private Dictionary<string, ActorMoveSnapshot>? _actorMoveBefore;
+    private LegacyActorMoveGizmoAxis _actorMoveConstraintAxis;
+    private Vector3 _actorMoveAxisDirection;
+    private Vector2 _actorMoveAxisScreenDirection;
+    private float _actorMoveAxisWorldLength;
+    private bool _actorMoveAxisUsesLocalSpace;
+    private float _actorMoveGizmoWorldLength;
+
+    private void UpdateActorMoveGizmo()
+    {
+        if (_actorMoveGizmo is null || !IsInstanceValid(_actorMoveGizmo))
+            return;
+
+        bool canShow = _document is not null
+            && !_welcome.Visible
+            && !_playMode
+            && _selectedActor is not null
+            && _actors.Contains(_selectedActor)
+            && !_selectedActor.IsOffstageEffective
+            && !_textToolActive
+            && !_copyPlacementActive
+            && !_terrainCopyActive
+            && !_settingTransformParent
+            && !_settingSpawnParent;
+        if (!canShow || _camera.ToLocal(_selectedActor!.GlobalPosition).Z >= 0f)
+        {
+            _actorMoveGizmoWorldLength = 0f;
+            _actorMoveGizmo.SetHandles(false, Vector2.Zero, Vector2.Zero, Vector2.Zero, Vector2.Zero);
+            return;
+        }
+
+        Vector3 pivot = _selectedActor.GlobalPosition;
+        Vector2 originScreen = _camera.UnprojectPosition(pivot);
+        if (!GetViewport().GetVisibleRect().HasPoint(originScreen))
+        {
+            _actorMoveGizmoWorldLength = 0f;
+            _actorMoveGizmo.SetHandles(false, Vector2.Zero, Vector2.Zero, Vector2.Zero, Vector2.Zero);
+            return;
+        }
+
+        Basis axes = _actorMoveLocalSpace && _selectedActors.Count == 1
+            ? _selectedActor.GlobalBasis.Orthonormalized()
+            : Basis.Identity;
+        float depth = _camera.GlobalPosition.DistanceTo(pivot);
+        float viewportHeight = Mathf.Max(GetViewport().GetVisibleRect().Size.Y, 1f);
+        float worldLength = Mathf.Clamp(
+            84f * 2f * depth * Mathf.Tan(Mathf.DegToRad(_camera.Fov) * 0.5f) / viewportHeight,
+            0.75f,
+            4f);
+        _actorMoveGizmoWorldLength = worldLength;
+        _actorMoveGizmo.SetHandles(
+            true,
+            originScreen,
+            _camera.UnprojectPosition(pivot + axes.X.Normalized() * worldLength),
+            _camera.UnprojectPosition(pivot + axes.Y.Normalized() * worldLength),
+            _camera.UnprojectPosition(pivot + axes.Z.Normalized() * worldLength));
+        _actorMoveGizmo.SetHoveredAxis(
+            _actorMoveGizmo.TryPickAxis(GetViewport().GetMousePosition(), out LegacyActorMoveGizmoAxis hoveredAxis)
+                ? hoveredAxis
+                : LegacyActorMoveGizmoAxis.None);
+    }
+
+    private Vector3 GetActorMoveAxisDirection(LegacyActorMoveGizmoAxis axis)
+    {
+        Vector3 localDirection = axis switch
+        {
+            LegacyActorMoveGizmoAxis.X => Vector3.Right,
+            LegacyActorMoveGizmoAxis.Y => Vector3.Up,
+            LegacyActorMoveGizmoAxis.Z => Basis.Identity.Z,
+            _ => Vector3.Zero
+        };
+        if (_actorMoveLocalSpace && _selectedActors.Count == 1 && _selectedActor is not null)
+            localDirection = _selectedActor.GlobalBasis.Orthonormalized() * localDirection;
+        return localDirection.Normalized();
+    }
+
 
     private bool HandleActorMoveInput(InputEvent inputEvent)
     {
@@ -56,7 +131,9 @@ public partial class GameBuilderApp
         return false;
     }
 
-    private void BeginActorMove(Vector2 screenPosition)
+    private void BeginActorMove(
+        Vector2 screenPosition,
+        LegacyActorMoveGizmoAxis axis = LegacyActorMoveGizmoAxis.None)
     {
         if (_document is null || _playMode || _selectedActor is null || _selectedActors.Count == 0)
             return;
@@ -74,14 +151,32 @@ public partial class GameBuilderApp
         _actorMoveFocusName = _selectedActor.LegacyName;
         _actorMovePlanePoint = _selectedActor.GlobalPosition;
         _actorMovePlaneNormal = _camera.GlobalBasis.Z.Normalized();
-        if (!TryGetActorMovePlanePoint(screenPosition, out Vector3 pointerPoint))
-        {
-            ClearActorMoveState();
-            return;
-        }
-
-        _actorMovePointerOffset = _actorMovePlanePoint - pointerPoint;
         _actorMoveStartPointer = screenPosition;
+        _actorMoveConstraintAxis = axis;
+        _actorMoveAxisUsesLocalSpace = axis != LegacyActorMoveGizmoAxis.None
+            && _actorMoveLocalSpace
+            && _actorMoveSelectedActors.Length == 1;
+        if (axis == LegacyActorMoveGizmoAxis.None)
+        {
+            if (!TryGetActorMovePlanePoint(screenPosition, out Vector3 pointerPoint))
+            {
+                ClearActorMoveState();
+                return;
+            }
+            _actorMovePointerOffset = _actorMovePlanePoint - pointerPoint;
+        }
+        else
+        {
+            _actorMoveAxisDirection = GetActorMoveAxisDirection(axis);
+            _actorMoveAxisScreenDirection = _actorMoveGizmo.GetAxisScreenDirection(axis);
+            _actorMoveAxisWorldLength = _actorMoveGizmoWorldLength;
+            if (_actorMoveAxisScreenDirection.LengthSquared() < 225f || _actorMoveAxisWorldLength <= 0f)
+            {
+                ClearActorMoveState();
+                return;
+            }
+            _actorMovePointerOffset = Vector3.Zero;
+        }
         _actorMoveAffectedActors = _actors
             .Where(candidate => _actorMoveSelectedActors.Any(selected =>
                 candidate == selected || selected.IsAncestorOf(candidate)))
@@ -101,23 +196,69 @@ public partial class GameBuilderApp
             if (screenPosition.DistanceSquaredTo(_actorMoveStartPointer) < 16f)
                 return;
             _actorMoveDragging = true;
-            _status.Text = _actorMoveSnapToGrid
-                ? "Drag to move; snap-to-grid is on. Press Esc to cancel."
-                : "Drag to move; hold Ctrl/Cmd to snap to the legacy grid. Press Esc to cancel.";
+            string axisName = _actorMoveConstraintAxis switch
+            {
+                LegacyActorMoveGizmoAxis.X => "X",
+                LegacyActorMoveGizmoAxis.Y => "Y",
+                LegacyActorMoveGizmoAxis.Z => "Z",
+                _ => ""
+            };
+            _status.Text = _actorMoveConstraintAxis == LegacyActorMoveGizmoAxis.None
+                ? _actorMoveSnapToGrid
+                    ? "Drag to move; snap-to-grid is on. Press Esc to cancel."
+                    : "Drag to move; hold Ctrl/Cmd to snap to the legacy grid. Press Esc to cancel."
+                : $"Drag along {(_actorMoveAxisUsesLocalSpace ? "local" : "world")} {axisName}; hold Ctrl/Cmd to snap. Press Esc to cancel.";
         }
 
-        if (!TryGetActorMovePlanePoint(screenPosition, out Vector3 pointerPoint)
-            || !_actorMoveBefore.TryGetValue(_actorMoveFocusName, out ActorMoveSnapshot? focusState)
+        if (!_actorMoveBefore.TryGetValue(_actorMoveFocusName, out ActorMoveSnapshot? focusState)
             || focusState is null)
             return;
 
-        Vector3 focusPosition = pointerPoint + _actorMovePointerOffset;
-        if (snapToGrid || _actorMoveSnapToGrid)
+        bool shouldSnap = snapToGrid || _actorMoveSnapToGrid;
+        Vector3 focusPosition;
+        if (_actorMoveConstraintAxis == LegacyActorMoveGizmoAxis.None)
         {
-            focusPosition.X = Mathf.Round(focusPosition.X / CopySnapHorizontal) * CopySnapHorizontal;
-            focusPosition.Y = Mathf.Round(focusPosition.Y / CopySnapVertical) * CopySnapVertical;
-            focusPosition.Z = Mathf.Round(focusPosition.Z / CopySnapHorizontal) * CopySnapHorizontal;
+            if (!TryGetActorMovePlanePoint(screenPosition, out Vector3 pointerPoint))
+                return;
+            focusPosition = pointerPoint + _actorMovePointerOffset;
+            if (shouldSnap)
+            {
+                focusPosition.X = Mathf.Round(focusPosition.X / CopySnapHorizontal) * CopySnapHorizontal;
+                focusPosition.Y = Mathf.Round(focusPosition.Y / CopySnapVertical) * CopySnapVertical;
+                focusPosition.Z = Mathf.Round(focusPosition.Z / CopySnapHorizontal) * CopySnapHorizontal;
+            }
         }
+        else
+        {
+            float screenLengthSquared = _actorMoveAxisScreenDirection.LengthSquared();
+            if (screenLengthSquared < 225f)
+                return;
+            float moveAmount = (screenPosition - _actorMoveStartPointer)
+                .Dot(_actorMoveAxisScreenDirection) / screenLengthSquared * _actorMoveAxisWorldLength;
+            if (shouldSnap)
+            {
+                float snapStep = _actorMoveConstraintAxis == LegacyActorMoveGizmoAxis.Y
+                    ? CopySnapVertical
+                    : CopySnapHorizontal;
+                if (_actorMoveAxisUsesLocalSpace)
+                {
+                    moveAmount = Mathf.Round(moveAmount / snapStep) * snapStep;
+                }
+                else
+                {
+                    int coordinate = _actorMoveConstraintAxis switch
+                    {
+                        LegacyActorMoveGizmoAxis.X => 0,
+                        LegacyActorMoveGizmoAxis.Y => 1,
+                        _ => 2
+                    };
+                    float originCoordinate = focusState.Transform.Origin[coordinate];
+                    moveAmount = Mathf.Round((originCoordinate + moveAmount) / snapStep) * snapStep - originCoordinate;
+                }
+            }
+            focusPosition = focusState.Transform.Origin + _actorMoveAxisDirection * moveAmount;
+        }
+
 
         Vector3 delta = focusPosition - focusState.Transform.Origin;
         foreach (WorldActorNode actor in _actorMoveSelectedActors)
@@ -214,6 +355,11 @@ public partial class GameBuilderApp
         _actorMoveSelectedActors = Array.Empty<WorldActorNode>();
         _actorMoveAffectedActors = Array.Empty<WorldActorNode>();
         _actorMoveBefore = null;
+        _actorMoveConstraintAxis = LegacyActorMoveGizmoAxis.None;
+        _actorMoveAxisDirection = Vector3.Zero;
+        _actorMoveAxisScreenDirection = Vector2.Zero;
+        _actorMoveAxisWorldLength = 0f;
+        _actorMoveAxisUsesLocalSpace = false;
     }
 
     private static Dictionary<string, ActorMoveSnapshot> CaptureActorMoveStates(IEnumerable<WorldActorNode> actors)
@@ -269,11 +415,43 @@ public partial class GameBuilderApp
         foreach (WorldActorNode actor in actors)
             actor.SaveTransform();
     }
+    private Vector2 FindActorMoveSmokeDragStart(WorldActorNode actor)
+    {
+        Vector2 center = _camera.UnprojectPosition(actor.GetWorldRenderBounds().GetCenter());
+        for (int ring = 0; ring < 4; ring++)
+        {
+            float spacing = 8f + ring * 8f;
+            for (int candidate = -1; candidate < 8; candidate++)
+            {
+                Vector2 offset = candidate switch
+                {
+                    -1 => Vector2.Zero,
+                    0 => new Vector2(spacing, 0f),
+                    1 => new Vector2(-spacing, 0f),
+                    2 => new Vector2(0f, spacing),
+                    3 => new Vector2(0f, -spacing),
+                    4 => new Vector2(spacing, spacing),
+                    5 => new Vector2(-spacing, spacing),
+                    6 => new Vector2(spacing, -spacing),
+                    _ => new Vector2(-spacing, -spacing)
+                };
+                Vector2 position = center + offset;
+                if (!IsPointerOverUi(position)
+                    && GetActorAtScreenPosition(position) == actor
+                    && !_actorMoveGizmo.TryPickAxis(position, out _))
+                    return position;
+            }
+        }
+        throw new InvalidOperationException($"Could not find an unobstructed free-drag point on actor '{actor.LegacyName}'.");
+    }
+
 
     private async void RunActorMoveSmoke()
     {
         int exitCode = 0;
         bool originalMoveSnap = _actorMoveSnapToGrid;
+        bool originalLocalSpace = _actorMoveLocalSpace;
+        bool restoreLocalSpacePreference = false;
         bool restoreMoveSnapPreference = false;
         try
         {
@@ -283,6 +461,13 @@ public partial class GameBuilderApp
             if (!_actorMoveSnapToggle.IsVisibleInTree()
                 || !_actorMoveSnapToggle.GetGlobalRect().Intersects(GetViewport().GetVisibleRect()))
                 throw new InvalidOperationException("The persistent move-snap toggle is not visible in the editor.");
+            if (!_actorMoveLocalSpaceToggle.IsVisibleInTree()
+                || !_actorMoveLocalSpaceToggle.GetGlobalRect().Intersects(GetViewport().GetVisibleRect()))
+                throw new InvalidOperationException("The local-axes toggle is not visible in the editor.");
+            restoreMoveSnapPreference = true;
+            SetActorMoveSnapPreference(false);
+            restoreLocalSpacePreference = true;
+            SetActorMoveLocalSpacePreference(false);
 
             WorldActorNode? actor = _actors.FirstOrDefault(candidate =>
             {
@@ -308,7 +493,7 @@ public partial class GameBuilderApp
 
             SetActorSelection(new[] { actor, groupActor }, actor);
             _autoSetSpawnOnMove = true;
-            Vector2 pointerStart = _camera.UnprojectPosition(actor.GetWorldRenderBounds().GetCenter());
+            Vector2 pointerStart = FindActorMoveSmokeDragStart(actor);
             Transform3D originalTransform = actor.GlobalTransform;
             Transform3D originalGroupTransform = groupActor.GlobalTransform;
             Vector3 originalSpawnPosition = actor.State.SpawnPosition;
@@ -366,13 +551,8 @@ public partial class GameBuilderApp
                 || !groupActor.State.SpawnRotation.IsEqualApprox(movedGroupSpawnRotation))
                 throw new InvalidOperationException("Redo did not restore both moved actors and their restart states.");
 
-            pointerStart = _camera.UnprojectPosition(actor.GetWorldRenderBounds().GetCenter());
-            _UnhandledInput(new InputEventMouseButton
-            {
-                ButtonIndex = MouseButton.Left,
-                Pressed = true,
-                Position = pointerStart
-            });
+            pointerStart = _camera.UnprojectPosition(actor.GlobalPosition);
+            BeginActorMove(pointerStart);
             Vector3 snappedGroupStart = groupActor.GlobalPosition;
             Vector3 snappedStart = actor.GlobalPosition;
             Vector3 snappedTarget = snappedStart + _camera.GlobalBasis.X.Normalized() * 1.7f + _camera.GlobalBasis.Y.Normalized() * 1.3f;
@@ -395,16 +575,11 @@ public partial class GameBuilderApp
                 || !savedMovePreferences.GetValue("editor", "move_snap_to_grid", false).AsBool())
                 throw new InvalidOperationException("The persistent move-snap toggle did not save and restore its enabled preference.");
 
-            pointerStart = _camera.UnprojectPosition(actor.GetWorldRenderBounds().GetCenter());
             Vector3 persistentSnapStart = actor.GlobalPosition;
             Vector3 persistentSnapGroupStart = groupActor.GlobalPosition;
             int historyBeforePersistentSnap = _historyPosition;
-            _UnhandledInput(new InputEventMouseButton
-            {
-                ButtonIndex = MouseButton.Left,
-                Pressed = true,
-                Position = pointerStart
-            });
+            pointerStart = _camera.UnprojectPosition(actor.GlobalPosition);
+            BeginActorMove(pointerStart);
             Vector3 persistentSnapTarget = persistentSnapStart
                 + _camera.GlobalBasis.X.Normalized() * 1.7f
                 + _camera.GlobalBasis.Y.Normalized() * 1.3f;
@@ -421,10 +596,9 @@ public partial class GameBuilderApp
             FinishActorMove();
             if (_historyPosition != historyBeforePersistentSnap + 1)
                 throw new InvalidOperationException("Persistent snap movement was not committed as one undoable edit.");
-            SetActorMoveSnapPreference(originalMoveSnap);
-            restoreMoveSnapPreference = false;
+            SetActorMoveSnapPreference(false);
             _autoSetSpawnOnMove = false;
-            pointerStart = _camera.UnprojectPosition(actor.GetWorldRenderBounds().GetCenter());
+            pointerStart = _camera.UnprojectPosition(actor.GlobalPosition);
             Transform3D beforeNoAutoset = actor.GlobalTransform;
             Transform3D groupBeforeNoAutoset = groupActor.GlobalTransform;
             Vector3 spawnBeforeNoAutoset = actor.State.SpawnPosition;
@@ -432,12 +606,7 @@ public partial class GameBuilderApp
             Vector3 groupSpawnBeforeNoAutoset = groupActor.State.SpawnPosition;
             Quaternion groupSpawnRotationBeforeNoAutoset = groupActor.State.SpawnRotation;
             int historyBeforeNoAutoset = _historyPosition;
-            _UnhandledInput(new InputEventMouseButton
-            {
-                ButtonIndex = MouseButton.Left,
-                Pressed = true,
-                Position = pointerStart
-            });
+            BeginActorMove(pointerStart);
             if (!_actorMovePending)
                 throw new InvalidOperationException("The move gesture did not start with automatic restart updates disabled.");
             Vector3 noAutosetDelta = _camera.GlobalBasis.X.Normalized() * 1.3f;
@@ -476,18 +645,13 @@ public partial class GameBuilderApp
                 throw new InvalidOperationException("Redo did not preserve restart state with automatic updates disabled.");
             _autoSetSpawnOnMove = true;
 
-            pointerStart = _camera.UnprojectPosition(actor.GetWorldRenderBounds().GetCenter());
+            pointerStart = _camera.UnprojectPosition(actor.GlobalPosition);
             Transform3D beforeCancel = actor.GlobalTransform;
             Vector3 spawnBeforeCancel = actor.State.SpawnPosition;
             int historyBeforeCancel = _historyPosition;
             Transform3D groupBeforeCancel = groupActor.GlobalTransform;
             Vector3 groupSpawnBeforeCancel = groupActor.State.SpawnPosition;
-            _UnhandledInput(new InputEventMouseButton
-            {
-                ButtonIndex = MouseButton.Left,
-                Pressed = true,
-                Position = pointerStart
-            });
+            BeginActorMove(pointerStart);
             pointerTarget = _camera.UnprojectPosition(actor.GlobalPosition + _camera.GlobalBasis.X.Normalized() * 2f - _actorMovePointerOffset);
             UpdateActorMoveFromScreen(pointerTarget, snapToGrid: false);
             CancelActorMove();
@@ -497,11 +661,134 @@ public partial class GameBuilderApp
                 || !groupActor.State.SpawnPosition.IsEqualApprox(groupSpawnBeforeCancel)
                 || _historyPosition != historyBeforeCancel)
                 throw new InvalidOperationException("Escape cancellation did not restore both actors without creating history.");
+            SetActorSelection(new[] { actor, groupActor }, actor);
+            UpdateActorMoveGizmo();
+            Vector3 worldXAxis = GetActorMoveAxisDirection(LegacyActorMoveGizmoAxis.X);
+            Vector2 worldAxisScreen = _actorMoveGizmo.GetAxisScreenDirection(LegacyActorMoveGizmoAxis.X);
+            Vector2 gizmoOrigin = _camera.UnprojectPosition(actor.GlobalPosition);
+            Vector2 worldHandleStart = gizmoOrigin + worldAxisScreen * 0.55f;
+            if (!_actorMoveGizmo.Visible
+                || worldXAxis.DistanceTo(Vector3.Right) > 0.001f
+                || !_actorMoveGizmo.TryPickAxis(worldHandleStart, out LegacyActorMoveGizmoAxis pickedWorldAxis)
+                || pickedWorldAxis != LegacyActorMoveGizmoAxis.X)
+                throw new InvalidOperationException("The visible move gizmo did not expose a pickable world X axis.");
+
+            Transform3D worldAxisActorBefore = actor.GlobalTransform;
+            Transform3D worldAxisGroupBefore = groupActor.GlobalTransform;
+            int historyBeforeWorldAxis = _historyPosition;
+            _UnhandledInput(new InputEventMouseButton
+            {
+                ButtonIndex = MouseButton.Left,
+                Pressed = true,
+                Position = worldHandleStart
+            });
+            if (!_actorMovePending || _actorMoveConstraintAxis != LegacyActorMoveGizmoAxis.X)
+                throw new InvalidOperationException("Clicking the X handle did not begin an axis-constrained move.");
+            const float worldAxisDistance = 2.5f;
+            Vector2 worldAxisTarget = worldHandleStart
+                + worldAxisScreen * (worldAxisDistance / _actorMoveAxisWorldLength);
+            UpdateActorMoveFromScreen(worldAxisTarget, snapToGrid: true);
+            Vector3 worldActorDelta = actor.GlobalPosition - worldAxisActorBefore.Origin;
+            Vector3 worldAxisRemainder = worldActorDelta - worldXAxis * worldActorDelta.Dot(worldXAxis);
+            Vector3 worldGroupDelta = groupActor.GlobalPosition - worldAxisGroupBefore.Origin;
+            bool worldAxisPositionSnapped = Mathf.IsEqualApprox(
+                actor.GlobalPosition.X / CopySnapHorizontal,
+                Mathf.Round(actor.GlobalPosition.X / CopySnapHorizontal));
+            if (!_actorMoveDragging
+                || Mathf.Abs(worldActorDelta.Dot(worldXAxis)) < 0.01f
+                || !worldAxisPositionSnapped
+                || worldAxisRemainder.Length() > 0.001f
+                || worldGroupDelta.DistanceTo(worldActorDelta) > 0.001f)
+                throw new InvalidOperationException(
+                    $"World X drag failed: dragging={_actorMoveDragging}, actorDelta={worldActorDelta}, "
+                    + $"worldXGridAligned={worldAxisPositionSnapped}, offAxis={worldAxisRemainder}, "
+                    + $"groupDelta={worldGroupDelta}.");
+            FinishActorMove();
+            Transform3D worldAxisActorAfter = actor.GlobalTransform;
+            Transform3D worldAxisGroupAfter = groupActor.GlobalTransform;
+            if (_historyPosition != historyBeforeWorldAxis + 1)
+                throw new InvalidOperationException("World-axis movement did not create one undoable edit.");
+            UndoEdit();
+            if (!actor.GlobalTransform.IsEqualApprox(worldAxisActorBefore)
+                || !groupActor.GlobalTransform.IsEqualApprox(worldAxisGroupBefore))
+                throw new InvalidOperationException("Undo did not restore the world-axis group move.");
+            RedoEdit();
+            if (!actor.GlobalTransform.IsEqualApprox(worldAxisActorAfter)
+                || !groupActor.GlobalTransform.IsEqualApprox(worldAxisGroupAfter))
+                throw new InvalidOperationException("Redo did not restore the world-axis group move.");
+            UndoEdit();
+
+            SetActorSelection(new[] { actor }, actor);
+            Transform3D actorTransformBeforeLocalTest = actor.GlobalTransform;
+            try
+            {
+                actor.GlobalRotationDegrees = new Vector3(0f, 45f, 0f);
+                actor.SaveTransform();
+                _actorMoveLocalSpaceToggle.SetPressedNoSignal(true);
+                _actorMoveLocalSpaceToggle.EmitSignal("toggled", true);
+                var savedLocalPreferences = new ConfigFile();
+                if (!_actorMoveLocalSpace
+                    || savedLocalPreferences.Load(EditorSettingsPath) != Error.Ok
+                    || !savedLocalPreferences.GetValue("editor", "move_local_space", false).AsBool())
+                    throw new InvalidOperationException("The local-axis toggle did not persist its enabled preference.");
+
+                UpdateActorMoveGizmo();
+                Vector3 localXAxis = GetActorMoveAxisDirection(LegacyActorMoveGizmoAxis.X);
+                Vector2 localAxisScreen = _actorMoveGizmo.GetAxisScreenDirection(LegacyActorMoveGizmoAxis.X);
+                Vector2 localHandleStart = _camera.UnprojectPosition(actor.GlobalPosition) + localAxisScreen * 0.55f;
+                if (!_actorMoveGizmo.Visible
+                    || localXAxis.DistanceTo(actor.GlobalBasis.Orthonormalized().X.Normalized()) > 0.001f
+                    || Mathf.Abs(localXAxis.Dot(Vector3.Right)) > 0.99f
+                    || !_actorMoveGizmo.TryPickAxis(localHandleStart, out LegacyActorMoveGizmoAxis pickedLocalAxis)
+                    || pickedLocalAxis != LegacyActorMoveGizmoAxis.X)
+                    throw new InvalidOperationException("The local movement gizmo did not follow the selected actor's rotated X axis.");
+
+                Transform3D localAxisActorBefore = actor.GlobalTransform;
+                int historyBeforeLocalAxis = _historyPosition;
+                _UnhandledInput(new InputEventMouseButton
+                {
+                    ButtonIndex = MouseButton.Left,
+                    Pressed = true,
+                    Position = localHandleStart
+                });
+                if (!_actorMovePending
+                    || _actorMoveConstraintAxis != LegacyActorMoveGizmoAxis.X
+                    || !_actorMoveAxisUsesLocalSpace)
+                    throw new InvalidOperationException("Clicking the local X handle did not begin a local-axis move.");
+                const float localAxisDistance = 2.5f;
+                Vector2 localAxisTarget = localHandleStart
+                    + localAxisScreen * (localAxisDistance / _actorMoveAxisWorldLength);
+                UpdateActorMoveFromScreen(localAxisTarget, snapToGrid: true);
+                Vector3 localActorDelta = actor.GlobalPosition - localAxisActorBefore.Origin;
+                Vector3 localAxisRemainder = localActorDelta - localXAxis * localActorDelta.Dot(localXAxis);
+                if (!_actorMoveDragging
+                    || Mathf.Abs(localActorDelta.Dot(localXAxis) - localAxisDistance) > 0.01f
+                    || localAxisRemainder.Length() > 0.001f)
+                    throw new InvalidOperationException("Local X dragging moved outside the selected actor's local axis.");
+                FinishActorMove();
+                Transform3D localAxisActorAfter = actor.GlobalTransform;
+                if (_historyPosition != historyBeforeLocalAxis + 1)
+                    throw new InvalidOperationException("Local-axis movement did not create one undoable edit.");
+                UndoEdit();
+                if (!actor.GlobalTransform.IsEqualApprox(localAxisActorBefore))
+                    throw new InvalidOperationException("Undo did not restore the local-axis move.");
+                RedoEdit();
+                if (!actor.GlobalTransform.IsEqualApprox(localAxisActorAfter))
+                    throw new InvalidOperationException("Redo did not restore the local-axis move.");
+                UndoEdit();
+            }
+            finally
+            {
+                actor.GlobalTransform = actorTransformBeforeLocalTest;
+                actor.SaveTransform();
+                SetActorMoveLocalSpacePreference(false);
+            }
+
 
             string screenshotPath = ProjectSettings.GlobalizePath("res://.godot/actor-move-smoke.png");
             if (GetViewport().GetTexture().GetImage().SavePng(screenshotPath) != Error.Ok)
                 throw new InvalidOperationException("Could not write the actor-move smoke screenshot.");
-            GD.Print($"ACTOR_MOVE_SMOKE_OK drag=true cameraPlane=true groupSelection=true snap=legacy-grid+persistent-toggle+persistence autoSpawn=enabled+disabled undo=true redo=true cancel=true screenshot={screenshotPath}");
+            GD.Print($"ACTOR_MOVE_SMOKE_OK drag=true cameraPlane=true groupSelection=true snap=legacy-grid+persistent-toggle+persistence axes=world+local constrainedUndoRedo=true localSpace=persistent=true autoSpawn=enabled+disabled undo=true redo=true cancel=true screenshot={screenshotPath}");
         }
         catch (Exception exception)
         {
@@ -512,6 +799,8 @@ public partial class GameBuilderApp
         {
             if (restoreMoveSnapPreference)
                 SetActorMoveSnapPreference(originalMoveSnap);
+            if (restoreLocalSpacePreference)
+                SetActorMoveLocalSpacePreference(originalLocalSpace);
             GetTree().Quit(exitCode);
         }
     }

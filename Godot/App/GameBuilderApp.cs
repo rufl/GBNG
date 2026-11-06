@@ -23,6 +23,7 @@ public partial class GameBuilderApp : Node3D
     private LegacyActionPrompt _actionPrompt = null!;
     private Node3D _world = null!;
     private Camera3D _camera = null!;
+    private LegacyActorMoveGizmoControl _actorMoveGizmo = null!;
     private ActorHierarchyItemList _actorList = null!;
     private ActorHierarchyItemList _offstageActorList = null!;
     private Button _actorListToggleButton = null!;
@@ -30,6 +31,7 @@ public partial class GameBuilderApp : Node3D
     private bool _parentOnReset = true;
     private bool _autoSetSpawnOnMove = true;
     private bool _actorMoveSnapToGrid;
+    private bool _actorMoveLocalSpace;
     private bool _autoSetSpawnOnRotate = true;
     private bool _invertMouseLook;
     private bool _showTooltips = true;
@@ -45,6 +47,7 @@ public partial class GameBuilderApp : Node3D
     private const string EditorSettingsPath = "user://editor-settings.cfg";
     private CheckBox _autoSetSpawnOnMoveToggle = null!;
     private CheckBox _actorMoveSnapToggle = null!;
+    private CheckBox _actorMoveLocalSpaceToggle = null!;
     private CheckBox _autoSetSpawnOnRotateToggle = null!;
     private Label _spawnParentLabel = null!;
     private Button _spawnParentButton = null!;
@@ -291,6 +294,7 @@ public partial class GameBuilderApp : Node3D
     public override void _Process(double delta)
     {
         UpdateActorHierarchySort(delta);
+        UpdateActorMoveGizmo();
         Vector3 cameraOffset = _pendingCameraOffset;
         _pendingCameraOffset = Vector3.Zero;
         if (!_playMode)
@@ -441,24 +445,31 @@ public partial class GameBuilderApp : Node3D
                 }
                 else if (!IsPointerOverUi(mouseButton.Position))
                 {
-                    WorldActorNode? clickedActor = GetActorAtScreenPosition(mouseButton.Position);
-                    if (clickedActor is null)
+                    if (_actorMoveGizmo.TryPickAxis(mouseButton.Position, out LegacyActorMoveGizmoAxis gizmoAxis))
                     {
-                        BeginSelectionMarquee(
-                            mouseButton.Position,
-                            mouseButton.ShiftPressed,
-                            mouseButton.CtrlPressed || mouseButton.MetaPressed);
+                        BeginActorMove(mouseButton.Position, gizmoAxis);
                     }
                     else
                     {
-                        if (!_selectedActors.Contains(clickedActor)
-                            || mouseButton.CtrlPressed || mouseButton.MetaPressed)
-                            ApplyActorSelection(
-                                clickedActor,
+                        WorldActorNode? clickedActor = GetActorAtScreenPosition(mouseButton.Position);
+                        if (clickedActor is null)
+                        {
+                            BeginSelectionMarquee(
+                                mouseButton.Position,
                                 mouseButton.ShiftPressed,
                                 mouseButton.CtrlPressed || mouseButton.MetaPressed);
-                        if (_selectedActors.Contains(clickedActor))
-                            BeginActorMove(mouseButton.Position);
+                        }
+                        else
+                        {
+                            if (!_selectedActors.Contains(clickedActor)
+                                || mouseButton.CtrlPressed || mouseButton.MetaPressed)
+                                ApplyActorSelection(
+                                    clickedActor,
+                                    mouseButton.ShiftPressed,
+                                    mouseButton.CtrlPressed || mouseButton.MetaPressed);
+                            if (_selectedActors.Contains(clickedActor))
+                                BeginActorMove(mouseButton.Position);
+                        }
                     }
                 }
             }
@@ -705,6 +716,17 @@ public partial class GameBuilderApp : Node3D
         };
         _selectionMarquee.AddThemeStyleboxOverride("panel", marqueeStyle);
         root.AddChild(_selectionMarquee);
+        _actorMoveGizmo = new LegacyActorMoveGizmoControl
+        {
+            Name = "ActorMoveGizmo",
+            AnchorRight = 1f,
+            AnchorBottom = 1f,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            ZIndex = 0,
+            Visible = false
+        };
+        root.AddChild(_actorMoveGizmo);
+        root.MoveChild(_actorMoveGizmo, 1);
         root.AddChild(BuildTextToolEditorOverlay());
         root.AddChild(BuildTextToolHoverHint());
 
@@ -970,6 +992,15 @@ public partial class GameBuilderApp : Node3D
         };
         _actorMoveSnapToggle.Toggled += SetActorMoveSnapPreference;
         left.AddChild(_actorMoveSnapToggle);
+        _actorMoveLocalSpaceToggle = new CheckBox
+        {
+            Name = "MoveLocalSpaceToggle",
+            Text = "Local axes",
+            TooltipText = "Orient the movement handles to one selected actor; multi-selection always uses world axes.",
+            ButtonPressed = _actorMoveLocalSpace
+        };
+        _actorMoveLocalSpaceToggle.Toggled += SetActorMoveLocalSpacePreference;
+        left.AddChild(_actorMoveLocalSpaceToggle);
         _actorSearchField = new LineEdit { Name = "ActorSearchField", PlaceholderText = "Search actors…" };
         _actorSearchField.TextChanged += _ => RefreshActorList();
         left.AddChild(_actorSearchField);
@@ -3049,6 +3080,8 @@ public partial class GameBuilderApp : Node3D
             SetCameraFollowingActor(false);
         UpdateCameraFollowButton();
         SyncActorListSelection();
+        if (_actorMoveLocalSpaceToggle is not null && IsInstanceValid(_actorMoveLocalSpaceToggle))
+            _actorMoveLocalSpaceToggle.Disabled = _selectedActors.Count > 1;
 
         _updatingInspector = true;
         bool hasActor = _selectedActor is not null;
@@ -3561,6 +3594,7 @@ public partial class GameBuilderApp : Node3D
         _autoSetSpawnOnMove = settings.GetValue("editor", "auto_set_spawn_on_move", true).AsBool();
         _autoSetSpawnOnRotate = settings.GetValue("editor", "auto_set_spawn_on_rotate", true).AsBool();
         _actorMoveSnapToGrid = settings.GetValue("editor", "move_snap_to_grid", false).AsBool();
+        _actorMoveLocalSpace = settings.GetValue("editor", "move_local_space", false).AsBool();
         _invertMouseLook = settings.GetValue("controls", "invert_vertical_look", false).AsBool();
         _mouseLookSensitivity = ReadControlPreference(settings, "mouse_look_sensitivity", LegacyControlsWindow.DefaultMouseLookSensitivity,
             LegacyControlsWindow.MinimumMouseLookSensitivity, LegacyControlsWindow.MaximumMouseLookSensitivity);
@@ -3602,6 +3636,16 @@ public partial class GameBuilderApp : Node3D
             && _actorMoveSnapToggle.ButtonPressed != enabled)
             _actorMoveSnapToggle.SetPressedNoSignal(enabled);
         SaveEditorPreferences();
+    }
+    private void SetActorMoveLocalSpacePreference(bool enabled)
+    {
+        _actorMoveLocalSpace = enabled;
+        if (_actorMoveLocalSpaceToggle is not null
+            && IsInstanceValid(_actorMoveLocalSpaceToggle)
+            && _actorMoveLocalSpaceToggle.ButtonPressed != enabled)
+            _actorMoveLocalSpaceToggle.SetPressedNoSignal(enabled);
+        SaveEditorPreferences();
+        UpdateActorMoveGizmo();
     }
 
     private void SetAutoSetSpawnOnRotatePreference(bool enabled)
@@ -3688,6 +3732,7 @@ public partial class GameBuilderApp : Node3D
         settings.SetValue("editor", "auto_set_spawn_on_move", _autoSetSpawnOnMove);
         settings.SetValue("editor", "auto_set_spawn_on_rotate", _autoSetSpawnOnRotate);
         settings.SetValue("editor", "move_snap_to_grid", _actorMoveSnapToGrid);
+        settings.SetValue("editor", "move_local_space", _actorMoveLocalSpace);
         settings.SetValue("controls", "invert_vertical_look", _invertMouseLook);
         settings.SetValue("controls", "mouse_look_sensitivity", _mouseLookSensitivity);
         settings.SetValue("controls", "mouse_wheel_sensitivity", _mouseWheelSensitivity);
