@@ -377,6 +377,7 @@ public sealed partial class LegacyBehaviorRuntime
             Transform3D globalTransform = actor.GlobalTransform;
             actor.Reparent(parent, keepGlobalTransform: false);
             actor.GlobalTransform = globalTransform;
+            actor.ApplyLegacyPhysicsSettings();
         }
 
         _actorsChanged?.Invoke();

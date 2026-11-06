@@ -1051,7 +1051,7 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
         };
     }
 
-    private void SetActorString(int actorId, int fieldId, string value)
+    internal void SetActorString(int actorId, int fieldId, string value)
     {
         WorldActorNode? actor = GetActor(actorId);
         if (actor is null)
@@ -1060,7 +1060,7 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
         {
             case 0: actor.State.WriteString("displayName", value); break;
             case 1: actor.State.WriteString("description", value); break;
-            case 2: actor.State.SetTransformParent(value); break;
+            case 2: SetActorTransformParent(actor, value); break;
             case 3: actor.SetCommentText(value); break;
             case 4: actor.State.WriteString("debugString", value); break;
             case 5:
@@ -1076,6 +1076,34 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
             case 12: actor.State.WriteString("pfxId", value); break;
             case 13: actor.State.WriteString("sfxId", value); break;
         }
+    }
+    private void SetActorTransformParent(WorldActorNode actor, string parentName)
+    {
+        if (parentName == actor.LegacyName)
+            throw new InvalidOperationException("An actor cannot be parented to itself.");
+
+        WorldActorNode? parent = parentName.Length == 0 ? null : FindActor(parentName);
+        if (parent is not null && actor.IsAncestorOf(parent))
+            throw new InvalidOperationException("An actor cannot be parented to one of its descendants.");
+
+        Node targetParent = parent ?? _world;
+        if (actor.State.TransformParent == parentName && actor.GetParent() == targetParent)
+            return;
+
+        Transform3D worldTransform = actor.GlobalTransform;
+        actor.State.SetTransformParent(parentName);
+        if (actor.GetParent() != targetParent)
+        {
+            actor.Reparent(targetParent, keepGlobalTransform: false);
+            actor.GlobalTransform = worldTransform;
+        }
+
+        foreach (WorldActorNode candidate in _actors)
+        {
+            if (candidate == actor || actor.IsAncestorOf(candidate))
+                candidate.ApplyLegacyPhysicsSettings();
+        }
+        _actorsChanged?.Invoke();
     }
 
     private bool GetActorBoolean(int actorId, int fieldId)

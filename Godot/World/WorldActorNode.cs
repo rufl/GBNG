@@ -209,8 +209,9 @@ public partial class WorldActorNode : RigidBody3D
         if (State is null)
             return;
 
-        Freeze = !_playMode || !State.EnablePhysics || IsOffstageEffective;
-        ContactMonitor = _playMode && State.IsSolid && _hasLegacyCollisionHandlers;
+        bool hasTransformParent = GetParent() is WorldActorNode;
+        Freeze = !_playMode || !State.EnablePhysics || IsOffstageEffective || hasTransformParent;
+        ContactMonitor = _playMode && State.IsSolid && _hasLegacyCollisionHandlers && !hasTransformParent;
         MaxContactsReported = ContactMonitor ? 16 : 0;
         GravityScale = State.EnableGravity ? 1f : 0f;
         Mass = State.Mass;
@@ -220,14 +221,14 @@ public partial class WorldActorNode : RigidBody3D
         AxisLockLinearX = State.FreezeX;
         AxisLockLinearY = State.FreezeY;
         AxisLockLinearZ = State.FreezeZ;
-        CollisionLayer = State.IsSolid ? 1u : 0u;
+        CollisionLayer = !hasTransformParent && State.IsSolid ? 1u : 0u;
         EnsureTriggerArea();
         if (_triggerArea is not null)
         {
             // Solid actors need the sensor only to receive events from other actors' trigger areas.
-            bool shouldMonitor = _playMode && _hasLegacyCollisionHandlers;
-            _triggerArea.CollisionLayer = State.IsSolid ? 0u : 4u;
-            _triggerArea.CollisionMask = State.IsSolid ? 4u : 7u;
+            bool shouldMonitor = _playMode && _hasLegacyCollisionHandlers && !hasTransformParent;
+            _triggerArea.CollisionLayer = hasTransformParent ? 0u : State.IsSolid ? 0u : 4u;
+            _triggerArea.CollisionMask = hasTransformParent ? 0u : State.IsSolid ? 4u : 7u;
             if (_triggerArea.Monitoring != shouldMonitor)
             {
                 _triggerArea.Monitoring = shouldMonitor;
@@ -237,7 +238,7 @@ public partial class WorldActorNode : RigidBody3D
                 _currentTriggerOverlapIds.Clear();
             }
         }
-        CollisionMask = State.IsSolid ? 3u : 0u;
+        CollisionMask = !hasTransformParent && State.IsSolid ? 3u : 0u;
         if (_renderableRoot is not null)
             _renderableRoot.Visible = !(_playMode && State.HideInPlayMode);
     }

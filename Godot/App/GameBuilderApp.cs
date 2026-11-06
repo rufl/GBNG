@@ -3702,6 +3702,7 @@ public partial class GameBuilderApp : Node3D
             Transform3D globalTransform = actor.GlobalTransform;
             actor.Reparent(parent, keepGlobalTransform: false);
             actor.GlobalTransform = globalTransform;
+            actor.ApplyLegacyPhysicsSettings();
         }
         RefreshRuntimeActors();
         if (!_applyingCollaborativePatch)

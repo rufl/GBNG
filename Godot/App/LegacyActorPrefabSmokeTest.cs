@@ -33,9 +33,10 @@ public partial class GameBuilderApp
                 throw new InvalidOperationException("Play mode could not start for the actor-prefab smoke.");
 
             WorldActorNode template = _actors.FirstOrDefault(actor =>
-                    actor.GetNodeOrNull<Node3D>("Renderable") is not null
+                    actor.State.TransformParent.Length == 0
+                    && actor.GetNodeOrNull<Node3D>("Renderable") is not null
                     && !actor.LegacyName.StartsWith("builtin:", StringComparison.Ordinal))
-                ?? throw new InvalidOperationException("The smoke project has no local actor with a renderable.");
+                ?? throw new InvalidOperationException("The smoke project has no root local actor with a renderable.");
 
             const string sourceRootName = "prefab-smoke-source-root";
             const string sourceChildName = "prefab-smoke-source-child";
@@ -52,6 +53,9 @@ public partial class GameBuilderApp
             rootData["transformParent"] = "";
             rootData["spawnTransformParent"] = "";
             rootData["sfxId"] = dependencyId;
+            rootData["enablePhysics"] = true;
+            rootData["isSolid"] = true;
+            rootData["preferOffstage"] = false;
             var rootState = new LegacyActorData(rootData);
             rootState.SetWorldTransform(new Transform3D(Basis.Identity, new Vector3(0f, 1f, 0f)));
             rootState.WriteLegacyVector("spawnPosition", CoordinateSpace.ToLegacy(new Vector3(0f, 1f, 0f)));
@@ -148,6 +152,41 @@ public partial class GameBuilderApp
                 throw new InvalidOperationException("The prefab child lost its parent or script-clone state.");
             if (firstBrainId.Length == 0 || firstBrainId == sourceBrainId || firstChild.State.BrainName != firstBrainId)
                 throw new InvalidOperationException($"The prefab actors did not receive an independent shared brain: root={firstBrainId}, child={firstChild.State.BrainName}.");
+            int firstRootActorId = LegacySaveDocument.ReadInt(firstResult["actorId"], -1);
+            Transform3D rootTransformBeforeParent = firstRoot.GlobalTransform;
+            runtime.SetActorString(firstRootActorId, 2, template.LegacyName);
+            if (firstRoot.State.TransformParent != template.LegacyName
+                || firstRoot.GetParent() != template
+                || !firstRoot.GlobalTransform.IsEqualApprox(rootTransformBeforeParent)
+                || firstRoot.CollisionLayer != 0u
+                || firstRoot.CollisionMask != 0u
+                || !firstRoot.Freeze
+                || firstChild.CollisionLayer != 0u
+                || firstChild.CollisionMask != 0u
+                || !firstChild.Freeze)
+                throw new InvalidOperationException("Script transform parenting did not preserve world transforms or disable child physics.");
+            bool cycleRejected = false;
+            try
+            {
+                runtime.SetActorString(_actors.IndexOf(template), 2, firstRoot.LegacyName);
+            }
+            catch (InvalidOperationException)
+            {
+                cycleRejected = true;
+            }
+            if (!cycleRejected || template.State.TransformParent.Length != 0 || template.GetParent() != _world)
+                throw new InvalidOperationException("Script transform parenting accepted a descendant cycle or left partial state.");
+            runtime.SetActorString(firstRootActorId, 2, "");
+            if (firstRoot.State.TransformParent.Length != 0
+                || firstRoot.GetParent() != _world
+                || !firstRoot.GlobalTransform.IsEqualApprox(rootTransformBeforeParent)
+                || firstRoot.CollisionLayer != 1u
+                || firstRoot.CollisionMask != 3u
+                || firstRoot.Freeze
+                || firstChild.CollisionLayer != 0u
+                || firstChild.CollisionMask != 0u
+                || !firstChild.Freeze)
+                throw new InvalidOperationException("Script unparenting did not restore root physics while retaining descendant hierarchy.");
 
             JsonObject importedBrain = FindPrefabBrain(document, firstBrainId);
             JsonArray importedUses = importedBrain["behaviorUses"] as JsonArray
@@ -210,7 +249,7 @@ public partial class GameBuilderApp
             Directory.CreateDirectory(Path.GetDirectoryName(screenshot)!);
             if (GetViewport().GetTexture().GetImage().SavePng(screenshot) != Error.Ok)
                 throw new InvalidOperationException("Could not save the actor-prefab smoke screenshot.");
-            GD.Print($"ACTOR_PREFAB_SMOKE_OK customSojo=true hierarchy=2 brainClone=true actorReferences=true sojoConflictRemap=true repeatedPlacement=true persistence=true screenshot={screenshot}");
+            GD.Print($"ACTOR_PREFAB_SMOKE_OK customSojo=true hierarchy=2 brainClone=true actorReferences=true sojoConflictRemap=true repeatedPlacement=true runtimeParenting=true parentPhysics=true persistence=true screenshot={screenshot}");
         }
         catch (Exception exception)
         {
