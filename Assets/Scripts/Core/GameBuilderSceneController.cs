@@ -215,15 +215,13 @@ public class GameBuilderSceneController : MonoBehaviour
     // Some debug keys
     if (Input.GetKey(KeyCode.LeftAlt) && Input.GetKey(KeyCode.LeftControl) && Input.GetKeyDown(KeyCode.L))
     {
-#if USE_FILEBROWSER
-      var filepaths = Crosstales.FB.FileBrowser.OpenFiles("Load scene", "", "voos");
-      if (filepaths.Length > 0 && filepaths[0].Length > 0)
+      LocalFilePicker.OpenFiles("Load scene", null, new string[] { ".voos" }, false, filePaths =>
       {
-        Util.Log("Loading " + filepaths[0]);
-        this.RestartAndLoad(filepaths[0]);
-        lastDebugLoadedFile = filepaths[0];
-      }
-#endif
+        if (filePaths == null || filePaths.Length == 0 || string.IsNullOrEmpty(filePaths[0])) return;
+        Util.Log("Loading " + filePaths[0]);
+        this.RestartAndLoad(filePaths[0]);
+        lastDebugLoadedFile = filePaths[0];
+      });
     }
 
 #if UNITY_EDITOR

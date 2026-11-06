@@ -37,7 +37,7 @@ public class CreationLibrarySounds : MonoBehaviour
   List<ScrollingListItemUI> listItems = new List<ScrollingListItemUI>();
   Dictionary<string, Util.Tuple<ProgressItemUI, WorkshopAssetSource.GetUploadProgress>> importingListItems =
   new Dictionary<string, Util.Tuple<ProgressItemUI, WorkshopAssetSource.GetUploadProgress>>();
-
+  Queue<string> pendingAudioImports = new Queue<string>();
   // WorkshopAssetSource workshopAssetSource;
   private SynthSoundEditor synthSoundEditor;
   private ImportedSoundEffectEditor importedSoundEditor;
@@ -262,20 +262,10 @@ public class CreationLibrarySounds : MonoBehaviour
 
   void OnImportButtonClicked()
   {
-#if USE_FILEBROWSER
-    var wavFilter = new Crosstales.FB.ExtensionFilter("WAV files", "wav");
-    var oggFilter = new Crosstales.FB.ExtensionFilter("OGG files", "ogg");
-    string[] paths = Crosstales.FB.FileBrowser.OpenFiles("Import sound", "", wavFilter, oggFilter);
-    if (paths != null) OnImportFileSelected(paths);
-#else
-    popups.ShowTextInput("Enter the full path to a WAV or OGG file (such as C:\\my\\sounds\\foo.wav):", "", path =>
+    LocalFilePicker.OpenFiles("Import sound", null, new string[] { ".wav", ".ogg" }, true, paths =>
     {
-      if (!path.IsNullOrEmpty() && File.Exists(path))
-      {
-        OnImportFileSelected(new string[] { path });
-      }
+      if (paths != null) OnImportFileSelected(paths);
     });
-#endif
   }
 
   void OnImportFileSelected(string[] selections)
@@ -285,22 +275,48 @@ public class CreationLibrarySounds : MonoBehaviour
       // Canceled.
       return;
     }
-    string fullPath = selections[0];
-    string baseName = Path.GetFileNameWithoutExtension(fullPath);
-    string ext = Path.GetExtension(fullPath).ToLowerInvariant();
-    if (ext != ".ogg" && ext != ".wav")
+
+    pendingAudioImports.Clear();
+    foreach (string path in selections)
     {
-      // Should not happen.
-      Debug.LogError("Invalid extension for audio file: " + ext);
-      return;
+      pendingAudioImports.Enqueue(path);
     }
 
     CloseDialogs();
+    ProcessNextAudioImport();
+  }
+
+  void ProcessNextAudioImport()
+  {
+    while (pendingAudioImports.Count > 0)
+    {
+      string fullPath = pendingAudioImports.Dequeue();
+      if (!File.Exists(fullPath))
+      {
+        Debug.LogError("Audio file no longer exists: " + fullPath);
+        continue;
+      }
+
+      string ext = Path.GetExtension(fullPath).ToLowerInvariant();
+      if (ext != ".ogg" && ext != ".wav")
+      {
+        // Should not happen; the picker filters these extensions.
+        Debug.LogError("Invalid extension for audio file: " + ext);
+        continue;
+      }
+
+      string baseName = Path.GetFileNameWithoutExtension(fullPath);
 #if USE_STEAMWORKS
-    ui.preImportSoundDialogUI.Open(baseName, (proceed, soundName) => OnPreImportClosed(proceed, soundName, fullPath));
+      ui.preImportSoundDialogUI.Open(baseName, (proceed, soundName) =>
+      {
+        OnPreImportClosed(proceed, soundName, fullPath);
+        ProcessNextAudioImport();
+      });
+      return;
 #else
-    OnPreImportClosed(true, baseName, fullPath);
+      OnPreImportClosed(true, baseName, fullPath);
 #endif
+    }
   }
 
   void OnPreImportClosed(bool proceed, string soundName, string fullPath)

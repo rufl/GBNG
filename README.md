@@ -492,11 +492,13 @@ players: anyone with a public listing or invite may attempt to join. Player
 authentication and Internet/router-specific reachability remain unverified.
 
 
-* [Crosstales File Browser](https://assetstore.unity.com/packages/tools/utilities/file-browser-standalone-98716) - Enables the system file browser UI for local disk import/export features
+* Local file and folder picker
 
-    - Import the plugin from the Asset Store link above.
-    - Define the directive `USE_FILEBROWSER`.
-
+    Local import/export features use Game Builder's built-in cross-platform picker
+    for files, folders, and saving. It supports directory navigation, extension
+    filters, multi-file selection (including batch sound imports), and explicit
+    overwrite confirmation. No Crosstales plugin or platform-native file-dialog
+    package is required.
 
 * Google Image Search
 

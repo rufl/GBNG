@@ -471,25 +471,13 @@ public class TerrainToolSettings : Sidebar
 
   void OnImportButtonClicked()
   {
-#if USE_FILEBROWSER
-    Crosstales.FB.ExtensionFilter[] filters = new Crosstales.FB.ExtensionFilter[] {
-      new Crosstales.FB.ExtensionFilter("PNG files", "png"),
-      new Crosstales.FB.ExtensionFilter("JPG files", "jpg"),
-    };
-    string selected = Crosstales.FB.FileBrowser.OpenSingleFile("Import image", "", filters);
-    if (selected != null)
+    LocalFilePicker.OpenFiles("Import image", null, new string[] { ".png", ".jpg" }, false, selectedPaths =>
     {
-      OnImportFileSelected(new string[] { selected });
-    }
-#else
-    popups.ShowTextInput("Enter the full path to a PNG (such as C:\\my\\textures\\foo.png):", "", path =>
-    {
-      if (!path.IsNullOrEmpty() && File.Exists(path))
+      if (selectedPaths != null && selectedPaths.Length > 0)
       {
-        OnImportFileSelected(new string[] { path });
+        OnImportFileSelected(selectedPaths);
       }
     });
-#endif
   }
 
   bool IsExtensionUsable(string ext)

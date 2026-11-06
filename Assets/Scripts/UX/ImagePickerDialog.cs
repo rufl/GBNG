@@ -121,16 +121,8 @@ public class ImagePickerDialog : MonoBehaviour
 
   void OnUploadClicked()
   {
-#if USE_FILEBROWSER
-    Crosstales.FB.ExtensionFilter[] filters = new Crosstales.FB.ExtensionFilter[] {
-      new Crosstales.FB.ExtensionFilter("PNG files", "png"),
-      new Crosstales.FB.ExtensionFilter("JPG files", "jpg"),
-    };
-    var paths = Crosstales.FB.FileBrowser.OpenFiles("Upload image", "", filters);
-    OnSelectedFileToUpload(paths);
-#else
-    popups.ShowTextInput("Enter full path of PNG or JPG image:", "", path => OnSelectedFileToUpload(new string[] { path }));
-#endif
+    LocalFilePicker.OpenFiles("Upload image", null, new string[] { ".png", ".jpg" }, false,
+      OnSelectedFileToUpload);
   }
 
   void OnSelectedFileToUpload(string[] selections)

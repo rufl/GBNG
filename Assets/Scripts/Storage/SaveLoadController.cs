@@ -96,16 +96,14 @@ public class SaveLoadController : MonoBehaviour
     // Developer help
     if (Input.GetKey(KeyCode.LeftAlt) && Input.GetKey(KeyCode.LeftControl) && Input.GetKeyDown(KeyCode.S))
     {
-#if USE_FILEBROWSER
-      var filePath = Crosstales.FB.FileBrowser.SaveFile("Save scene", "", "", "voos");
-      if (!filePath.IsNullOrEmpty())
+      LocalFilePicker.SaveFile("Save scene", null, "scene.voos", ".voos", filePath =>
       {
+        if (string.IsNullOrEmpty(filePath)) return;
         this.RequestSave(filePath, () =>
         {
           Util.Log($"OK saved to {filePath}");
         });
-      }
-#endif
+      });
     }
 
     if (activeSaveRequest != null && activeWriteJobHandle.IsCompleted)

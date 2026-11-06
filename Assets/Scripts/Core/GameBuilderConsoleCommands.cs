@@ -424,7 +424,7 @@ public class GameBuilderConsoleCommands : MonoBehaviour
 
   static string lastVoosFilePathUsed = null;
 
-  [RegisterCommand(Help = "Load a VOOS file by absolute path; without a file picker, the path is required.")]
+  [RegisterCommand(Help = "Load a VOOS file by absolute path, or open the local file picker.")]
   static void CommandLoad(CommandArg[] args)
   {
     var scenes = FindObjectOfType<GameBuilderSceneController>();
@@ -443,35 +443,34 @@ public class GameBuilderConsoleCommands : MonoBehaviour
     }
     else
     {
-#if USE_FILEBROWSER
-      string path = Crosstales.FB.FileBrowser.SaveFile("Load scene", "", "scene.voos", "voos");
-      if (!path.IsNullOrEmpty())
+      LocalFilePicker.OpenFiles("Load scene", null, new string[] { ".voos" }, false, paths =>
       {
+        if (paths == null || paths.Length == 0 || string.IsNullOrEmpty(paths[0])) return;
+        string path = paths[0];
         Util.Log("Loading " + path);
         scenes.RestartAndLoad(path);
         lastVoosFilePathUsed = path;
-      }
-#else
-      Log("Usage: load <absolute-path-to-file.voos>");
-#endif
+      });
     }
   }
 
 
-  [RegisterCommand(Help = "Save a VOOS file to an absolute path; the file picker is optional.")]
+  [RegisterCommand(Help = "Save a VOOS file to an absolute path, or choose a path in the local file picker.")]
   static void CommandSave(CommandArg[] args)
   {
     var saver = FindObjectOfType<SaveLoadController>();
     string path = JoinTailToPath(args);
-#if USE_FILEBROWSER
     if (string.IsNullOrEmpty(path))
     {
-      path = Crosstales.FB.FileBrowser.SaveFile("Save scene", "", "scene.voos", "voos");
-    }
-#endif
-    if (string.IsNullOrEmpty(path))
-    {
-      Log("Usage: save <absolute-path-to-file.voos>");
+      LocalFilePicker.SaveFile("Save scene", null, "scene.voos", ".voos", selectedPath =>
+      {
+        if (string.IsNullOrEmpty(selectedPath)) return;
+        saver.RequestSave(selectedPath, () =>
+        {
+          Util.Log($"OK saved to {selectedPath}");
+          lastVoosFilePathUsed = selectedPath;
+        });
+      });
       return;
     }
 
@@ -501,15 +500,14 @@ public class GameBuilderConsoleCommands : MonoBehaviour
       }
       else
       {
-#if USE_FILEBROWSER
-        string path = Crosstales.FB.FileBrowser.OpenSingleFile("Load scene", "", "voos");
-        if (!path.IsNullOrEmpty())
+        LocalFilePicker.OpenFiles("Load scene", null, new string[] { ".voos" }, false, paths =>
         {
+          if (paths == null || paths.Length == 0 || string.IsNullOrEmpty(paths[0])) return;
+          string path = paths[0];
           Util.Log("Loading " + path);
           scenes.RestartAndLoad(path);
           lastVoosFilePathUsed = path;
-        }
-#endif
+        });
       }
     }
   }

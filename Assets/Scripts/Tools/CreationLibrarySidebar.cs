@@ -242,17 +242,13 @@ public class CreationLibrarySidebar : Sidebar
 
   private void ExportToDisk(ActorPrefab prefab)
   {
-#if USE_FILEBROWSER
-    string path = Crosstales.FB.FileBrowser.OpenSingleFolder("Select save location");
-    if (!path.IsNullOrEmpty())
+    string prefabId = prefab.GetId();
+    LocalFilePicker.OpenFolder("Select save location", null, path =>
     {
-      sceneActorLibrary.WritePrefabToDir(prefab.GetId(), path);
+      if (string.IsNullOrEmpty(path)) return;
+      sceneActorLibrary.WritePrefabToDir(prefabId, path);
       popups.Show("Actor exported!", "Ok");
-    }
-#else
-    sceneActorLibrary.WritePrefabToDir(prefab.GetId(), System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments), "GBActors"));
-    popups.Show("Actor exported to Documents/GBActors folder.\nFor more control over export location, build with the free CrossTales FileBrowser plugin.", "Ok");
-#endif
+    });
   }
 
   [CommandTerminal.RegisterCommand(Help = "Import actor by path")]
@@ -273,14 +269,10 @@ public class CreationLibrarySidebar : Sidebar
 
   private void ImportFromDisk()
   {
-#if USE_FILEBROWSER
-    string path = Crosstales.FB.FileBrowser.OpenSingleFolder("Import from folder");
-    if (path.IsNullOrEmpty()) return;
-ImportFromPath(path);
-   
-#else
-    popups.Show("Use the console command 'importactor C:\\path\\to\\actorfolder' instead. Or, build with the free CrossTales FileBrowser plugin.", "OK");
-#endif
+    LocalFilePicker.OpenFolder("Import from folder", null, path =>
+    {
+      if (!string.IsNullOrEmpty(path)) ImportFromPath(path);
+    });
   }
 
   public void ImportFromPath(string path)

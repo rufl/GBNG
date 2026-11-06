@@ -768,17 +768,14 @@ public class CardLibrary : MonoBehaviour, CardManager.PopupPanel
 
   private void OnFinishSelectionForLocal(IEnumerable<string> result)
   {
-#if USE_FILEBROWSER
-    var paths = Crosstales.FB.FileBrowser.OpenFolders("Select save location", null);
-    if (paths.Count() == 0) return;
-    string path = paths.First();
-    if (path.IsNullOrEmpty()) return;
-    behaviorSystem.WriteEmbeddedBehaviorsToDirectory(result, Path.Combine(path, "cardPack_" + System.DateTime.Now.ToString("yyyyMMddTHHmm")));
-    popups.Show("Cards exported!", "Ok");
-#else
-    behaviorSystem.WriteEmbeddedBehaviorsToDirectory(result, Path.Combine(System.Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "GBCards", "cardPack_" + System.DateTime.Now.ToString("yyyyMMddTHHmm")));
-    popups.Show("Cards exported to Documents/GBCards folder.\nFor more control over export location, build with the free CrossTales FileBrowser plugin.", "Ok");
-#endif
+    List<string> selectedCards = new List<string>(result);
+    LocalFilePicker.OpenFolder("Select save location", null, path =>
+    {
+      if (string.IsNullOrEmpty(path)) return;
+      string packPath = Path.Combine(path, "cardPack_" + System.DateTime.Now.ToString("yyyyMMddTHHmm"));
+      behaviorSystem.WriteEmbeddedBehaviorsToDirectory(selectedCards, packPath);
+      popups.Show("Cards exported!", "Ok");
+    });
   }
 
   [CommandTerminal.RegisterCommand(Help = "Import cards by path")]
@@ -806,15 +803,11 @@ public class CardLibrary : MonoBehaviour, CardManager.PopupPanel
 
   private void ImportLocal()
   {
-#if USE_FILEBROWSER
-    var paths = Crosstales.FB.FileBrowser.OpenFolders("Open folder", null);
-    if (paths.Count() == 0) return;
-    string path = paths.First();
-    if (path.IsNullOrEmpty()) return;
-    OnBehaviorsLoaded(BehaviorSystem.LoadEmbeddedBehaviorsFromDirectory(path));
-#else
-    popups.Show("Use the console command 'importcards C:\\path\\to\\cardfolder' instead. Or, build with the free CrossTales FileBrowser plugin.", "OK");
-#endif
+    LocalFilePicker.OpenFolder("Open folder", null, path =>
+    {
+      if (string.IsNullOrEmpty(path)) return;
+      OnBehaviorsLoaded(BehaviorSystem.LoadEmbeddedBehaviorsFromDirectory(path));
+    });
   }
 
   private void OnBehaviorsLoaded(Dictionary<string, Behaviors.Behavior> behaviors)
