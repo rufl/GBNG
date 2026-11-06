@@ -283,6 +283,8 @@ public partial class GameBuilderApp : Node3D
             RunActorMoveSmoke();
         if (commandLineArgs.Contains("--smoke-actor-rotate", StringComparer.Ordinal))
             RunActorRotateSmoke();
+        if (commandLineArgs.Contains("--smoke-actor-scale", StringComparer.Ordinal))
+            RunActorScaleSmoke();
         if (commandLineArgs.Contains("--smoke-actor-hierarchy", StringComparer.Ordinal))
             RunActorHierarchyNavigationSmoke();
         if (commandLineArgs.Contains("--smoke-comment-panels", StringComparer.Ordinal))
@@ -298,6 +300,7 @@ public partial class GameBuilderApp : Node3D
         UpdateActorHierarchySort(delta);
         UpdateActorMoveGizmo();
         UpdateActorRotateGizmo();
+        UpdateActorScaleGizmo();
         Vector3 cameraOffset = _pendingCameraOffset;
         _pendingCameraOffset = Vector3.Zero;
         if (!_playMode)
@@ -392,6 +395,8 @@ public partial class GameBuilderApp : Node3D
     }
     public override void _Input(InputEvent @event)
     {
+        if (HandleActorScaleInput(@event))
+            return;
         if (HandleActorRotateInput(@event))
             return;
         if (HandleActorMoveInput(@event))
@@ -450,12 +455,17 @@ public partial class GameBuilderApp : Node3D
                 }
                 else if (!IsPointerOverUi(mouseButton.Position))
                 {
-                    if (_actorRotateToolActive
+                    if (_actorScaleToolActive && _actorScaleGizmo.TryPick(mouseButton.Position))
+                    {
+                        BeginActorScale();
+                    }
+                    else if (_actorRotateToolActive
                         && _actorRotateGizmo.TryPickAxis(mouseButton.Position, out LegacyActorMoveGizmoAxis rotateAxis))
                     {
                         BeginActorRotate(mouseButton.Position, rotateAxis);
                     }
-                    else if (!_actorRotateToolActive
+                    else if (!_actorScaleToolActive
+                        && !_actorRotateToolActive
                         && _actorMoveGizmo.TryPickAxis(mouseButton.Position, out LegacyActorMoveGizmoAxis moveAxis))
                     {
                         BeginActorMove(mouseButton.Position, moveAxis);
@@ -478,7 +488,10 @@ public partial class GameBuilderApp : Node3D
                                     clickedActor,
                                     mouseButton.ShiftPressed,
                                     mouseButton.CtrlPressed || mouseButton.MetaPressed);
-                            if (_selectedActors.Contains(clickedActor) && !_actorRotateToolActive)
+                            if (_selectedActors.Contains(clickedActor) && _actorScaleToolActive)
+                                BeginActorScale();
+                            else if (_selectedActors.Contains(clickedActor)
+                                && !_actorRotateToolActive && !_actorScaleToolActive)
                                 BeginActorMove(mouseButton.Position);
                         }
                     }
@@ -736,6 +749,8 @@ public partial class GameBuilderApp : Node3D
             ZIndex = 0,
             Visible = false
         };
+        root.AddChild(_actorMoveGizmo);
+        root.MoveChild(_actorMoveGizmo, 1);
         _actorRotateGizmo = new LegacyActorRotateGizmoControl
         {
             Name = "ActorRotateGizmo",
@@ -747,6 +762,17 @@ public partial class GameBuilderApp : Node3D
         };
         root.AddChild(_actorRotateGizmo);
         root.MoveChild(_actorRotateGizmo, 1);
+        _actorScaleGizmo = new LegacyActorScaleGizmoControl
+        {
+            Name = "ActorScaleGizmo",
+            AnchorRight = 1f,
+            AnchorBottom = 1f,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            ZIndex = 0,
+            Visible = false
+        };
+        root.AddChild(_actorScaleGizmo);
+        root.MoveChild(_actorScaleGizmo, 1);
         root.AddChild(BuildTextToolEditorOverlay());
         root.AddChild(BuildTextToolHoverHint());
 
@@ -1012,6 +1038,15 @@ public partial class GameBuilderApp : Node3D
         };
         _actorRotateToolToggle.Toggled += SetActorRotateToolPreference;
         left.AddChild(_actorRotateToolToggle);
+        _actorScaleToolToggle = new CheckBox
+        {
+            Name = "ScaleToolToggle",
+            Text = "Scale gizmo",
+            TooltipText = "Drag the blue center gizmo to scale selected actors uniformly; Ctrl/Cmd scales faster.",
+            ButtonPressed = _actorScaleToolActive
+        };
+        _actorScaleToolToggle.Toggled += SetActorScaleToolPreference;
+        left.AddChild(_actorScaleToolToggle);
         _actorRotateSnapToggle = new CheckBox
         {
             Name = "RotateSnapToggle",

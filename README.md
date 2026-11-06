@@ -89,6 +89,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\godot\run.ps1 --path . -- 
 ```
 
 The smoke prints `ACTOR_MOVE_SMOKE_OK` and writes `.godot/actor-move-smoke.png`.
+
 **Rotate handles** switches from the 45° one-shot action to red X, green Y, and blue Z drag rings. A single actor uses **Local axes** when enabled; multiple actors rotate in world space around their average position. **Snap rotation** persists snapping to legacy orientations, while Ctrl/Cmd temporarily enables snapping during a drag. Release commits one undoable collaborative edit; Escape cancels. The **Rotate** restart-transform option updates the selected actor family when enabled.
 
 To exercise rotation rings, local/world axes, legacy-orientation snapping, multi-selection pivot behavior, restart transforms, Undo/Redo, and Escape cancellation:
@@ -98,6 +99,16 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\godot\run.ps1 --path . -- 
 ```
 
 The smoke prints `ACTOR_ROTATE_SMOKE_OK` and writes `.godot/actor-rotate-smoke.png`.
+
+**Scale gizmo** activates the blue center handle. Drag it—or the selected actor—to multiply every selected actor's local scale uniformly while preserving existing axis proportions. Ctrl/Cmd scales faster. If the X scale falls below the legacy 0.1 minimum, the actor clamps to 0.1 on all axes. Release records one undoable collaborative edit and refreshes restart transforms for each selected actor family; Escape cancels.
+
+To exercise handle picking, multi-selection, normal and fast scaling, the 0.1 minimum, restart-transform updates, Undo/Redo, and Escape cancellation:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\godot\run.ps1 --path . -- res://Assets/StreamingAssets/ExampleGames/Public/sample-platformer.voos --smoke-actor-scale
+```
+
+The smoke prints `ACTOR_SCALE_SMOKE_OK` and writes `.godot/actor-scale-smoke.png`.
 
 The **Parent on reset** checkbox controls whether **Ctrl+H** / **Cmd+H** and the inspector's **Transform parent** picker also change the parent restored by reset; it is enabled by default and saved as an editor preference on this device.
 

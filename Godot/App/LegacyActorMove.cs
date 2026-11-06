@@ -75,7 +75,7 @@ public partial class GameBuilderApp
             0.75f,
             4f);
         _actorMoveGizmoWorldLength = worldLength;
-        if (_actorRotateToolActive)
+        if (_actorRotateToolActive || _actorScaleToolActive)
         {
             _actorMoveGizmo.SetHandles(false, Vector2.Zero, Vector2.Zero, Vector2.Zero, Vector2.Zero);
             return;

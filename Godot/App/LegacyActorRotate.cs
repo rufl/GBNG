@@ -41,6 +41,7 @@ public partial class GameBuilderApp
             return;
 
         bool canShow = _actorRotateToolActive
+            && !_actorScaleToolActive
             && _document is not null
             && !_welcome.Visible
             && !_playMode
@@ -403,6 +404,13 @@ public partial class GameBuilderApp
 
     private void SetActorRotateToolPreference(bool enabled)
     {
+        if (enabled && _actorScaleToolActive)
+            SetActorScaleToolPreference(false);
+        if (enabled && _actorMovePending)
+            CancelActorMove();
+        if (!enabled && _actorRotatePending)
+            CancelActorRotate();
+
         _actorRotateToolActive = enabled;
         if (_actorRotateToolToggle is not null
             && IsInstanceValid(_actorRotateToolToggle)
@@ -410,6 +418,7 @@ public partial class GameBuilderApp
             _actorRotateToolToggle.SetPressedNoSignal(enabled);
         UpdateActorMoveGizmo();
         UpdateActorRotateGizmo();
+        UpdateActorScaleGizmo();
     }
 
     private void SetActorRotateSnapPreference(bool enabled)
