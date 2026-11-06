@@ -144,17 +144,16 @@ public class GameBuilderSceneController : MonoBehaviour
   }
 
 #if USE_STEAMWORKS
-  public void LoadWorkshopItem(LoadableWorkshopItem item, GameBuilderApplication.PlayOptions playOptions, Texture2D thumbnail)
+  public void LoadWorkshopItem(LoadableWorkshopItem item, GameBuilderApplication.PlayOptions playOptions, Texture2D thumbnail, bool remix = false)
   {
-    resuming.SetWorkshopItemForResuming(item.steamId);
+    if (remix) playOptions.startInBuildMode = true;
     var options = new GameBuilderApplication.GameOptions
     {
       displayName = item.displayName,
       playOptions = playOptions,
       thumbnailZippedJpegBytes = MaybeGetThumbnailBytes(thumbnail),
-      steamWorkShopFileId = item.steamId,
+      steamWorkShopFileId = remix ? 0 : item.steamId,
     };
-    ulong itemId = item.steamId;
     this.RestartAndLoadBundleDirectory(item.installedLocalFolder, options);
   }
 #endif

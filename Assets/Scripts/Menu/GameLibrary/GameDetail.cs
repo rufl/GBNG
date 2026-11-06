@@ -117,7 +117,6 @@ public class GameDetail : MonoBehaviour
     {
       LoadLibraryBundle(entry, playOpts);
     });
-    buildAction = () => popups.Show("Not implemented", "OK", () => { });
   }
 
 #if USE_STEAMWORKS
@@ -145,7 +144,7 @@ public class GameDetail : MonoBehaviour
         texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0, 0), 100F, 0, SpriteMeshType.FullRect);
     }
     playAction = () => OnPlayTriggered(playOpts => LoadByWorkshopItem(workshopItem, playOpts));
-    buildAction = () => popups.Show("Not implemented", "OK", () => { });
+    buildAction = () => LoadByWorkshopItem(workshopItem, new GameBuilderApplication.PlayOptions { startInBuildMode = true }, true);
     subscribeButtonText.text = GetSubscribeButtonText(workshopItem);
   }
 #endif
@@ -203,6 +202,7 @@ public class GameDetail : MonoBehaviour
       {
         downloadTextObject.SetActive(false);
         openButtonsParentObject.SetActive(true);
+        buildButton.gameObject.SetActive(true);
       }
     }
     else
@@ -288,7 +288,7 @@ public class GameDetail : MonoBehaviour
   }
 
 #if USE_STEAMWORKS
-  void LoadByWorkshopItem(WorkshopItem item, GameBuilderApplication.PlayOptions playOpts)
+  void LoadByWorkshopItem(WorkshopItem item, GameBuilderApplication.PlayOptions playOpts, bool remix = false)
   {
     Debug.Assert(item.IsSubscribed, "Item is not subscribed");
     Debug.Assert(!item.IsDownloading, "Item is still downloading");
@@ -301,7 +301,7 @@ public class GameDetail : MonoBehaviour
     Texture2D tnTexture = thumbnailImage.sprite?.texture;
     loadingScreen.ShowAndDo(() =>
     {
-      sceneController.LoadWorkshopItem(new LoadableWorkshopItem(item), playOpts, tnTexture);
+      sceneController.LoadWorkshopItem(new LoadableWorkshopItem(item), playOpts, tnTexture, remix);
     });
 
   }

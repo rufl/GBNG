@@ -546,6 +546,10 @@ the `renderuri` command above. No Poly API key or SDK setup is available.
   matching any required tag (`SearchMatchAnyTag`), consistent with LapinerTools.
 * Subscribing requests downloads for missing or outdated items. Import and play
   actions wait until the item is installed, not downloading, and current.
+* Remix opens an installed Workshop game in Build mode as a local project.
+  Its Workshop ID is cleared, so saving creates a separate local bundle instead
+  of editing the original Workshop item.
+
 * When Steam requires Workshop legal-agreement acceptance, uploading opens the
   agreement page and returns an explicit error; accept it, then retry.
 * Upload progress follows LapinerTools' preparation, content, preview, and commit
