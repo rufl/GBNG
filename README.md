@@ -89,6 +89,15 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\godot\run.ps1 --path . -- 
 ```
 
 The smoke prints `ACTOR_MOVE_SMOKE_OK` and writes `.godot/actor-move-smoke.png`.
+**Rotate handles** switches from the 45° one-shot action to red X, green Y, and blue Z drag rings. A single actor uses **Local axes** when enabled; multiple actors rotate in world space around their average position. **Snap rotation** persists snapping to legacy orientations, while Ctrl/Cmd temporarily enables snapping during a drag. Release commits one undoable collaborative edit; Escape cancels. The **Rotate** restart-transform option updates the selected actor family when enabled.
+
+To exercise rotation rings, local/world axes, legacy-orientation snapping, multi-selection pivot behavior, restart transforms, Undo/Redo, and Escape cancellation:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\godot\run.ps1 --path . -- res://Assets/StreamingAssets/ExampleGames/Public/sample-platformer.voos --smoke-actor-rotate
+```
+
+The smoke prints `ACTOR_ROTATE_SMOKE_OK` and writes `.godot/actor-rotate-smoke.png`.
 
 The **Parent on reset** checkbox controls whether **Ctrl+H** / **Cmd+H** and the inspector's **Transform parent** picker also change the parent restored by reset; it is enabled by default and saved as an editor preference on this device.
 

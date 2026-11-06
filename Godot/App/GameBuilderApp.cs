@@ -281,6 +281,8 @@ public partial class GameBuilderApp : Node3D
             RunActorCopySmoke();
         if (commandLineArgs.Contains("--smoke-actor-move", StringComparer.Ordinal))
             RunActorMoveSmoke();
+        if (commandLineArgs.Contains("--smoke-actor-rotate", StringComparer.Ordinal))
+            RunActorRotateSmoke();
         if (commandLineArgs.Contains("--smoke-actor-hierarchy", StringComparer.Ordinal))
             RunActorHierarchyNavigationSmoke();
         if (commandLineArgs.Contains("--smoke-comment-panels", StringComparer.Ordinal))
@@ -295,6 +297,7 @@ public partial class GameBuilderApp : Node3D
     {
         UpdateActorHierarchySort(delta);
         UpdateActorMoveGizmo();
+        UpdateActorRotateGizmo();
         Vector3 cameraOffset = _pendingCameraOffset;
         _pendingCameraOffset = Vector3.Zero;
         if (!_playMode)
@@ -389,6 +392,8 @@ public partial class GameBuilderApp : Node3D
     }
     public override void _Input(InputEvent @event)
     {
+        if (HandleActorRotateInput(@event))
+            return;
         if (HandleActorMoveInput(@event))
             return;
         if (_selectionMarqueeActive
@@ -445,9 +450,15 @@ public partial class GameBuilderApp : Node3D
                 }
                 else if (!IsPointerOverUi(mouseButton.Position))
                 {
-                    if (_actorMoveGizmo.TryPickAxis(mouseButton.Position, out LegacyActorMoveGizmoAxis gizmoAxis))
+                    if (_actorRotateToolActive
+                        && _actorRotateGizmo.TryPickAxis(mouseButton.Position, out LegacyActorMoveGizmoAxis rotateAxis))
                     {
-                        BeginActorMove(mouseButton.Position, gizmoAxis);
+                        BeginActorRotate(mouseButton.Position, rotateAxis);
+                    }
+                    else if (!_actorRotateToolActive
+                        && _actorMoveGizmo.TryPickAxis(mouseButton.Position, out LegacyActorMoveGizmoAxis moveAxis))
+                    {
+                        BeginActorMove(mouseButton.Position, moveAxis);
                     }
                     else
                     {
@@ -467,7 +478,7 @@ public partial class GameBuilderApp : Node3D
                                     clickedActor,
                                     mouseButton.ShiftPressed,
                                     mouseButton.CtrlPressed || mouseButton.MetaPressed);
-                            if (_selectedActors.Contains(clickedActor))
+                            if (_selectedActors.Contains(clickedActor) && !_actorRotateToolActive)
                                 BeginActorMove(mouseButton.Position);
                         }
                     }
@@ -725,8 +736,17 @@ public partial class GameBuilderApp : Node3D
             ZIndex = 0,
             Visible = false
         };
-        root.AddChild(_actorMoveGizmo);
-        root.MoveChild(_actorMoveGizmo, 1);
+        _actorRotateGizmo = new LegacyActorRotateGizmoControl
+        {
+            Name = "ActorRotateGizmo",
+            AnchorRight = 1f,
+            AnchorBottom = 1f,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            ZIndex = 0,
+            Visible = false
+        };
+        root.AddChild(_actorRotateGizmo);
+        root.MoveChild(_actorRotateGizmo, 1);
         root.AddChild(BuildTextToolEditorOverlay());
         root.AddChild(BuildTextToolHoverHint());
 
@@ -983,6 +1003,24 @@ public partial class GameBuilderApp : Node3D
         };
         _parentOnResetToggle.Toggled += SetParentOnResetPreference;
         left.AddChild(_parentOnResetToggle);
+        _actorRotateToolToggle = new CheckBox
+        {
+            Name = "RotateToolToggle",
+            Text = "Rotate handles",
+            TooltipText = "Show and drag the selected actor's red X, green Y, and blue Z rotation rings.",
+            ButtonPressed = _actorRotateToolActive
+        };
+        _actorRotateToolToggle.Toggled += SetActorRotateToolPreference;
+        left.AddChild(_actorRotateToolToggle);
+        _actorRotateSnapToggle = new CheckBox
+        {
+            Name = "RotateSnapToggle",
+            Text = "Snap rotation",
+            TooltipText = "Snap a single actor to legacy orientations. Ctrl/Cmd also snaps temporarily.",
+            ButtonPressed = _actorRotateSnap
+        };
+        _actorRotateSnapToggle.Toggled += SetActorRotateSnapPreference;
+        left.AddChild(_actorRotateSnapToggle);
         _actorMoveSnapToggle = new CheckBox
         {
             Name = "MoveSnapToggle",
@@ -996,7 +1034,7 @@ public partial class GameBuilderApp : Node3D
         {
             Name = "MoveLocalSpaceToggle",
             Text = "Local axes",
-            TooltipText = "Orient the movement handles to one selected actor; multi-selection always uses world axes.",
+            TooltipText = "Orient movement and rotation handles to one selected actor; multi-selection always uses world axes.",
             ButtonPressed = _actorMoveLocalSpace
         };
         _actorMoveLocalSpaceToggle.Toggled += SetActorMoveLocalSpacePreference;
@@ -3080,8 +3118,8 @@ public partial class GameBuilderApp : Node3D
             SetCameraFollowingActor(false);
         UpdateCameraFollowButton();
         SyncActorListSelection();
-        if (_actorMoveLocalSpaceToggle is not null && IsInstanceValid(_actorMoveLocalSpaceToggle))
-            _actorMoveLocalSpaceToggle.Disabled = _selectedActors.Count > 1;
+        if (_actorRotateSnapToggle is not null && IsInstanceValid(_actorRotateSnapToggle))
+            _actorRotateSnapToggle.Disabled = _selectedActors.Count > 1;
 
         _updatingInspector = true;
         bool hasActor = _selectedActor is not null;
@@ -3594,7 +3632,7 @@ public partial class GameBuilderApp : Node3D
         _autoSetSpawnOnMove = settings.GetValue("editor", "auto_set_spawn_on_move", true).AsBool();
         _autoSetSpawnOnRotate = settings.GetValue("editor", "auto_set_spawn_on_rotate", true).AsBool();
         _actorMoveSnapToGrid = settings.GetValue("editor", "move_snap_to_grid", false).AsBool();
-        _actorMoveLocalSpace = settings.GetValue("editor", "move_local_space", false).AsBool();
+        _actorRotateSnap = settings.GetValue("editor", "rotate_snap_to_legacy_orientations", false).AsBool();
         _invertMouseLook = settings.GetValue("controls", "invert_vertical_look", false).AsBool();
         _mouseLookSensitivity = ReadControlPreference(settings, "mouse_look_sensitivity", LegacyControlsWindow.DefaultMouseLookSensitivity,
             LegacyControlsWindow.MinimumMouseLookSensitivity, LegacyControlsWindow.MaximumMouseLookSensitivity);
@@ -3646,6 +3684,7 @@ public partial class GameBuilderApp : Node3D
             _actorMoveLocalSpaceToggle.SetPressedNoSignal(enabled);
         SaveEditorPreferences();
         UpdateActorMoveGizmo();
+        UpdateActorRotateGizmo();
     }
 
     private void SetAutoSetSpawnOnRotatePreference(bool enabled)
@@ -3733,6 +3772,7 @@ public partial class GameBuilderApp : Node3D
         settings.SetValue("editor", "auto_set_spawn_on_rotate", _autoSetSpawnOnRotate);
         settings.SetValue("editor", "move_snap_to_grid", _actorMoveSnapToGrid);
         settings.SetValue("editor", "move_local_space", _actorMoveLocalSpace);
+        settings.SetValue("editor", "rotate_snap_to_legacy_orientations", _actorRotateSnap);
         settings.SetValue("controls", "invert_vertical_look", _invertMouseLook);
         settings.SetValue("controls", "mouse_look_sensitivity", _mouseLookSensitivity);
         settings.SetValue("controls", "mouse_wheel_sensitivity", _mouseWheelSensitivity);
