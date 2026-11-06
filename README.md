@@ -512,9 +512,11 @@ Direct-host sessions show join/leave notices to the host and existing clients.
 When a peer leaves, every surviving participant also receives the `PlayerLeft`
 behavior event; a newcomer does not get join notices for the existing roster.
 Clients reject raw `IP:port` joins instead of falling back to plaintext. The
-pin authenticates the host and encrypts transport, but does not authenticate
-players: anyone with a public listing or invite may attempt to join. Player
-authentication and Internet/router-specific reachability remain unverified.
+pinned host certificate authenticates the server and encrypts transport. Hosts
+may require an 8–128-byte shared password; clients without it are denied, but
+this does not establish individual account identities. With no password, anyone
+with an invite or public listing may attempt to join. Player names remain
+client-supplied. Internet/router-specific reachability remains unverified.
 
 
 * Local file and folder picker
