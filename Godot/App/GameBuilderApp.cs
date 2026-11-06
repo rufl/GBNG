@@ -287,6 +287,8 @@ public partial class GameBuilderApp : Node3D
             RunTerrainStyleSmokeStandalone();
         if (commandLineArgs.Contains("--smoke-copy-actors", StringComparer.Ordinal))
             RunActorCopySmoke();
+        if (commandLineArgs.Contains("--smoke-actor-prefab", StringComparer.Ordinal))
+            RunActorPrefabSmoke();
         if (commandLineArgs.Contains("--smoke-actor-move", StringComparer.Ordinal))
             RunActorMoveSmoke();
         if (commandLineArgs.Contains("--smoke-actor-rotate", StringComparer.Ordinal))

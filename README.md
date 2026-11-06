@@ -82,6 +82,16 @@ To open the editor without a bundled example, run `pwsh -NoProfile -ExecutionPol
 Bundled examples are read-only project resources; use **Save as…** to create a writable `.voos` copy.
 
 The Godot branch loads and saves legacy `.voos` projects, supports actor selection and inspector editing (including behavior-brain assignment), and provides behavior authoring for embedded JavaScript and legacy typed properties using Godot's native code editor. Its first-party offline asset store searches the generated built-in renderable catalog and models or images imported into the project's `<project>.assets/` sidecar; it previews converted 3D models and images, and imports local `.glb`, `.gltf`, or `.fbx` models plus `.png`, `.jpg`, `.jpeg`, and `.webp` images. Imported images are available to legacy `propImage` properties and render through `uiImage` and `uiImageSlice` without remote lookups. The store needs no account or remote asset service, and Save As carries imported references and files to the new project location. GBNG does not verify licenses for user-imported files; users must check source terms before reuse or sharing.
+Legacy behavior `Prefab` properties instantiate project-stored ActorPrefab Sojos as independent actor hierarchies, with cloned brains, remapped actor/Sojo references, and collision-safe dependency merging. Existing single-actor builtin prefabs remain supported.
+
+To exercise custom prefab instantiation, hierarchy and reference remapping, repeated placement, builtin compatibility, and save/reload:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\godot\run.ps1 --path . -- res://Assets/StreamingAssets/ExampleGames/Public/sample-platformer.voos --smoke-actor-prefab
+```
+
+The smoke prints `ACTOR_PREFAB_SMOKE_OK` and writes `.godot/actor-prefab-smoke.png`.
+
 Legacy `CommentPanel` and `BillboardTextPanel` actors render saved `commentText`, including TextMeshPro color and size tags. The **Text** tool places a billboard or fixed panel at the cursor, previews placement in-world, supports legacy-grid snapping and 90° rotation, and opens an inline editor when a text panel is clicked. Text edits update the panel live; **Enter** commits, **Shift+Enter** inserts a line, **Escape** cancels the current edit (a second **Escape** exits the tool), and Undo/Redo covers both creation and edits. Panels remain editable from the inspector as well.
 
 The legacy behavior UI uses the original ProggyCleanTT BMFont metrics and atlas for text and button labels, preserving fixed-width glyph advances across platforms. Godot loads the bitmap font natively; its assets are MIT-licensed under `Assets/third_party/Fonts/ProggyClean/LICENSE.txt`.

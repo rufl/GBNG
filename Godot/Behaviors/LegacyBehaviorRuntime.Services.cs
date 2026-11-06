@@ -249,60 +249,297 @@ public sealed partial class LegacyBehaviorRuntime
         }
     }
 
-    private string InstantiatePrefab(JsonObject args)
+    internal string InstantiatePrefab(JsonObject args)
     {
         string prefabUri = LegacySaveDocument.ReadString(args["prefabUri"]);
         const string builtinPrefix = "builtin:";
-        if (!prefabUri.StartsWith(builtinPrefix, StringComparison.Ordinal))
-            return JsonSerializer.Serialize(new { name = "", brainName = "", actorId = (ushort)0 });
-        string prefabName = prefabUri[builtinPrefix.Length..];
-        string? path = EnumerateFiles(ActorPrefabRoot, ".actor-prefab.voos")
-            .FirstOrDefault(candidate => string.Equals(
-                Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(candidate)),
-                prefabName,
-                StringComparison.OrdinalIgnoreCase));
-        if (path is null)
-            return JsonSerializer.Serialize(new { name = "", brainName = "", actorId = (ushort)0 });
-        if (_actors.Count >= ushort.MaxValue)
-            return JsonSerializer.Serialize(new { name = "", brainName = "", actorId = (ushort)0 });
+        JsonObject prefab;
+        string prefabName;
+        if (prefabUri.StartsWith(builtinPrefix, StringComparison.Ordinal))
+        {
+            prefabName = prefabUri[builtinPrefix.Length..];
+            string? path = EnumerateFiles(ActorPrefabRoot, ".actor-prefab.voos")
+                .FirstOrDefault(candidate => string.Equals(
+                    Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(candidate)),
+                    prefabName,
+                    StringComparison.OrdinalIgnoreCase));
+            if (path is null)
+                return EmptyPrefabResult();
+            prefab = JsonNode.Parse(Godot.FileAccess.GetFileAsString(path)) as JsonObject
+                ?? throw new InvalidDataException($"Actor prefab is invalid JSON: {path}");
+        }
+        else
+        {
+            JsonObject? sojo = FindSojo(prefabUri, "ActorPrefab");
+            if (sojo is null)
+                return EmptyPrefabResult();
+            string content = LegacySaveDocument.ReadString(sojo["content"]);
+            prefab = JsonNode.Parse(content) as JsonObject
+                ?? throw new InvalidDataException($"Actor prefab '{prefabUri}' has invalid JSON content.");
+            prefabName = LegacySaveDocument.ReadString(prefab["label"], LegacySaveDocument.ReadString(sojo["name"], prefabUri));
+        }
 
-        JsonObject prefab = JsonNode.Parse(Godot.FileAccess.GetFileAsString(path)) as JsonObject
-            ?? throw new InvalidDataException($"Actor prefab is invalid JSON: {path}");
-        bool databaseChanged = MergePrefabBrainDatabase(prefab["brainDatabase"] as JsonObject);
-        if (databaseChanged)
+        var sourceActors = new List<JsonObject>();
+        if (prefab["actors"] is JsonArray savedActors)
+        {
+            foreach (JsonNode? node in savedActors)
+            {
+                if (node is not JsonObject actor)
+                    throw new InvalidDataException($"Actor prefab '{prefabName}' contains a non-object actor.");
+                sourceActors.Add(actor);
+            }
+        }
+        else if (prefab["actorData"] is JsonObject legacyActor)
+        {
+            sourceActors.Add(legacyActor);
+        }
+        if (sourceActors.Count == 0 || _actors.Count + sourceActors.Count > ushort.MaxValue)
+            return EmptyPrefabResult();
+
+        var actorNameMap = new Dictionary<string, string>(sourceActors.Count, StringComparer.Ordinal);
+        foreach (JsonObject sourceActor in sourceActors)
+        {
+            string sourceName = LegacySaveDocument.ReadString(sourceActor["name"]);
+            if (sourceName.Length == 0 || !actorNameMap.TryAdd(sourceName, Guid.NewGuid().ToString("N")))
+                throw new InvalidDataException($"Actor prefab '{prefabName}' contains an empty or duplicate actor name.");
+        }
+
+        Dictionary<string, string> sojoIdMap = MergePrefabSojos(prefab["sojos"] as JsonArray);
+        var referenceMap = new Dictionary<string, string>(actorNameMap, StringComparer.Ordinal);
+        foreach ((string sourceId, string targetId) in sojoIdMap)
+            referenceMap[sourceId] = targetId;
+
+        JsonObject? brainDatabase = PreparePrefabBrainDatabase(
+            prefab["brainDatabase"] as JsonObject,
+            referenceMap,
+            out Dictionary<string, string> brainIdMap);
+        if (MergePrefabBrainDatabase(brainDatabase))
             _refreshDatabasePending = true;
-        JsonObject data = prefab["actorData"] is JsonObject actorData
-            ? (JsonObject)actorData.DeepClone()
-            : throw new InvalidDataException($"Actor prefab has no actorData object: {path}");
 
-        string name = Guid.NewGuid().ToString("N");
-        data["name"] = name;
-        data["creatorName"] = LegacySaveDocument.ReadString(args["creatorName"]);
-        data["displayName"] = $"{LegacySaveDocument.ReadString(data["displayName"], prefabName)}-Script-Instance";
-        data["preferOffstage"] = false;
-        data["wasClonedByScript"] = true;
-        data["transformParent"] = "";
-        data["spawnTransformParent"] = "";
+        int rootActorIndex = _actors.Count;
         Vector3 legacyPosition = LegacyActorData.ReadVector(args["position"], Vector3.Zero);
         Quaternion legacyRotation = LegacyActorData.ReadQuaternion(args["rotation"]);
-        var transform = new Transform3D(
-            new Basis(CoordinateSpace.ToGodot(legacyRotation)),
+        Vector3 rootScale = LegacyActorData.ReadVector(sourceActors[0]["localScale"], Vector3.One);
+        var targetRoot = new Transform3D(
+            new Basis(CoordinateSpace.ToGodot(legacyRotation)).Scaled(rootScale),
             CoordinateSpace.ToGodot(legacyPosition));
-        data["spawnPosition"] = VectorJson(legacyPosition);
-        data["spawnRotation"] = QuaternionJson(legacyRotation);
-        LegacyActorData state = _document.AddActor(data);
-        state.SetWorldTransform(transform);
-        _catalog.TryGet(state.RenderableUri, out RenderableEntry? renderable);
-        var actor = new WorldActorNode();
-        actor.Initialize(state, renderable);
-        actor.SetPlayMode(true);
-        _world.AddChild(actor);
-        actor.GlobalTransform = transform;
-        _actors.Add(actor);
-        _actorsByName.Add(name, actor);
-        _actorsById.Add(actor);
+        Transform3D sourceToTarget = targetRoot * new LegacyActorData(sourceActors[0]).GetWorldTransform().AffineInverse();
+        var instances = new List<WorldActorNode>(sourceActors.Count);
+
+        foreach (JsonObject sourceData in sourceActors)
+        {
+            string sourceName = LegacySaveDocument.ReadString(sourceData["name"]);
+            JsonObject data = (JsonObject)RemapPrefabReferences(sourceData, referenceMap)!;
+            data["name"] = actorNameMap[sourceName];
+            string sourceBrainId = LegacySaveDocument.ReadString(sourceData["brainName"]);
+            if (brainIdMap.TryGetValue(sourceBrainId, out string? instanceBrainId))
+                data["brainName"] = instanceBrainId;
+            data["creatorName"] = LegacySaveDocument.ReadString(args["creatorName"]);
+            if (sourceName == LegacySaveDocument.ReadString(sourceActors[0]["name"]))
+                data["displayName"] = $"{LegacySaveDocument.ReadString(sourceData["displayName"], prefabName)}-Script-Instance";
+            data["preferOffstage"] = false;
+            data["wasClonedByScript"] = true;
+
+            string sourceParent = LegacySaveDocument.ReadString(sourceData["transformParent"]);
+            data["transformParent"] = actorNameMap.TryGetValue(sourceParent, out string? parentName) ? parentName : "";
+            string sourceSpawnParent = LegacySaveDocument.ReadString(sourceData["spawnTransformParent"]);
+            data["spawnTransformParent"] = actorNameMap.TryGetValue(sourceSpawnParent, out string? spawnParentName) ? spawnParentName : "";
+
+            var sourceState = new LegacyActorData(sourceData);
+            var stateForInstance = new LegacyActorData(data);
+            stateForInstance.SetWorldTransform(sourceToTarget * sourceState.GetWorldTransform());
+            Transform3D sourceSpawn = new(new Basis(sourceState.SpawnRotation), sourceState.SpawnPosition);
+            Transform3D targetSpawn = sourceToTarget * sourceSpawn;
+            stateForInstance.WriteLegacyVector("spawnPosition", CoordinateSpace.ToLegacy(targetSpawn.Origin));
+            stateForInstance.WriteLegacyQuaternion("spawnRotation", CoordinateSpace.ToLegacy(targetSpawn.Basis.GetRotationQuaternion()));
+            if (data["memoryJson"] is JsonValue memoryValue && memoryValue.TryGetValue<string>(out string? memoryJson))
+                data["memoryJson"] = RemapSerializedPrefabReferences(memoryJson ?? "{}", referenceMap);
+
+            LegacyActorData state = _document.AddActor(data);
+            _catalog.TryGet(state.RenderableUri, out RenderableEntry? renderable);
+            var actor = new WorldActorNode();
+            actor.Initialize(state, renderable);
+            actor.SetPlayMode(true);
+            _world.AddChild(actor);
+            actor.GlobalTransform = state.GetWorldTransform();
+            _actors.Add(actor);
+            _actorsByName.Add(state.Name, actor);
+            _actorsById.Add(actor);
+            instances.Add(actor);
+        }
+
+        foreach (WorldActorNode actor in instances)
+        {
+            if (actor.State.TransformParent.Length == 0
+                || !_actorsByName.TryGetValue(actor.State.TransformParent, out WorldActorNode? parent)
+                || actor.GetParent() == parent)
+                continue;
+            Transform3D globalTransform = actor.GlobalTransform;
+            actor.Reparent(parent, keepGlobalTransform: false);
+            actor.GlobalTransform = globalTransform;
+        }
+
         _actorsChanged?.Invoke();
-        return JsonSerializer.Serialize(new { name, brainName = state.BrainName, actorId = checked((ushort)(_actors.Count - 1)) });
+        WorldActorNode rootActor = instances[0];
+        return JsonSerializer.Serialize(new
+        {
+            name = rootActor.LegacyName,
+            brainName = rootActor.State.BrainName,
+            actorId = checked((ushort)rootActorIndex)
+        });
+    }
+
+    private static string EmptyPrefabResult()
+        => JsonSerializer.Serialize(new { name = "", brainName = "", actorId = (ushort)0 });
+
+    private Dictionary<string, string> MergePrefabSojos(JsonArray? sourceSojos)
+    {
+        var idMap = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (sourceSojos is null)
+            return idMap;
+
+        JsonObject database = LegacySaveDocument.EnsureObject(_document.Root, "sojoDatabase");
+        JsonArray targetSojos = database["sojos"] as JsonArray ?? (JsonArray)(database["sojos"] = new JsonArray())!;
+        foreach (JsonNode? node in sourceSojos)
+        {
+            if (node is not JsonObject sourceSojo)
+                throw new InvalidDataException("Actor prefab contains a non-object Sojo dependency.");
+            string sourceId = LegacySaveDocument.ReadString(sourceSojo["id"]);
+            string sourceName = LegacySaveDocument.ReadString(sourceSojo["name"]);
+            string contentType = LegacySaveDocument.ReadString(sourceSojo["contentType"]);
+            string content = LegacySaveDocument.ReadString(sourceSojo["content"]);
+            if (sourceId.Length == 0 || contentType.Length == 0)
+                throw new InvalidDataException("Actor prefab contains a Sojo dependency without an ID or content type.");
+
+            JsonObject? equivalent = targetSojos.OfType<JsonObject>()
+                .FirstOrDefault(sojo =>
+                    LegacySaveDocument.ReadString(sojo["name"]) == sourceName
+                    && LegacySaveDocument.ReadString(sojo["contentType"]) == contentType
+                    && LegacySaveDocument.ReadString(sojo["content"]) == content);
+            if (equivalent is not null)
+            {
+                idMap[sourceId] = LegacySaveDocument.ReadString(equivalent["id"]);
+                continue;
+            }
+
+            JsonObject? existing = targetSojos.OfType<JsonObject>()
+                .FirstOrDefault(sojo => LegacySaveDocument.ReadString(sojo["id"]) == sourceId);
+            string targetId = existing is null ? sourceId : Guid.NewGuid().ToString("N");
+            JsonObject imported = (JsonObject)sourceSojo.DeepClone();
+            imported["id"] = targetId;
+            targetSojos.Add(imported);
+            idMap[sourceId] = targetId;
+        }
+        return idMap;
+    }
+
+    private static JsonObject? PreparePrefabBrainDatabase(
+        JsonObject? source,
+        IReadOnlyDictionary<string, string> referenceMap,
+        out Dictionary<string, string> brainIdMap)
+    {
+        brainIdMap = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (source is null)
+            return null;
+
+        JsonObject clone = (JsonObject)source.DeepClone();
+        if (clone["brainIds"] is JsonArray sourceBrainIds && clone["brains"] is JsonArray sourceBrains)
+        {
+            if (sourceBrainIds.Count != sourceBrains.Count)
+                throw new InvalidDataException("Actor prefab brain IDs do not match its brain data.");
+            var clonedBrainIds = new JsonArray();
+            var clonedBrains = new JsonArray();
+            for (int index = 0; index < sourceBrainIds.Count; index++)
+            {
+                string sourceId = LegacySaveDocument.ReadString(sourceBrainIds[index]);
+                if (sourceId.Length == 0 || brainIdMap.ContainsKey(sourceId))
+                    throw new InvalidDataException("Actor prefab contains an empty or duplicate brain ID.");
+                string instanceId = Guid.NewGuid().ToString("N");
+                brainIdMap.Add(sourceId, instanceId);
+                clonedBrainIds.Add(JsonValue.Create(instanceId));
+                JsonNode? sourceBrain = sourceBrains[index];
+                if (sourceBrain is not JsonObject brain)
+                    throw new InvalidDataException("Actor prefab contains invalid brain data.");
+                JsonObject brainClone = (JsonObject)brain.DeepClone();
+                RemapPrefabBrainReferences(brainClone, referenceMap);
+                clonedBrains.Add(brainClone);
+            }
+            clone["brainIds"] = clonedBrainIds;
+            clone["brains"] = clonedBrains;
+        }
+
+        if (clone["behaviorUses"] is JsonArray legacyUses)
+        {
+            foreach (JsonNode? node in legacyUses)
+            {
+                if (node is not JsonObject use)
+                    continue;
+                string oldBrainId = LegacySaveDocument.ReadString(use["brainId"]);
+                if (brainIdMap.TryGetValue(oldBrainId, out string? newBrainId))
+                    use["brainId"] = newBrainId;
+                RemapPrefabPropertyAssignments(use["propertyAssignments"] as JsonArray, referenceMap);
+            }
+        }
+        return clone;
+    }
+
+    private static void RemapPrefabBrainReferences(JsonObject brain, IReadOnlyDictionary<string, string> referenceMap)
+    {
+        if (brain["behaviorUses"] is not JsonArray uses)
+            return;
+        foreach (JsonNode? node in uses)
+        {
+            if (node is JsonObject use)
+                RemapPrefabPropertyAssignments(use["propertyAssignments"] as JsonArray, referenceMap);
+        }
+    }
+
+    private static void RemapPrefabPropertyAssignments(JsonArray? assignments, IReadOnlyDictionary<string, string> referenceMap)
+    {
+        if (assignments is null)
+            return;
+        foreach (JsonNode? node in assignments)
+        {
+            if (node is not JsonObject assignment
+                || assignment["valueJson"] is not JsonValue value
+                || !value.TryGetValue<string>(out string? serializedValue))
+                continue;
+            assignment["valueJson"] = RemapSerializedPrefabReferences(serializedValue ?? "", referenceMap);
+        }
+    }
+
+    private static string RemapSerializedPrefabReferences(string serializedJson, IReadOnlyDictionary<string, string> referenceMap)
+    {
+        try
+        {
+            JsonNode? value = JsonNode.Parse(serializedJson);
+            return RemapPrefabReferences(value, referenceMap)?.ToJsonString() ?? "null";
+        }
+        catch (JsonException)
+        {
+            return referenceMap.TryGetValue(serializedJson, out string? replacement) ? replacement : serializedJson;
+        }
+    }
+
+    private static JsonNode? RemapPrefabReferences(JsonNode? node, IReadOnlyDictionary<string, string> referenceMap)
+    {
+        if (node is JsonObject sourceObject)
+        {
+            var result = new JsonObject();
+            foreach ((string key, JsonNode? value) in sourceObject)
+                result[key] = RemapPrefabReferences(value, referenceMap);
+            return result;
+        }
+        if (node is JsonArray sourceArray)
+        {
+            var result = new JsonArray();
+            foreach (JsonNode? value in sourceArray)
+                result.Add(RemapPrefabReferences(value, referenceMap));
+            return result;
+        }
+        if (node is JsonValue sourceValue && sourceValue.TryGetValue<string>(out string? text))
+            return JsonValue.Create(referenceMap.TryGetValue(text ?? "", out string? replacement) ? replacement : text);
+        return node?.DeepClone();
     }
 
     private bool MergePrefabBrainDatabase(JsonObject? source)
