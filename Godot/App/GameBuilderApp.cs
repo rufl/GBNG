@@ -274,6 +274,8 @@ public partial class GameBuilderApp : Node3D
             RunTerrainEditorSmokeStandalone();
         if (commandLineArgs.Contains("--smoke-copy-actors", StringComparer.Ordinal))
             RunActorCopySmoke();
+        if (commandLineArgs.Contains("--smoke-actor-move", StringComparer.Ordinal))
+            RunActorMoveSmoke();
         if (commandLineArgs.Contains("--smoke-actor-hierarchy", StringComparer.Ordinal))
             RunActorHierarchyNavigationSmoke();
         if (commandLineArgs.Contains("--smoke-comment-panels", StringComparer.Ordinal))
@@ -381,6 +383,8 @@ public partial class GameBuilderApp : Node3D
     }
     public override void _Input(InputEvent @event)
     {
+        if (HandleActorMoveInput(@event))
+            return;
         if (_selectionMarqueeActive
             && @event is InputEventMouseButton mouseButton
             && mouseButton.ButtonIndex == MouseButton.Left
@@ -433,16 +437,27 @@ public partial class GameBuilderApp : Node3D
                     BeginTerrainStroke();
                     ApplyTerrainBrush(mouseButton.Position);
                 }
-                else if (!IsPointerOverUi(mouseButton.Position)
-                    && !SelectActorAt(
-                        mouseButton.Position,
-                        mouseButton.ShiftPressed,
-                        mouseButton.CtrlPressed || mouseButton.MetaPressed))
+                else if (!IsPointerOverUi(mouseButton.Position))
                 {
-                    BeginSelectionMarquee(
-                        mouseButton.Position,
-                        mouseButton.ShiftPressed,
-                        mouseButton.CtrlPressed || mouseButton.MetaPressed);
+                    WorldActorNode? clickedActor = GetActorAtScreenPosition(mouseButton.Position);
+                    if (clickedActor is null)
+                    {
+                        BeginSelectionMarquee(
+                            mouseButton.Position,
+                            mouseButton.ShiftPressed,
+                            mouseButton.CtrlPressed || mouseButton.MetaPressed);
+                    }
+                    else
+                    {
+                        if (!_selectedActors.Contains(clickedActor)
+                            || mouseButton.CtrlPressed || mouseButton.MetaPressed)
+                            ApplyActorSelection(
+                                clickedActor,
+                                mouseButton.ShiftPressed,
+                                mouseButton.CtrlPressed || mouseButton.MetaPressed);
+                        if (_selectedActors.Contains(clickedActor))
+                            BeginActorMove(mouseButton.Position);
+                    }
                 }
             }
             if (mouseButton.ButtonIndex == MouseButton.Left && !mouseButton.Pressed)

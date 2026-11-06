@@ -80,6 +80,15 @@ The legacy behavior UI uses the original ProggyCleanTT BMFont metrics and atlas 
 
 The **Copy** toolbar action (or Ctrl+C) previews the selected actor and its transform descendants. Move the cursor and click to place copies; hold Ctrl/Cmd to snap to the legacy grid, click again to repeat, or press Esc to cancel. Copies preserve actor data, behavior, clone lineage, transforms, and hierarchy. Each placement is one Undo/Redo step and follows the collaborative-edit history path.
 The actor list and world support multi-selection: Shift adds, Ctrl/Cmd toggles, and dragging a marquee selects actors by their projected render-bounds centers. **Ctrl+L** / **Cmd+L** or the actor-list **Hide/Show** button collapses and restores the list without changing selection. **Delete** or **Backspace** removes selected actors as one undoable collaborative edit; Ctrl+C copies all selected roots and their transform descendants. Press **R** or **Rotate 45°** to rotate the selection about its average position in one undoable collaborative edit. Press **Ctrl+R** to restore all actors from their stored project transform and velocity state as one undoable edit. **Ctrl+S** / **Cmd+S** saves the current project, prompting for a writable copy when the open example is read-only. Press **F** or **Follow** to keep the camera centered on the focused actor; toggle again to stop. Press **Ctrl+H** or **Cmd+H** with one actor selected to parent it to the actor under the pointer; empty world space unparents it. The inspector's **Transform parent** control provides the same assignment and clear behavior through a scene picker. With **Parent on reset** enabled, either route changes the reset parent; parenting preserves world transform and motion, rejects hierarchy cycles, and records one collaborative Undo/Redo edit.
+In the 3D view, click and drag an actor to move it on the camera-facing plane; dragging any already-selected member moves the whole selection together. Hold Ctrl/Cmd during the drag to snap the focus actor to legacy grid spacing (1.25 horizontal, 0.75 vertical). Releasing commits one undoable collaborative edit; Escape cancels. When **Update spawn: Move** is enabled, the moved actors and their transform descendants also receive matching restart transforms. Per-axis gizmo handles and the legacy local/global coordinate toggle are not part of this drag interaction.
+
+To exercise single- and multi-actor movement, legacy-grid snapping, enabled/disabled restart-transform updates, Undo/Redo, and Escape cancellation:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\godot\run.ps1 --path . -- res://Assets/StreamingAssets/ExampleGames/Public/sample-platformer.voos --smoke-actor-move
+```
+
+The smoke prints `ACTOR_MOVE_SMOKE_OK` and writes `.godot/actor-move-smoke.png`.
 
 The **Parent on reset** checkbox controls whether **Ctrl+H** / **Cmd+H** and the inspector's **Transform parent** picker also change the parent restored by reset; it is enabled by default and saved as an editor preference on this device.
 
