@@ -337,10 +337,11 @@ The Compose stack also runs the self-hosted UDP relay. Set
 Open inbound UDP `47801` (relay control) and UDP `48000-48999` (allocated game
 routes) on the server and forward them to this Docker host. Caddy/Funnel
 terminate HTTPS only; neither proxies UDP. Hosts and players need outbound UDP
-access to the relay. The default stack binds IPv4; IPv6-only clients cannot use
-it, though IPv6 game hosts can tunnel through it when they can reach its IPv4
-endpoint. For protocol, security, capacity, operations, and troubleshooting
-details, see [`tools/public-session-directory/README.md`](tools/public-session-directory/README.md).
+The default Compose relay binds IPv4. For IPv6-only players, the optional
+`compose.ipv6.yaml` overlay enables a dual-stack UDP relay; Docker and the
+server host must also support IPv6 and publish the relay ports over IPv6.
+Details and setup are in
+[`tools/public-session-directory/README.md`](tools/public-session-directory/README.md).
 
 
 ##### Tailnet-only simulation

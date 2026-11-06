@@ -646,5 +646,70 @@ class UdpRelayTests(unittest.TestCase):
         second.close()
 
 
+class DualStackUdpRelayTests(unittest.TestCase):
+    def test_ipv6_listener_relays_ipv4_and_ipv6_clients(self):
+        if not socket.has_ipv6:
+            self.skipTest("IPv6 is unavailable")
+
+        state = server.DirectoryState(relay_address="localhost", relay_port=0)
+        result, error = state.register(make_session(), "127.0.0.1")
+        self.assertIsNone(error)
+        session_id = result["SessionId"]
+        token_hash = state._sessions[session_id]["TokenHash"]
+        relay = server.UdpRelay(state, "::", 0, 0, 0)
+        host = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+        clients = []
+
+        try:
+            try:
+                host.bind(("::1", 0))
+                host.settimeout(1)
+                control_port = relay.start()
+            except OSError as error:
+                self.skipTest("Dual-stack IPv6 sockets are unavailable: " + str(error))
+
+            def frame(kind, ident, payload=b""):
+                header = server.RELAY_HEADER.pack(
+                    server.RELAY_MAGIC, ord(kind), session_id.encode("ascii"), ident)
+                return header + payload
+
+            heartbeat = frame("H", 1)
+            signature = server.hmac.new(token_hash, heartbeat, server.hashlib.sha256).digest()
+            host.sendto(heartbeat + signature, ("::1", control_port))
+            self.assertEqual(host.recvfrom(1024)[0], frame("R", 1))
+
+            endpoints = (
+                (socket.AF_INET6, ("::1", control_port), ("::1", 0), "::1"),
+                (socket.AF_INET, ("127.0.0.1", control_port), ("127.0.0.1", 0), "127.0.0.1"),
+            )
+            for index, (family, control_endpoint, bind_endpoint, relay_host) in enumerate(endpoints):
+                client = socket.socket(family, socket.SOCK_DGRAM)
+                clients.append(client)
+                client.bind(bind_endpoint)
+                client.settimeout(1)
+                nonce = 100 + index
+                client.sendto(frame("A", nonce), control_endpoint)
+                response = client.recvfrom(1024)[0]
+                self.assertEqual(response[:server.RELAY_HEADER.size], frame("O", nonce))
+                data_port = struct.unpack("!H", response[server.RELAY_HEADER.size:])[0]
+                self.assertGreater(data_port, 0)
+
+                payload = ("client-%d-udp" % index).encode("ascii")
+                client.sendto(payload, (relay_host, data_port))
+                forwarded = host.recvfrom(2048)[0]
+                forwarded_header = server.RELAY_HEADER.unpack(forwarded[:server.RELAY_HEADER.size])
+                self.assertEqual(forwarded_header[1], ord("D"))
+                self.assertEqual(forwarded[server.RELAY_HEADER.size:], payload)
+                route_id = forwarded_header[3]
+
+                reply = ("host-%d-udp" % index).encode("ascii")
+                host.sendto(frame("B", route_id, reply), ("::1", control_port))
+                self.assertEqual(client.recvfrom(2048)[0], reply)
+        finally:
+            relay.stop()
+            host.close()
+            for client in clients:
+                client.close()
+
 if __name__ == "__main__":
     unittest.main()

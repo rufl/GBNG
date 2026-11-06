@@ -55,7 +55,7 @@ The relay is disabled unless `--relay-control-port` is configured. `--relay-disa
 | `--bind` | `GB_DIRECTORY_BIND` | `127.0.0.1` | HTTP directory bind address. |
 | `--port` | `GB_DIRECTORY_PORT` | `47800` | HTTP directory port. |
 | `--trusted-proxy` | `GB_DIRECTORY_TRUSTED_PROXY` | unset | Proxy peer IP whose overwritten `X-Forwarded-For` header is trusted. |
-| `--relay-bind` | `GB_RELAY_BIND` | HTTP bind address | UDP relay bind address; must be an IP literal. |
+| `--relay-bind` | `GB_RELAY_BIND` | HTTP bind address | UDP relay bind address; must be an IP literal. Binding `::` enables IPv4-mapped and IPv6 peers on supported systems. |
 | `--relay-control-port` | `GB_RELAY_CONTROL_PORT` | unset | UDP control/tunnel port; setting it enables the relay. |
 | `--relay-public-address` | `GB_RELAY_PUBLIC_ADDRESS` | unset | Hostname or IP that clients and hosts can reach; no URL scheme or port. Required when enabled. |
 | `--relay-data-port-start` | `GB_RELAY_DATA_PORT_START` | `48000` | First allocated UDP data port. |
@@ -84,7 +84,7 @@ whether the game host selected IPv4 or IPv6.
 
 ## Public Docker/Caddy deployment
 
-Use a public server with a stable IPv4 address and a DNS A record. The default Compose relay binds IPv4 (`0.0.0.0`); an AAAA-only relay hostname or an IPv6-only player cannot use this relay. IPv6 game hosts can use it when the host can send UDP to the relay's IPv4 endpoint. Direct IPv6 hosting remains a separate path.
+The default Compose stack is IPv4-only. An optional dual-stack overlay supports IPv6-only clients when the host, Docker daemon, DNS, and firewall provide working IPv6; see “Optional dual-stack Docker deployment” below.
 
 Because Game Builder selects the directory request route independently from
 the UDP relay route, IPv6 game hosts must still reach the HTTP directory from
@@ -97,6 +97,36 @@ endpoint.
 4. Configure the server firewall and upstream router to allow/forward inbound TCP `80` and `443`, UDP `47801`, and UDP `48000-48999` to the Docker host. Caddy obtains HTTPS certificates and proxies the directory's HTTP API on TCP; it does not proxy UDP.
 5. Start/update the stack with `docker compose up -d --build`. Set `GAMEBUILDER_SESSION_DIRECTORY=https://<DIRECTORY_DOMAIN>` for every host and client, or pass `--session-directory=https://<DIRECTORY_DOMAIN>` to the game.
 6. Check `docker compose ps`, `docker compose logs -f directory`, and `https://<DIRECTORY_DOMAIN>/health`. The health endpoint checks the HTTP process only; it does not probe UDP firewall or forwarding rules.
+
+### Optional dual-stack Docker deployment
+
+The default IPv4 Compose deployment remains unchanged. For a Docker host with
+working IPv6 support, edit `.env` and set `RELAY_BIND=::`. Keep
+`RELAY_PUBLIC_ADDRESS` on a hostname with reachable A and AAAA records so
+IPv4-only and IPv6-only hosts/players can select a route available to them.
+The runtime probes UDP routes before choosing a resolved relay address.
+
+Start the dual-stack overlay from this directory:
+
+```text
+docker compose --file compose.yaml --file compose.ipv6.yaml config
+docker compose --file compose.yaml --file compose.ipv6.yaml up -d --build
+```
+
+The overlay enables an internal ULA IPv6 subnet and publishes the same Caddy
+HTTP(S) and relay UDP ports on IPv6. Change `DIRECTORY_IPV6_SUBNET`,
+`DIRECTORY_PROXY_IPV6_ADDRESS`, and `DIRECTORY_SERVICE_IPV6_ADDRESS` if that
+subnet overlaps another Docker network. The Python relay uses an IPv6 socket
+with IPv4-mapped traffic enabled, so both endpoint families share the same
+control and data ports.
+
+The Docker daemon and host must support IPv6; DNS AAAA records, host firewall,
+router rules, and provider networking must all route IPv6 to this machine.
+Allow inbound IPv6 TCP `80`/`443` and UDP `47801`/`48000-48999`. A dual-stack
+relay does not provide IPv6 reachability by itself if any upstream network
+blocks that traffic. IPv6 game hosts also need their directory HTTPS request
+to reach Caddy over IPv6 because session registration validates the observed
+address family.
 
 Hosts and players need outbound UDP access to the relay. Unlike direct hosting, the host does not need an inbound forwarding rule for the game port while using the relay. Direct hosting remains available as a fallback when the relay is absent; it may still need UPnP/manual forwarding and can fail behind CGNAT.
 
@@ -147,7 +177,7 @@ Directory/session state, relay routes, and migration tickets are in memory only.
 - Host tunnel heartbeats are authenticated with HMAC-SHA256 derived from the bearer token; tokens are not sent in UDP frames. Public listing exposes session IDs and relay endpoint, not host or migration bearer tokens.
 - Allocation requests are not individually authenticated. A public session ID is discoverable from public listings; an attacker may consume available relay routes for that public game or use relay bandwidth. Source-IP, session-capacity, global-route, data-port, and 60-second idle limits bound but do not eliminate denial-of-service risk. Use host/provider firewall controls and monitor bandwidth.
 - Relay HMAC authenticates host heartbeats, not every forwarded datagram. Do not treat the relay as a game authorization layer. The host game and its pinned encrypted transport remain responsible for peer/session handling.
-- The Compose relay is IPv4-only and single-process. There is no UDP proxying through Caddy, Tailscale Funnel, or the HTTPS directory endpoint, and no built-in persistence, cluster coordination, metrics dashboard, or SLA.
+ - The default Compose relay is IPv4-only; `compose.ipv6.yaml` optionally enables dual-stack UDP when the Docker daemon and host support IPv6. The relay remains single-process, with no UDP proxying through Caddy/Tailscale Funnel, built-in persistence, cluster coordination, metrics dashboard, or SLA.
 - The software avoids paid Unity multiplayer plugins/services. Public server hosting, IPv4, and traffic may still have provider costs.
 
 ## Troubleshooting
@@ -155,8 +185,8 @@ Directory/session state, relay routes, and migration tickets are in memory only.
 | Symptom | Check |
 | --- | --- |
 | Public listing has no relay fields / copied invite is direct `GBDIRECT1` | Confirm the session directory is configured, the host is registered, `RELAY_PUBLIC_ADDRESS` is correct, host outbound UDP reaches control port `47801`, and the relay heartbeat is acknowledged. A healthy relay invite is `GBDIRECT2`. |
-| Invite is `GBDIRECT2`, but allocation times out | Confirm control UDP `47801` and the complete data range are forwarded to the Docker host, the hostname resolves to the relay's reachable IPv4, and the host tunnel is still active. |
+| Invite is `GBDIRECT2`, but allocation times out | Confirm the hostname resolves to a relay address family reachable from this host, UDP control `47801` and the complete data range are forwarded, and the host tunnel is still active. |
 | Relay works on LAN but not from the Internet | Verify upstream router/NAT and host firewall rules for UDP, not just TCP `80/443`; Caddy's HTTPS certificate says nothing about UDP reachability. |
 | Directory registration/listing fails | Check `GAMEBUILDER_SESSION_DIRECTORY`, HTTPS/TLS, Caddy/domain configuration, and `docker compose logs -f directory`. Loopback HTTP is only for local tests. |
-| IPv6-only client cannot use the relay | The default relay listener is IPv4. Use direct/routable IPv6 hosting or provide an IPv6-capable UDP relay deployment; the current default Compose stack does not provide that. |
+| IPv6-only client cannot use the relay | Use the optional `compose.ipv6.yaml` overlay, set `RELAY_BIND=::`, publish the relay's AAAA endpoint, and verify Docker/host/router IPv6 plus UDP firewall access. |
 | `/health` is green but joins fail | `/health` only checks HTTP. Probe the UDP listener/range from an external network and check the host's Game Builder log for relay heartbeat or allocation errors. |

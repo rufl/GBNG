@@ -1,4 +1,7 @@
 #if UNITY_EDITOR && !USE_PUN
+using System;
+using System.Net;
+using System.Net.Sockets;
 using System.Reflection;
 using NUnit.Framework;
 
@@ -48,6 +51,46 @@ public class DirectHostRelayInviteTests
     Assert.IsFalse(TryParse(invalidPort, out _));
   }
 
+
+  [Test]
+  public void RelayAddressSelectionSkipsUnreachableAddressFamily()
+  {
+    IPAddress ipv4 = IPAddress.Parse("192.0.2.10");
+    IPAddress ipv6 = IPAddress.Parse("2001:db8::10");
+    MethodInfo selector = typeof(DirectHostUdpRelay).GetMethod(
+      "SelectRelayAddress", BindingFlags.Static | BindingFlags.NonPublic);
+    Assert.IsNotNull(selector);
+
+    Func<IPAddress, bool> canReach = address => address.AddressFamily == AddressFamily.InterNetworkV6;
+    IPAddress selected = (IPAddress)selector.Invoke(null, new object[]
+    {
+      new[] { ipv4, ipv6 },
+      canReach
+    });
+
+    Assert.AreEqual(ipv6, selected);
+  }
+
+  [Test]
+  public void RelayAddressSelectionReportsWhenNoFamilyHasARoute()
+  {
+    MethodInfo selector = typeof(DirectHostUdpRelay).GetMethod(
+      "SelectRelayAddress", BindingFlags.Static | BindingFlags.NonPublic);
+    Assert.IsNotNull(selector);
+
+    System.Reflection.TargetInvocationException error =
+      Assert.Throws<System.Reflection.TargetInvocationException>(() =>
+      {
+        selector.Invoke(null, new object[]
+        {
+          new[] { IPAddress.Parse("192.0.2.10"), IPAddress.Parse("2001:db8::10") },
+          new Func<IPAddress, bool>(address => false)
+        });
+      });
+
+    Assert.IsInstanceOf<SocketException>(error.InnerException);
+    Assert.AreEqual(SocketError.NetworkUnreachable, ((SocketException)error.InnerException).SocketErrorCode);
+  }
   static bool TryParse(string invite, out object[] values)
   {
     values = new object[] { invite, null, (ushort)0, null, null, (ushort)0, null };

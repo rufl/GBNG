@@ -1,0 +1,23 @@
+services:
+  directory:
+    ports:
+      - "[::]:47801:47801/udp"
+      - "[::]:48000-48999:48000-48999/udp"
+    networks:
+      backend:
+        ipv6_address: ${DIRECTORY_SERVICE_IPV6_ADDRESS:-fd30:30:1::3}
+
+  caddy:
+    ports:
+      - "[::]:80:80"
+      - "[::]:443:443"
+    networks:
+      backend:
+        ipv6_address: ${DIRECTORY_PROXY_IPV6_ADDRESS:-fd30:30:1::2}
+
+networks:
+  backend:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: ${DIRECTORY_IPV6_SUBNET:-fd30:30:1::/64}

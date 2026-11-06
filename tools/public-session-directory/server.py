@@ -604,6 +604,8 @@ class UdpRelay:
         address = ipaddress.ip_address(self.bind)
         family = socket.AF_INET6 if address.version == 6 else socket.AF_INET
         self._control = socket.socket(family, socket.SOCK_DGRAM)
+        if family == socket.AF_INET6:
+            self._control.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
         self._control.bind((self.bind, self.control_port))
         self._selector.register(self._control, selectors.EVENT_READ)
         self.control_port = self._control.getsockname()[1]
@@ -662,8 +664,9 @@ class UdpRelay:
             return
         sock = socket.socket(self._control.family, socket.SOCK_DGRAM)
         try:
+            if self._control.family == socket.AF_INET6:
+                sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
             ports = [0] if self.port_start == self.port_end == 0 else range(self.port_start, self.port_end + 1)
-            for port in ports:
                 try:
                     sock.bind((self.bind, port))
                     break

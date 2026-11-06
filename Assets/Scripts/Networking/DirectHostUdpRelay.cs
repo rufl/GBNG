@@ -25,6 +25,7 @@ public sealed class DirectHostUdpRelay : MonoBehaviour
   }
 
   static DirectHostUdpRelay instance;
+  static readonly Func<IPAddress, bool> relayAddressHasRoute = HasRelayRoute;
   readonly object socketGate = new object();
   readonly object routesGate = new object();
   readonly Dictionary<ulong, HostRoute> routes = new Dictionary<ulong, HostRoute>();
@@ -127,12 +128,34 @@ public sealed class DirectHostUdpRelay : MonoBehaviour
   {
     IPAddress literal;
     if (IPAddress.TryParse(host, out literal)) return literal;
-    IPAddress[] addresses = Dns.GetHostAddresses(host);
+    return SelectRelayAddress(Dns.GetHostAddresses(host), relayAddressHasRoute);
+  }
+
+  static IPAddress SelectRelayAddress(IPAddress[] addresses, Func<IPAddress, bool> canReach)
+  {
+    if (addresses == null) throw new ArgumentNullException(nameof(addresses));
+    if (canReach == null) throw new ArgumentNullException(nameof(canReach));
     foreach (IPAddress address in addresses)
-      if (address.AddressFamily == AddressFamily.InterNetwork) return address;
-    foreach (IPAddress address in addresses)
-      if (address.AddressFamily == AddressFamily.InterNetworkV6) return address;
-    throw new SocketException((int)SocketError.HostNotFound);
+    {
+      if (address != null && canReach(address)) return address;
+    }
+    throw new SocketException((int)SocketError.NetworkUnreachable);
+  }
+
+  static bool HasRelayRoute(IPAddress address)
+  {
+    try
+    {
+      using (Socket socket = new Socket(address.AddressFamily, SocketType.Dgram, ProtocolType.Udp))
+      {
+        socket.Connect(new IPEndPoint(address, 1));
+        return true;
+      }
+    }
+    catch (SocketException)
+    {
+      return false;
+    }
   }
 
   static byte[] HashToken(string token)
