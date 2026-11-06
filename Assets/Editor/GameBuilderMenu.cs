@@ -22,8 +22,27 @@ using System.IO;
 using SD = System.Diagnostics;
 using System.Linq;
 
-public class GameBuilderMenu
+public class GameBuilderMenu : UnityEditor.Build.IPreprocessBuildWithReport
 {
+  const string MacV8ArchitectureError =
+    "The bundled macOS V8 plugin supports x86_64 only. Use Game Builder > Build macOS Intel (Rosetta) for behavior scripts.";
+
+  public int callbackOrder { get { return int.MinValue; } }
+
+  public void OnPreprocessBuild(UnityEditor.Build.Reporting.BuildReport report)
+  {
+    if (!SupportsBundledMacOSV8(report.summary.platform))
+    {
+      throw new UnityEditor.Build.BuildFailedException(MacV8ArchitectureError);
+    }
+  }
+
+  static bool SupportsBundledMacOSV8(BuildTarget target)
+  {
+    return target != BuildTarget.StandaloneOSX ||
+      UnityEditor.OSXStandalone.UserBuildSettings.architecture == UnityEditor.Build.OSArchitecture.x64;
+  }
+
   [MenuItem("Game Builder/Stop %#y")]
   public static void StopPlayMode()
   {
@@ -64,12 +83,9 @@ public class GameBuilderMenu
 
   static void BuildInternal(string outDir, BuildOptions extraBuildOpts)
   {
-    if (EditorUserBuildSettings.activeBuildTarget == BuildTarget.StandaloneOSX &&
-        UnityEditor.OSXStandalone.UserBuildSettings.architecture != UnityEditor.Build.OSArchitecture.x64)
+    if (!SupportsBundledMacOSV8(EditorUserBuildSettings.activeBuildTarget))
     {
-      throw new System.InvalidOperationException(
-        "The bundled macOS V8 plugin is x86_64-only. " +
-        "Use Game Builder > Build macOS Intel (Rosetta) for behavior scripts.");
+      throw new System.InvalidOperationException(MacV8ArchitectureError);
     }
 
     if (Directory.Exists(outDir))
