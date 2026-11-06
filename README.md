@@ -183,14 +183,14 @@ multiline editor remains available. The browser starts lazily at the visible
 code panel's pixel dimensions; Unity scales that texture after layout changes
 instead of resizing the browser process.
 
-UnityWebBrowser also ships an optional `Input System Handler.asset` under its
-package `Resources` folder. Game Builder keeps `activeInputHandler: 0` (legacy
-Input Manager only), and Monaco creates `WebBrowserOldInputHandler`; the
-optional `com.unity.inputsystem` package is not installed. Unity emits a
-missing-script warning for that unused resource during builds because its
-handler class is conditional on `ENABLE_INPUT_SYSTEM`. Do not enable both input
-backends or add the optional package just to silence the warning; that changes
-the project's input setup without changing Monaco's selected handler.
+UnityWebBrowser's Resources folder includes a browser input handler implemented
+with Unity's Input System. The project installs free `com.unity.inputsystem`
+1.20.1 and enables both input backends (`activeInputHandler: 2`), so that
+resource's script is compiled and Unity no longer reports it as missing.
+Existing gameplay and UI keep using the legacy Input Manager; Monaco explicitly
+creates `WebBrowserOldInputHandler`, so browser input behavior remains on the
+legacy backend. The new backend is enabled only to keep UnityWebBrowser's
+optional resource valid; no project UI modules or input actions were migrated.
 
 Assigned behavior labels use `getDescription()` when it returns a non-empty
 value; otherwise, the first-line `//` comment is the fallback label.
