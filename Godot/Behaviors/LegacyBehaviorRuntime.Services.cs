@@ -620,29 +620,7 @@ public sealed partial class LegacyBehaviorRuntime
             return false;
 
         float lifetime = Math.Max(0.05f, LegacySaveDocument.ReadFloat(effect["duration"], 1f));
-        float speed = Math.Max(0f, LegacySaveDocument.ReadFloat(effect["speed"], 1f));
-        float startSize = Math.Max(0.01f, LegacySaveDocument.ReadFloat(effect["startSize"], 0.25f));
-        float endSize = Math.Max(0.01f, LegacySaveDocument.ReadFloat(effect["endSize"], startSize));
-        int amount = Math.Clamp(LegacySaveDocument.ReadInt(effect["burstCount"], 32), 1, 4096);
-        float shapeSize = Math.Max(0f, LegacySaveDocument.ReadFloat(effect["shapeSize"], 0.5f));
-        Gradient? gradient = ReadParticleGradient(effect["colorOverLifetime"] as JsonArray);
-        var particles = new CpuParticles3D
-        {
-            Name = "LegacyParticleEffect",
-            Amount = amount,
-            Lifetime = lifetime,
-            OneShot = true,
-            Explosiveness = 1f,
-            Emitting = true,
-            Mesh = new SphereMesh { Radius = 0.08f, Height = 0.16f },
-            Direction = Vector3.Up,
-            SpeedScale = Math.Max(0.01f, speed),
-            Gravity = new Vector3(0f, -9.8f, 0f),
-            ScaleAmountMin = Math.Min(startSize, endSize),
-            ScaleAmountMax = Math.Max(startSize, endSize),
-            ColorRamp = gradient
-        };
-
+        CpuParticles3D particles = LegacyParticleEffectFactory.Create(effect, stream: false);
         particles.Position = CoordinateSpace.ToGodot(legacyPosition);
         particles.Rotation = CoordinateSpace.ToGodot(legacyRotation);
         particles.Scale = Vector3.One * scale;
@@ -672,49 +650,6 @@ public sealed partial class LegacyBehaviorRuntime
                 return sojo;
         }
         return null;
-    }
-
-    private static Gradient? ReadParticleGradient(JsonArray? colorStops)
-    {
-        if (colorStops is null || colorStops.Count == 0)
-            return null;
-
-        var stops = new List<(float Offset, Color Color)>(colorStops.Count);
-        foreach (JsonNode? node in colorStops)
-        {
-            if (node is not JsonObject stop || stop["value"] is not JsonObject color)
-                continue;
-            stops.Add((
-                Mathf.Clamp(LegacySaveDocument.ReadFloat(stop["position"], 0f), 0f, 1f),
-                new Color(
-                    LegacySaveDocument.ReadFloat(color["r"], 1f),
-                    LegacySaveDocument.ReadFloat(color["g"], 1f),
-                    LegacySaveDocument.ReadFloat(color["b"], 1f),
-                    LegacySaveDocument.ReadFloat(color["a"], 1f))));
-        }
-        stops.Sort(static (left, right) => left.Offset.CompareTo(right.Offset));
-
-        var gradient = new Gradient();
-        if (stops.Count == 0)
-        {
-            gradient.SetColor(0, Colors.White);
-            gradient.SetColor(1, Colors.Transparent);
-            return gradient;
-        }
-        if (stops.Count == 1)
-        {
-            gradient.SetColor(0, stops[0].Color);
-            gradient.SetColor(1, stops[0].Color);
-            return gradient;
-        }
-
-        gradient.SetOffset(0, stops[0].Offset);
-        gradient.SetColor(0, stops[0].Color);
-        gradient.SetOffset(1, stops[1].Offset);
-        gradient.SetColor(1, stops[1].Color);
-        for (int index = 2; index < stops.Count; index++)
-            gradient.AddPoint(stops[index].Offset, stops[index].Color);
-        return gradient;
     }
 
     private string SetSkyType(JsonObject args)

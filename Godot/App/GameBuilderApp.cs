@@ -42,6 +42,7 @@ public partial class GameBuilderApp : Node3D
     private LegacyTooltipPolicy? _tooltipPolicy;
     private LegacyAudioSettingsWindow _audioSettingsWindow = null!;
     private LegacySoundEffectWindow _soundEffectWindow = null!;
+    private LegacyParticleEffectWindow _particleEffectWindow = null!;
     private float _sfxVolume = LegacyAudioSettings.DefaultSfxVolume;
     private float _musicVolume = LegacyAudioSettings.DefaultMusicVolume;
     private const string EditorSettingsPath = "user://editor-settings.cfg";
@@ -247,6 +248,8 @@ public partial class GameBuilderApp : Node3D
             RunAudioSpatializationSmoke();
         if (commandLineArgs.Contains("--smoke-synth-sound", StringComparer.Ordinal))
             RunSynthSoundSmoke();
+        if (commandLineArgs.Contains("--smoke-particle-effects", StringComparer.Ordinal))
+            RunParticleEffectSmoke();
         if (commandLineArgs.Contains("--smoke-local-audio", StringComparer.Ordinal))
             RunLocalAudioSmoke();
         if (commandLineArgs.Contains("--smoke-window-focus", StringComparer.Ordinal))
@@ -687,6 +690,10 @@ public partial class GameBuilderApp : Node3D
             RequestSoundAudioImport,
             content => _document is null ? null : LegacyAudioAssetCatalog.LoadStream(GetProjectAssetSourcePath(), content),
             message => _status.Text = message);
+        _particleEffectWindow = new LegacyParticleEffectWindow(
+            () => _document?.Root["sojoDatabase"]?["sojos"] as JsonArray,
+            SaveParticleEffect,
+            message => _status.Text = message);
         _assetStoreWindow = new LegacyAssetStoreWindow(
             _catalog,
             () => _document is not null && !_playMode && !_lanSession.HasPendingAssetSync,
@@ -700,6 +707,7 @@ public partial class GameBuilderApp : Node3D
         AddChild(_controlsWindow);
         AddChild(_audioSettingsWindow);
         AddChild(_soundEffectWindow);
+        AddChild(_particleEffectWindow);
 
         var root = new Control
         {
@@ -972,6 +980,7 @@ public partial class GameBuilderApp : Node3D
         AddToolbarButton(toolbar, "Options", OpenControls);
         AddToolbarButton(toolbar, "Audio", OpenAudioSettings);
         AddToolbarButton(toolbar, "Sounds", OpenSoundEffectEditor);
+        AddToolbarButton(toolbar, "Particles", OpenParticleEffectEditor);
         AddToolbarButton(toolbar, "Terrain", OpenTerrainEditor);
         AddToolbarButton(toolbar, "Reset", ResetActors);
         _undoButton = new Button { Text = "Undo", CustomMinimumSize = new Vector2(70f, 36f), Disabled = true };
@@ -1532,6 +1541,17 @@ public partial class GameBuilderApp : Node3D
         }
         _soundEffectWindow.RefreshFromDocument();
         _soundEffectWindow.PopupCenteredClamped(new Vector2I(1040, 760));
+    }
+
+    private void OpenParticleEffectEditor()
+    {
+        if (_document is null || _playMode)
+        {
+            _status.Text = "Open a project and stop play mode before editing particle effects.";
+            return;
+        }
+        _particleEffectWindow.RefreshFromDocument();
+        _particleEffectWindow.PopupCenteredClamped(new Vector2I(1220, 820));
     }
 
     private void OpenTerrainEditor()

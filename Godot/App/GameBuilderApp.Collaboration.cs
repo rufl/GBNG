@@ -72,6 +72,12 @@ public partial class GameBuilderApp
         }
     }
     private void SaveSoundEffect(JsonObject? before, JsonObject? after, string label)
+        => SaveSojo("SoundEffect", before, after, label);
+
+    private void SaveParticleEffect(JsonObject? before, JsonObject? after, string label)
+        => SaveSojo("ParticleEffect", before, after, label);
+
+    private void SaveSojo(string contentType, JsonObject? before, JsonObject? after, string label)
     {
         if (_document is null || _playMode)
             return;
@@ -79,19 +85,19 @@ public partial class GameBuilderApp
         JsonObject? identity = after ?? before;
         string id = LegacySaveDocument.ReadString(identity?["id"]);
         if (id.Length == 0)
-            throw new InvalidDataException("A sound effect needs an ID.");
+            throw new InvalidDataException($"A {contentType} needs an ID.");
         bool hadDatabase = _document.Root.ContainsKey("sojoDatabase");
-        bool hadSoundArray = _document.Root["sojoDatabase"]?["sojos"] is JsonArray;
+        bool hadSojoArray = _document.Root["sojoDatabase"]?["sojos"] is JsonArray;
         JsonObject? beforeSojo = before?.DeepClone().AsObject();
         JsonObject? afterSojo = after?.DeepClone().AsObject();
 
-        void ApplySound(JsonObject? sound)
+        void ApplySojo(JsonObject? sojo)
         {
             if (_document is null)
                 return;
             JsonObject database = LegacySaveDocument.EnsureObject(_document.Root, "sojoDatabase");
             JsonArray? sojos = database["sojos"] as JsonArray;
-            if (sound is not null && sojos is null)
+            if (sojo is not null && sojos is null)
             {
                 sojos = new JsonArray();
                 database["sojos"] = sojos;
@@ -104,22 +110,22 @@ public partial class GameBuilderApp
                 {
                     if (sojos[candidate] is JsonObject current
                         && LegacySaveDocument.ReadString(current["id"]) == id
-                        && LegacySaveDocument.ReadString(current["contentType"]) == "SoundEffect")
+                        && LegacySaveDocument.ReadString(current["contentType"]) == contentType)
                     {
                         index = candidate;
                         break;
                     }
                 }
-                if (sound is null)
+                if (sojo is null)
                 {
                     if (index >= 0)
                         sojos.RemoveAt(index);
-                    if (sojos.Count == 0 && !hadSoundArray)
+                    if (sojos.Count == 0 && !hadSojoArray)
                         database.Remove("sojos");
                 }
                 else
                 {
-                    JsonObject updated = sound.DeepClone().AsObject();
+                    JsonObject updated = sojo.DeepClone().AsObject();
                     if (index >= 0)
                         sojos[index] = updated;
                     else
@@ -129,11 +135,14 @@ public partial class GameBuilderApp
             if (!hadDatabase && database.Count == 0)
                 _document.Root.Remove("sojoDatabase");
             RebuildBehaviorRuntimeAfterCollaborativeEdit();
-            _soundEffectWindow?.RefreshFromDocument();
+            if (contentType == "SoundEffect")
+                _soundEffectWindow?.RefreshFromDocument();
+            else if (contentType == "ParticleEffect")
+                _particleEffectWindow?.RefreshFromDocument();
         }
 
-        ApplySound(afterSojo);
-        RecordHistory(label, () => ApplySound(beforeSojo), () => ApplySound(afterSojo));
+        ApplySojo(afterSojo);
+        RecordHistory(label, () => ApplySojo(beforeSojo), () => ApplySojo(afterSojo));
     }
 
     private void PersistNetworkHostProjectCopy()
@@ -307,6 +316,8 @@ public partial class GameBuilderApp
         foreach (LegacyCardLibraryManagerWindow window in Descendants<LegacyCardLibraryManagerWindow>(this))
             window.RefreshFromDocument();
         foreach (LegacySoundEffectWindow window in Descendants<LegacySoundEffectWindow>(this))
+            window.RefreshFromDocument();
+        foreach (LegacyParticleEffectWindow window in Descendants<LegacyParticleEffectWindow>(this))
             window.RefreshFromDocument();
     }
     private static IEnumerable<T> Descendants<T>(Node root) where T : Node

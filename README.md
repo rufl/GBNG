@@ -138,6 +138,16 @@ Actor-attached sound effects honor the legacy `spatialized` flag: enabled uses 3
 
 The **Sounds** toolbar manages every legacy sound effect: create and edit synthesized sounds with the four original waveforms, playback speed, spatialization, and 32-slice volume/pitch envelopes; import WAV or Ogg Vorbis files; preview, rename, spatialize, and delete effects. Imported files live in `<project>.assets/sounds/` and travel with Save As, LAN asset sync, and project bundles. Existing Steam Workshop effects stay selectable and can be replaced locally without changing their sound-effect ID; downloading from Steam Workshop is unavailable. Sound-effect edits participate in Undo/Redo and `.voos` saves.
 
+The **Particles** toolbar opens an undoable library for legacy particle effects. Create, edit, copy, rename, and delete effects while retaining their stable IDs; tune emission shape, lifetime, speed, burst count, shape size, start/end size, gravity, and editable color stops; inspect changes in a local 3D preview before saving. Existing unedited `.voos` fields survive edits. Gameplay and preview share the Godot CPU-particle renderer. Unity Cone and Circle emitters map to Godot's ring emitter (cone-angle 0° and flat disk respectively); Sphere, Box, and Rectangle map to Godot sphere/box emitters.
+
+Exercise particle authoring, preview, shape conversion, unknown-field preservation, Undo/Redo, copy/delete, and `.voos` round-tripping:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\godot\run.ps1 --path . -- res://Assets/StreamingAssets/ExampleGames/Public/sample-platformer.voos --smoke-particle-effects
+```
+
+The smoke prints `PARTICLE_EFFECT_EDITOR_SMOKE_OK` and writes `.godot/particle-effect-editor-smoke.png`.
+
 When the main window loses focus, the app caps its frame rate at 30 FPS to reduce background load; regaining focus restores unlimited foreground rendering.
 
 In play mode, legacy player tooltips for `Action1` and `Action2` render as bottom-center LMB/RMB prompts for the local player. LAN hosts forward each player's prompts to the matching client; stopping play clears them.
