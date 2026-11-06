@@ -64,6 +64,14 @@ public class GameBuilderMenu
 
   static void BuildInternal(string outDir, BuildOptions extraBuildOpts)
   {
+    if (EditorUserBuildSettings.activeBuildTarget == BuildTarget.StandaloneOSX &&
+        UnityEditor.OSXStandalone.UserBuildSettings.architecture != UnityEditor.Build.OSArchitecture.x64)
+    {
+      throw new System.InvalidOperationException(
+        "The bundled macOS V8 plugin is x86_64-only. " +
+        "Use Game Builder > Build macOS Intel (Rosetta) for behavior scripts.");
+    }
+
     if (Directory.Exists(outDir))
     {
       if (Application.isBatchMode)

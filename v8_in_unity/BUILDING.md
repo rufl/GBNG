@@ -77,12 +77,13 @@ xcodebuild -project v8_in_unity/xcode_projects/v8_in_unity/v8_in_unity.xcodeproj
   V8_ROOT="$V8_ROOT" V8_OUT="$V8_ROOT/out.gn/x64.release" build
 ```
 
-To package a player that can also run on Apple Silicon, select the `StandaloneOSX`
-build target and use `Game Builder > Build macOS Intel (Rosetta)`. This explicitly
-builds an x86_64 app and restores Unity's previous architecture setting afterward.
-Apple Silicon requires Rosetta 2 to run it; behavior scripts are not supported in
-a native ARM64 player. macOS bundle architecture and Unity integration still
-require a macOS smoke run.
+Game Builder's normal `Build` action rejects macOS architectures other than x86_64
+while the bundled V8 plugin is x86_64-only, avoiding builds without behavior
+scripts. To package a player for Apple Silicon, select `StandaloneOSX` and use
+`Game Builder > Build macOS Intel (Rosetta)`. It explicitly builds an x86_64 app
+and restores Unity's previous architecture setting afterward. Rosetta 2 is
+required to run it on Apple Silicon; native ARM64 remains unsupported. The app
+still needs a macOS smoke run.
 
 ## ABI and artifact validation
 

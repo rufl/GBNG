@@ -200,9 +200,10 @@ The checked-in macOS V8 bundle is x86_64-only, so native Apple Silicon players
 cannot execute behavior scripts. On macOS, select the StandaloneOSX build target
 and use `Game Builder > Build macOS Intel (Rosetta)` to produce an x86_64 app
 using the bundled V8. Apple Silicon can run that build with Rosetta 2 installed;
-it is translated execution, not native ARM64 support. The normal `Game Builder > Build`
-action continues to use Unity's configured macOS architecture. macOS CEF apps are
-unsigned and must be signed/notarized for public distribution.
+`Game Builder > Build` rejects native ARM64 and universal macOS builds while the
+bundled V8 plugin is x86_64-only; this avoids shipping a player without behavior
+scripts. Use `Game Builder > Build macOS Intel (Rosetta)` instead. macOS CEF
+apps are unsigned and must be signed/notarized for public distribution.
 
 UnityWebBrowser and the CEF engine packages are pinned at 2.2.8. Windows
 players contain `LICENSE.UWB.txt`, `LICENSE.CEF.txt` and `README.CEF.txt`
