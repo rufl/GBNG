@@ -46,11 +46,36 @@ public class PolyVoosAsset : VoosAsset
 
 public class ImageVoosAsset : VoosAsset
 {
-  public readonly string url;
+  const string ATTRIBUTION_FRAGMENT_PREFIX = "#gbng-attribution=";
 
-  public ImageVoosAsset(string url)
+  public readonly string url;
+  public readonly string attribution;
+
+  public ImageVoosAsset(string uri)
   {
-    this.url = url;
+    if (uri == null)
+    {
+      url = null;
+      attribution = null;
+      return;
+    }
+
+    int attributionIndex = uri.LastIndexOf(ATTRIBUTION_FRAGMENT_PREFIX, System.StringComparison.Ordinal);
+    if (attributionIndex < 0)
+    {
+      url = uri;
+      attribution = null;
+      return;
+    }
+
+    url = uri.Substring(0, attributionIndex);
+    attribution = System.Uri.UnescapeDataString(uri.Substring(attributionIndex + ATTRIBUTION_FRAGMENT_PREFIX.Length));
+  }
+
+  public ImageVoosAsset(string uri, string attribution)
+  {
+    this.url = uri;
+    this.attribution = attribution;
   }
 
   public void Accept(VoosAssetVisitor visitor)
@@ -60,7 +85,9 @@ public class ImageVoosAsset : VoosAsset
 
   public string GetUri()
   {
-    return url;
+    return string.IsNullOrEmpty(attribution)
+      ? url
+      : url + ATTRIBUTION_FRAGMENT_PREFIX + System.Uri.EscapeDataString(attribution);
   }
 }
 

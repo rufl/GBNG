@@ -514,22 +514,26 @@ authentication and Internet/router-specific reachability remain unverified.
     overwrite confirmation. No Crosstales plugin or platform-native file-dialog
     package is required.
 
-* Google Image Search
+* Web image search
 
-    To enable Google Image Search in you Creation Library, you must setup a Custom Search Engine on Google Cloud Platform.
+    The Creation Library searches Wikimedia Commons directly; no API key,
+    paid Unity package, account, or Google Custom Search configuration is
+    required. Search needs an internet connection.
+    Wikimedia Commons does not provide an equivalent to Google's SafeSearch
+    filter through this API; review images before adding them to a game.
 
-    (Instructions assume basic familiarity with Google Cloud)
-    - Create a new project on Google Cloud Platform
-    - Enable the “Custom Search API”
-    - Create an API Key for the Custom Search API (via “Create Credentials”) 
-    - Inside the Unity project, paste the generated API key in to the `APIkey` variable at the top of GisSearchManager.cs
-    - Go to the Custom Search Engine control panel (cse.google.com) and create a new search engine. When creating the search engine, enter any domain (we will delete it in the next step).
-    - Edit the new search engine
-      - Remove the site to search
-      - Turn on “search the entire web”
-      - Turn on “image search” and “safe search”
-      - Inside the Unity project, copy the search engine's ID and paste it in to the searchID variable at the top of GisSearchManager.cs
-    - You are all set!
+    Results are limited to JPEG/PNG files marked Public domain, CC0, or a
+    Creative Commons Attribution (CC BY) license. ShareAlike, NonCommercial,
+    NoDerivatives, and other licenses are excluded. CC BY results without
+    creator/credit metadata are excluded rather than shown without attribution.
+    Selected images keep the Commons file page, creator, and license details
+    in the saved image URI; those details appear in the game's procedural
+    credits. Legacy image URIs remain loadable and continue to show their URL
+    in the credits.
+
+    Search uses the public Wikimedia Commons API and follows its
+    [API etiquette](https://www.mediawiki.org/wiki/API:Etiquette). Images are
+    hosted by Commons and can become unavailable if the source is removed.
 
 
 ## Existing Poly URIs

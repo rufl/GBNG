@@ -37,7 +37,8 @@ public class CreationLibrarySidebar : Sidebar
   [SerializeField] Texture2D allCategoryIcon;
   [SerializeField] Texture2D decorationCategoryIcon;
   [SerializeField] Texture2D savedCategoryIcon;
-  [SerializeField] Texture2D gisCategoryIcon;
+  [UnityEngine.Serialization.FormerlySerializedAs("gisCategoryIcon")]
+  [SerializeField] Texture2D webImageCategoryIcon;
   [SerializeField] Texture2D soundsCategoryIcon;
   [SerializeField] Texture2D particlesCategoryIcon;
   [SerializeField] CreationLibraryParticles particleLibrary;
@@ -48,7 +49,7 @@ public class CreationLibrarySidebar : Sidebar
   private static string CATEGORY_ALL = "All";
   private static string CATEGORY_DECORATIONS = "Decor";
   private static string CATEGORY_CUSTOM = "Custom";
-  private static string CATEGORY_GIS = "Images from web";
+  private static string CATEGORY_WEB_IMAGES = "Images from web";
   private static string CATEGORY_PARTICLES = "Particles";
   private static string CATEGORY_SOUNDS = "Sounds";
   [SerializeField] List<CategoryButton> dynamicCategories;
@@ -127,10 +128,7 @@ public class CreationLibrarySidebar : Sidebar
     allCategories.Add(new Util.Tuple<string, Texture2D>(CATEGORY_DECORATIONS, decorationCategoryIcon));
     allCategories.Add(new Util.Tuple<string, Texture2D>(CATEGORY_CUSTOM, savedCategoryIcon));
 
-    if (GisSearchManager.APIkey != "PUT YOUR KEY HERE")
-    {
-      allCategories.Add(new Util.Tuple<string, Texture2D>(CATEGORY_GIS, gisCategoryIcon));
-    }
+    allCategories.Add(new Util.Tuple<string, Texture2D>(CATEGORY_WEB_IMAGES, webImageCategoryIcon));
 
     allCategories.Add(new Util.Tuple<string, Texture2D>(CATEGORY_PARTICLES, particlesCategoryIcon));
     allCategories.Add(new Util.Tuple<string, Texture2D>(CATEGORY_SOUNDS, soundsCategoryIcon));
@@ -336,7 +334,7 @@ public class CreationLibrarySidebar : Sidebar
   {
     creationLibraryUI.categoriesList.SetActive(searchString == "" && selectedCategory == null);
     creationLibraryUI.inCategoryLabel.text = selectedCategory;
-    creationLibraryUI.webSearchHint.gameObject.SetActive(selectedCategory == CATEGORY_GIS);
+    creationLibraryUI.webSearchHint.gameObject.SetActive(selectedCategory == CATEGORY_WEB_IMAGES);
 
     particleLibrary.Hide();
     soundLibrary.Close();
@@ -373,9 +371,9 @@ public class CreationLibrarySidebar : Sidebar
         {
           ShowSaved();
         }
-        else if (selectedCategory == CATEGORY_GIS)
+        else if (selectedCategory == CATEGORY_WEB_IMAGES)
         {
-          ShowGIS();
+          ShowWebImages();
         }
         else if (selectedCategory == CATEGORY_DECORATIONS)
         {
@@ -428,7 +426,7 @@ public class CreationLibrarySidebar : Sidebar
   }
 
 
-  void ShowGIS()
+  void ShowWebImages()
   {
     foreach (SquareImageButtonUI result in internalResults)
     {
@@ -660,7 +658,7 @@ public class CreationLibrarySidebar : Sidebar
       if (percent > 1) timers.Remove(key);
     }
 
-    if (selectedCategory == CATEGORY_GIS)
+    if (selectedCategory == CATEGORY_WEB_IMAGES)
     {
       creationLibraryUI.webSearchHint.gameObject.SetActive(webResults.Count == 0);
     }
@@ -705,7 +703,7 @@ public class CreationLibrarySidebar : Sidebar
       webResults.Add(newResult);
       if (incomingResult.renderableReference.assetType == AssetType.Image)
       {
-        SetResultShowing(newResult, selectedCategory == CATEGORY_GIS);
+        SetResultShowing(newResult, selectedCategory == CATEGORY_WEB_IMAGES);
       }
     }
   }

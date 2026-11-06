@@ -40,7 +40,7 @@ public class AssetCache : MonoBehaviour
 
   private Transform cacheRoot;
 
-  private List<string> downloadedImageUrls = new List<string>();
+  private List<string> downloadedImageAttributions = new List<string>();
 
   BuiltinPrefabLibrary builtinPrefabLibrary;
   WorkshopAssetSource steamWorkshop;
@@ -425,7 +425,7 @@ public class AssetCache : MonoBehaviour
       string uri = asset.GetUri();
       cache.CreateCacheEntry(uri, renderable, request.texture);
 
-      cache.downloadedImageUrls.Add(asset.url);
+      cache.downloadedImageAttributions.Add(string.IsNullOrEmpty(asset.attribution) ? asset.url : asset.attribution);
     }
 
     IEnumerator LoadAndCacheBuiltin(BuiltinVoosAsset asset)
@@ -561,17 +561,17 @@ public class AssetCache : MonoBehaviour
 
   public bool AnyAttributionsToShow()
   {
-    return downloadedImageUrls.Count > 0;
+    return downloadedImageAttributions.Count > 0;
   }
 
   public string GetAttributionsString()
   {
-    return downloadedImageUrls.Count > 0 ? GenerateImageAttributions() : "";
+    return downloadedImageAttributions.Count > 0 ? GenerateImageAttributions() : "";
   }
 
   private string GenerateImageAttributions()
   {
-    return $"URLs of images used:\n" + String.Join("\n", downloadedImageUrls);
+    return $"Image attributions (older saves list image URLs):\n" + String.Join("\n", downloadedImageAttributions);
   }
 
   public interface Value

@@ -21,7 +21,8 @@ using UnityEngine;
 
 public class AssetSearch : MonoBehaviour
 {
-  [SerializeField] GisSearchManager gisSearchManager;
+  [UnityEngine.Serialization.FormerlySerializedAs("gisSearchManager")]
+  [SerializeField] CommonsImageSearchManager commonsImageSearchManager;
   [SerializeField] PrefabSearchManager prefabSearchManager;
 
   BuiltinPrefabLibrary prefabLibrary;
@@ -41,7 +42,7 @@ public class AssetSearch : MonoBehaviour
 
   public void DefaultSearch(OnActorableSearchResult resultCallback)
   {
-    gisSearchManager.Search("dog", resultCallback, null);
+    commonsImageSearchManager.Search("dog", resultCallback, null);
   }
 
   public void AddPrefabsProcessor(OnActorableSearchResult resultCallback)
@@ -54,7 +55,7 @@ public class AssetSearch : MonoBehaviour
     OnActorableSearchResult resultCallback)
   {
     //TODO: Cancel current search if still going?
-    gisSearchManager.Search(_searchString, resultCallback, (found) => { });
+    commonsImageSearchManager.Search(_searchString, resultCallback, (found) => { });
   }
 
   public void PrefabSearch(
@@ -75,7 +76,7 @@ public class AssetSearch : MonoBehaviour
   {
     if (reference.assetType == AssetType.Image)
     {
-      gisSearchManager.RequestRenderable(reference.uri, requestCallback);
+      commonsImageSearchManager.RequestRenderable(reference.uri, requestCallback);
     }
     else if (reference.assetType == AssetType.Actor || reference.assetType == AssetType.AssetPack || reference.assetType == AssetType.Poly)
     {

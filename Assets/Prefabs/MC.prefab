@@ -180,7 +180,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1bba968745c79f145baf1e1b7e38ec84, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  gisSearchManager: {fileID: 114351645920674192}
+  commonsImageSearchManager: {fileID: 114351645920674192}
   prefabSearchManager: {fileID: 114437615528043388}
 --- !u!114 &114351645920674192
 MonoBehaviour:
