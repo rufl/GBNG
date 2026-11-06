@@ -20,6 +20,9 @@ public partial class WorldActorNode : RigidBody3D
     private HashSet<ulong> _previousTriggerOverlapIds = new();
     private HashSet<ulong> _currentTriggerOverlapIds = new();
     private CollisionShape3D? _bodyCollider;
+    private CollisionShape3D? _concaveBodyCollider;
+    private readonly List<CollisionShape3D> _convexBodyColliders = new();
+    private readonly List<CollisionShape3D> _convexTriggerColliders = new();
     private BoxShape3D? _bodyBoxColliderShape;
     private Vector3 _bodyBoxColliderPosition;
     private CollisionShape3D? _triggerCollider;
@@ -599,6 +602,7 @@ public partial class WorldActorNode : RigidBody3D
         };
         _bodyCollider = collider;
         AddChild(collider);
+        CreateConvexBodyColliders();
 
         _groundProbe = new RayCast3D
         {
@@ -610,33 +614,80 @@ public partial class WorldActorNode : RigidBody3D
         AddChild(_groundProbe);
     }
 
+    private void CreateConvexBodyColliders()
+    {
+        Transform3D actorInverse = GlobalTransform.AffineInverse();
+        int colliderIndex = 0;
+        foreach (Node node in FindChildren("*", "MeshInstance3D", true, false))
+        {
+            if (node is not MeshInstance3D meshInstance || meshInstance.Mesh is not Mesh mesh)
+                continue;
+
+            ConvexPolygonShape3D shape = mesh.CreateConvexShape();
+            Vector3[] points = shape.GetPoints();
+            if (points.Length < 4)
+                continue;
+            Transform3D meshToActor = actorInverse * meshInstance.GlobalTransform;
+            for (int pointIndex = 0; pointIndex < points.Length; pointIndex++)
+                points[pointIndex] = meshToActor * points[pointIndex];
+            shape.SetPoints(points);
+
+            var collider = new CollisionShape3D
+            {
+                Name = $"ActorConvexCollision_{colliderIndex++}",
+                Shape = shape,
+                Disabled = true
+            };
+            _convexBodyColliders.Add(collider);
+            AddChild(collider);
+        }
+    }
+
     private void UpdateBodyColliderShape()
     {
         if (_bodyCollider is null || _bodyBoxColliderShape is null || State is null)
             return;
 
-        bool useConcaveCollider = State.UseConcaveCollider && State.IsSolid && !State.EnablePhysics;
-        if (_lastConcaveColliderMode == useConcaveCollider)
+        bool wantsConcaveCollider = State.UseConcaveCollider && State.IsSolid && !State.EnablePhysics;
+        if (_lastConcaveColliderMode == wantsConcaveCollider)
             return;
 
-        ConcavePolygonShape3D? concaveShape = useConcaveCollider ? CreateConcaveBodyShape() : null;
-        if (concaveShape is null)
+        if (wantsConcaveCollider && _concaveBodyCollider is null)
         {
-            _bodyCollider.Shape = _bodyBoxColliderShape;
-            _bodyCollider.Position = _bodyBoxColliderPosition;
-        }
-        else
-        {
-            _bodyCollider.Shape = concaveShape;
-            _bodyCollider.Position = Vector3.Zero;
+            ConcavePolygonShape3D? concaveShape = CreateConcaveBodyShape();
+            if (concaveShape is not null)
+            {
+                var collider = new CollisionShape3D
+                {
+                    Name = "ActorConcaveCollision",
+                    Shape = concaveShape,
+                    Disabled = true
+                };
+                _concaveBodyCollider = collider;
+                AddChild(collider);
+            }
         }
 
+        bool useConcaveCollider = wantsConcaveCollider && _concaveBodyCollider is not null;
+        bool useConvexMeshColliders = !useConcaveCollider && _convexBodyColliders.Count > 0;
+        SetCollisionShapeDisabled(_bodyCollider, useConcaveCollider || useConvexMeshColliders);
+        if (_concaveBodyCollider is not null)
+            SetCollisionShapeDisabled(_concaveBodyCollider, !useConcaveCollider);
+        foreach (CollisionShape3D collider in _convexBodyColliders)
+            SetCollisionShapeDisabled(collider, useConcaveCollider);
         if (_triggerCollider is not null)
-        {
-            _triggerCollider.Shape = _bodyBoxColliderShape;
-            _triggerCollider.Position = _bodyBoxColliderPosition;
-        }
-        _lastConcaveColliderMode = useConcaveCollider;
+            SetCollisionShapeDisabled(_triggerCollider, _convexBodyColliders.Count > 0);
+        foreach (CollisionShape3D collider in _convexTriggerColliders)
+            SetCollisionShapeDisabled(collider, false);
+        _lastConcaveColliderMode = wantsConcaveCollider;
+    }
+
+    private static void SetCollisionShapeDisabled(CollisionShape3D collider, bool disabled)
+    {
+        if (collider.IsInsideTree())
+            collider.SetDeferred(CollisionShape3D.PropertyName.Disabled, disabled);
+        else
+            collider.Disabled = disabled;
     }
 
     private ConcavePolygonShape3D? CreateConcaveBodyShape()
@@ -684,10 +735,23 @@ public partial class WorldActorNode : RigidBody3D
         {
             Name = "ActorTriggerShape",
             Shape = _bodyBoxColliderShape,
-            Position = _bodyBoxColliderPosition
+            Position = _bodyBoxColliderPosition,
+            Disabled = _convexBodyColliders.Count > 0
         };
         _triggerCollider = triggerCollider;
         _triggerArea.AddChild(triggerCollider);
+        foreach (CollisionShape3D bodyMeshCollider in _convexBodyColliders)
+        {
+            if (bodyMeshCollider.Shape is not ConvexPolygonShape3D convexShape)
+                continue;
+            var triggerMeshCollider = new CollisionShape3D
+            {
+                Name = $"ActorTriggerConvexCollision_{_convexTriggerColliders.Count}",
+                Shape = convexShape
+            };
+            _convexTriggerColliders.Add(triggerMeshCollider);
+            _triggerArea.AddChild(triggerMeshCollider);
+        }
     }
 
     private static void ApplyTint(Node root, Color tint)

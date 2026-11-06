@@ -38,24 +38,46 @@ public partial class GameBuilderApp
             actor.State.WriteBool("useConcaveCollider", false);
             actor.ApplyLegacyPhysicsSettings();
             runtime.SetActorBoolean(actorId, 15, true);
+            await WaitForUiFrames(2);
+            CollisionShape3D concaveCollider = actor.GetNode<CollisionShape3D>("ActorConcaveCollision");
             if (!actor.State.UseConcaveCollider
                 || !runtime.GetActorBoolean(actorId, 15)
-                || bodyCollider.Shape is not ConcavePolygonShape3D concaveShape
-                || concaveShape.GetFaces().Length < 3)
+                || concaveCollider.Shape is not ConcavePolygonShape3D concaveShape
+                || concaveShape.GetFaces().Length < 3
+                || concaveCollider.Disabled
+                || !bodyCollider.Disabled)
                 throw new InvalidOperationException("Boolean setter field 15 did not apply a triangle-mesh collider to a static solid actor.");
+
             runtime.SetActorBoolean(actorId, 2, true);
-            if (bodyCollider.Shape is ConcavePolygonShape3D)
-                throw new InvalidOperationException("Enabling actor physics did not restore a convex-safe collider mode.");
+            await WaitForUiFrames(2);
+            CollisionShape3D[] convexBodyColliders = actor.GetChildren().OfType<CollisionShape3D>()
+                .Where(collider => collider.Shape is ConvexPolygonShape3D convex && convex.GetPoints().Length >= 4)
+                .ToArray();
+            if (convexBodyColliders.Length == 0
+                || convexBodyColliders.All(collider => collider.Disabled)
+                || !bodyCollider.Disabled
+                || !concaveCollider.Disabled)
+                throw new InvalidOperationException("Enabling actor physics did not activate per-mesh convex body colliders.");
+            Area3D triggerArea = actor.GetNode<Area3D>("ActorTrigger");
+            CollisionShape3D[] convexTriggerColliders = triggerArea.GetChildren().OfType<CollisionShape3D>()
+                .Where(collider => collider.Shape is ConvexPolygonShape3D convex && convex.GetPoints().Length >= 4)
+                .ToArray();
+            if (convexTriggerColliders.Length == 0 || convexTriggerColliders.Any(collider => collider.Disabled))
+                throw new InvalidOperationException("The actor trigger area did not use enabled per-mesh convex colliders.");
+
             runtime.SetActorBoolean(actorId, 2, false);
-            if (bodyCollider.Shape is not ConcavePolygonShape3D)
+            await WaitForUiFrames(2);
+            if (concaveCollider.Disabled || convexBodyColliders.Any(collider => !collider.Disabled))
                 throw new InvalidOperationException("Disabling actor physics did not restore its requested static concave collider.");
             runtime.SetActorBoolean(actorId, 1, false);
-            if (bodyCollider.Shape is ConcavePolygonShape3D)
-                throw new InvalidOperationException("A non-solid actor retained a concave collider.");
+            await WaitForUiFrames(2);
+            if (!concaveCollider.Disabled || convexBodyColliders.All(collider => collider.Disabled))
+                throw new InvalidOperationException("A non-solid actor did not switch to convex mesh colliders.");
             runtime.SetActorBoolean(actorId, 1, true);
             runtime.SetActorBoolean(actorId, 15, false);
-            if (actor.State.UseConcaveCollider || bodyCollider.Shape is ConcavePolygonShape3D)
-                throw new InvalidOperationException("Disabling useConcaveCollider did not restore the convex box fallback.");
+            await WaitForUiFrames(2);
+            if (actor.State.UseConcaveCollider || !concaveCollider.Disabled || convexBodyColliders.Any(collider => collider.Disabled))
+                throw new InvalidOperationException("Disabling useConcaveCollider did not restore convex mesh collision.");
 
             PhysicsMaterial material = actor.PhysicsMaterialOverride
                 ?? throw new InvalidOperationException("The root actor has no physics material override.");
