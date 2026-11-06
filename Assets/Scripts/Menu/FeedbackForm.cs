@@ -14,10 +14,9 @@
  * limitations under the License.
  */
 
-using System;
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Networking;
 
 public class FeedbackForm : MonoBehaviour
 {
@@ -25,6 +24,8 @@ public class FeedbackForm : MonoBehaviour
   [SerializeField] UnityEngine.UI.Button sendInput;
   [SerializeField] UnityEngine.UI.Button cancelButton;
   [SerializeField] GameObject mainObject;
+  const string FormUrl = "https://docs.google.com/forms/d/e/1FAIpQLSewpreN5kzQlvGGaFeU1-izfoo9v5V7Rf-nT67GrLiK4rK8rQ/formResponse";
+  const string FormEntryId = "entry.470414579";
 
   public void Start()
   {
@@ -43,9 +44,17 @@ public class FeedbackForm : MonoBehaviour
 
   public IEnumerator PostToForm(string input)
   {
-    // TODO: implement a mechanism to send feedback, if you want to.
-    Debug.LogError("Feedback form not implemented.");
-    yield break;
+    WWWForm form = new WWWForm();
+    form.AddField(FormEntryId, input);
+
+    using (UnityWebRequest request = UnityWebRequest.Post(FormUrl, form))
+    {
+      yield return request.SendWebRequest();
+      if (request.result != UnityWebRequest.Result.Success)
+      {
+        Debug.LogWarning("Could not submit feedback: " + request.error);
+      }
+    }
   }
 
   void SendInput(string inputstring)

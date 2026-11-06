@@ -68,6 +68,14 @@ We have included a reference build (`builds/gamebuilder-OSS.7z`). This is the
 build that you should get if you simply build a Windows standalone as-is,
 without enabling any extra plugins.
 
+## Feedback
+
+The in-game Feedback action submits the typed message to the legacy Google
+Forms endpoint recovered from the archived Steam player. It requires internet
+access; Google handles the submission and may collect service-side metadata.
+The client uses UnityWebRequest and does not require a paid Unity plugin or API
+key.
+
 ## Scripting documentation
 
 For documentation about how the in-game scripting works, open the `docs.html`
