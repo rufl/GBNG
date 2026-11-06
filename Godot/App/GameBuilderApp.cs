@@ -295,6 +295,8 @@ public partial class GameBuilderApp : Node3D
             RunActorRotateSmoke();
         if (commandLineArgs.Contains("--smoke-actor-scale", StringComparer.Ordinal))
             RunActorScaleSmoke();
+        if (commandLineArgs.Contains("--smoke-actor-fields", StringComparer.Ordinal))
+            RunActorFieldSmoke();
         if (commandLineArgs.Contains("--smoke-actor-hierarchy", StringComparer.Ordinal))
             RunActorHierarchyNavigationSmoke();
         if (commandLineArgs.Contains("--smoke-comment-panels", StringComparer.Ordinal))

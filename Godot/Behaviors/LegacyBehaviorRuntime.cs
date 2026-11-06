@@ -1106,7 +1106,7 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
         _actorsChanged?.Invoke();
     }
 
-    private bool GetActorBoolean(int actorId, int fieldId)
+    internal bool GetActorBoolean(int actorId, int fieldId)
     {
         WorldActorNode? actor = GetActor(actorId);
         if (actor is null)
@@ -1137,7 +1137,7 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
         };
     }
 
-    private void SetActorBoolean(int actorId, int fieldId, bool value)
+    internal void SetActorBoolean(int actorId, int fieldId, bool value)
     {
         WorldActorNode? actor = GetActor(actorId);
         if (actor is null)
@@ -1148,7 +1148,7 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
             4 => "freezeRotations", 5 => "freezeX", 6 => "freezeY", 7 => "freezeZ",
             8 => "enableAiming", 9 => "hideInPlayMode", 10 => "keepUpright",
             13 => "isPlayerControllable", 14 => "wasClonedByScript", 15 => "useConcaveCollider",
-            16 => null, 17 => "speculativeColDet", _ => null
+            16 => "speculativeColDet", _ => null
         };
         if (property is not null)
         {
@@ -1178,7 +1178,7 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
                 actor.IgnoreVerticalDesiredVelocity = value;
                 actor.State.WriteBool("ignoreVerticalDesiredVelocity", value);
                 break;
-            case 18:
+            case 17:
                 actor.UseStickyDesiredVelocity = value;
                 actor.State.WriteBool("useStickyDesiredVelocity", value);
                 break;

@@ -217,10 +217,15 @@ public partial class WorldActorNode : RigidBody3D
         Mass = State.Mass;
         LinearDamp = State.Drag;
         AngularDamp = State.AngularDrag;
+        bool keepUpright = LegacySaveDocument.ReadBool(State.Data["keepUpright"]);
         LockRotation = State.FreezeRotations;
+        AxisLockAngularX = State.FreezeRotations || keepUpright;
+        AxisLockAngularY = State.FreezeRotations;
+        AxisLockAngularZ = State.FreezeRotations || keepUpright;
         AxisLockLinearX = State.FreezeX;
         AxisLockLinearY = State.FreezeY;
         AxisLockLinearZ = State.FreezeZ;
+        ContinuousCd = LegacySaveDocument.ReadBool(State.Data["speculativeColDet"]);
         CollisionLayer = !hasTransformParent && State.IsSolid ? 1u : 0u;
         EnsureTriggerArea();
         if (_triggerArea is not null)
