@@ -54,7 +54,7 @@ public class CardDetail : MonoBehaviour, CardManager.PopupPanel
   {
     Util.FindIfNotSet(this, ref voosEngine);
     Util.FindIfNotSet(this, ref actorLib);
-    closeButton.onClick.AddListener(Close);
+    closeButton.onClick.AddListener(CloseAnimated);
     previewButton.onClick.AddListener(PreviewCard);
     codeButton.onClick.AddListener(CodeCard);
     trashButton.onClick.AddListener(OnTrashClicked);
@@ -77,57 +77,102 @@ public class CardDetail : MonoBehaviour, CardManager.PopupPanel
 
   public bool IsOpen()
   {
-    return rectTransform.gameObject.activeSelf;
+    return rectTransform.gameObject.activeSelf && !isClosing;
   }
 
   public void Open(float openDuration)
   {
+    bool reverseClosingAnimation = isClosing && rectTransform.gameObject.activeSelf;
+    StopAnimations();
+    isClosing = false;
+    rectTransform.gameObject.SetActive(true);
+    canvasGroup.interactable = true;
+    canvasGroup.blocksRaycasts = true;
+    if (!reverseClosingAnimation)
+    {
+      canvasGroup.alpha = 0;
+      rectTransform.localScale = Vector3.zero;
+    }
     Update();
     onOpen?.Invoke();
-    showRoutine = StartCoroutine(ShowRoutine(openDuration));
+
+    if (openDuration <= 0)
+    {
+      canvasGroup.alpha = 1;
+      rectTransform.localScale = Vector3.one;
+      return;
+    }
+    showRoutine = StartCoroutine(ShowRoutine(openDuration, canvasGroup.alpha, rectTransform.localScale));
   }
 
+  const float HIDE_ANIMATION_DURATION = .12f;
   Coroutine showRoutine;
-  IEnumerator ShowRoutine(float openDuration)
+  Coroutine hideRoutine;
+  bool isClosing;
+
+  void StopAnimations()
   {
-    canvasGroup.alpha = 0;
-    rectTransform.gameObject.SetActive(true);
+    if (showRoutine != null) StopCoroutine(showRoutine);
+    if (hideRoutine != null) StopCoroutine(hideRoutine);
+    showRoutine = null;
+    hideRoutine = null;
+  }
+
+  IEnumerator ShowRoutine(float openDuration, float startAlpha, Vector3 startScale)
+  {
     float timer = 0;
     while (timer < openDuration)
     {
       timer += Time.unscaledDeltaTime;
       float percent = Mathf.Clamp01(timer / openDuration);
-      canvasGroup.alpha = percent;
-      rectTransform.localScale = Vector3.one * percent;
+      canvasGroup.alpha = Mathf.Lerp(startAlpha, 1, percent);
+      rectTransform.localScale = Vector3.Lerp(startScale, Vector3.one, percent);
       yield return null;
     }
+    canvasGroup.alpha = 1;
+    rectTransform.localScale = Vector3.one;
+    showRoutine = null;
+  }
+
+  void CloseAnimated()
+  {
+    if (!rectTransform.gameObject.activeSelf) return;
+    StopAnimations();
+    isClosing = true;
+    canvasGroup.interactable = false;
+    canvasGroup.blocksRaycasts = false;
+    hideRoutine = StartCoroutine(HideRoutine());
+  }
+
+  IEnumerator HideRoutine()
+  {
+    float startAlpha = canvasGroup.alpha;
+    Vector3 startScale = rectTransform.localScale;
+    float timer = 0;
+    while (timer < HIDE_ANIMATION_DURATION)
+    {
+      timer += Time.unscaledDeltaTime;
+      float percent = Mathf.Clamp01(timer / HIDE_ANIMATION_DURATION);
+      canvasGroup.alpha = startAlpha * (1 - percent);
+      rectTransform.localScale = Vector3.Lerp(startScale, Vector3.zero, percent);
+      yield return null;
+    }
+    canvasGroup.alpha = 0;
+    rectTransform.localScale = Vector3.zero;
+    rectTransform.gameObject.SetActive(false);
+    hideRoutine = null;
+    isClosing = false;
   }
 
   internal void OnEscape()
   {
     if (!card.OnEscape())
     {
-      Close();
+      CloseAnimated();
     }
   }
 
-  /* 
 
- //TODO: THIS DOES NOT WORK
- IEnumerator HideRoutine()
- {
-   float timer = 0;
-   while (timer < HIDE_ANIMATION_DURATION)
-   {
-     timer += Time.unscaledDeltaTime;
-     float percent = Mathf.Clamp01(timer / HIDE_ANIMATION_DURATION);
-     canvasGroup.alpha = 1 - percent;
-     yield return null;
-   }
-
-   gameObject.SetActive(false);
- }
-*/
   public void Populate(ICardAssignmentModel assignedCard, CardContainer container)
   {
     if (assignedCard == null || !assignedCard.IsValid())
@@ -204,7 +249,12 @@ public class CardDetail : MonoBehaviour, CardManager.PopupPanel
 
   public void Close()
   {
-    if (showRoutine != null) StopCoroutine(showRoutine);
+    StopAnimations();
+    isClosing = false;
+    canvasGroup.interactable = false;
+    canvasGroup.blocksRaycasts = false;
+    canvasGroup.alpha = 0;
+    rectTransform.localScale = Vector3.zero;
     rectTransform.gameObject.SetActive(false);
   }
 

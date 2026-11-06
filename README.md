@@ -515,6 +515,12 @@ authentication and Internet/router-specific reachability remain unverified.
     overwrite confirmation. No Crosstales plugin or platform-native file-dialog
     package is required.
 
+* Card detail dialogs
+
+    Card details fade and shrink when dismissed with the close button or
+    Escape. The fade stops accepting input immediately; editor context changes
+    close the dialog instantly to avoid leaving an overlay over the next view.
+
 * Web image search
 
     The Creation Library searches Wikimedia Commons directly; no API key,
