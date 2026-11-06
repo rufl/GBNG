@@ -268,6 +268,9 @@ namespace V8InUnity
     private static extern int InitializeV8(string runtimeFilesDirectory);
 
     [DllImport("v8_in_unity")]
+    private static extern int DeinitializeV8();
+
+    [DllImport("v8_in_unity")]
     private static extern void SetDebugLogFunction(StringFunction function);
 
     [DllImport("v8_in_unity")]
@@ -284,11 +287,29 @@ namespace V8InUnity
 
     static Native()
     {
-      InitializeV8(GetRuntimeFilesRoot());
+      int initializeResult = InitializeV8(GetRuntimeFilesRoot());
       SetDebugLogFunction(DebugLog);
       SetErrorLogFunction(ErrorLog);
       SetActorStringGetter(ActorStringGetterImpl);
       SetActorStringSetter(ActorStringSetterImpl);
+      if (initializeResult == 0)
+      {
+        Application.quitting += DeinitializeV8OnApplicationQuit;
+      }
+    }
+
+    private static void DeinitializeV8OnApplicationQuit()
+    {
+      Application.quitting -= DeinitializeV8OnApplicationQuit;
+      int deinitializeResult = DeinitializeV8();
+      if (deinitializeResult != 0)
+      {
+        Util.LogError($"V8 deinitialization failed with code {deinitializeResult}.");
+      }
+      else
+      {
+        Util.Log("V8 native runtime deinitialized.");
+      }
     }
 
     // These must match v8_in_unity.h typedefs

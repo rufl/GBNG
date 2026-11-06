@@ -54,6 +54,7 @@ Run `bash tools/codegen/gen-all.sh` from the repository root with Python 3.15.2.
 1. TextMesh Pro essential resources are included under `Assets/TextMesh Pro`; no manual import is required.
 1. Click Play.
 On normal shutdown, player control is not migrated while the controlled actors are being destroyed; the existing save/quit prompt is unchanged.
+Windows standalone builds produced by `Game Builder | Build` use Unity's direct rendering mode in `boot.config`. This avoids the reproduced native shutdown crash in threaded mode on D3D11, D3D12, and the WARP software renderer. Direct mode reduces CPU-side rendering parallelism and may affect render-heavy frame times; Linux and macOS builds are unchanged. The native V8 runtime is deinitialized when the player quits.
 
 
 

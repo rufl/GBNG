@@ -75,6 +75,11 @@ public class GameBuilderMenu
     {
       throw new System.Exception($"Build failed for {target}: {report.summary.result}");
     }
+    if (target == BuildTarget.StandaloneWindows64)
+    {
+      string bootConfigPath = Path.Combine(outDir, Path.GetFileNameWithoutExtension(buildTargetPath) + "_Data", "boot.config");
+      File.AppendAllText(bootConfigPath, System.Environment.NewLine + "force-gfx-direct=1" + System.Environment.NewLine);
+    }
 
     if (target == BuildTarget.StandaloneLinux64)
     {
