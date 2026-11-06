@@ -101,7 +101,9 @@ public partial class GameBuilderApp
             if (screenPosition.DistanceSquaredTo(_actorMoveStartPointer) < 16f)
                 return;
             _actorMoveDragging = true;
-            _status.Text = "Drag to move; hold Ctrl/Cmd to snap to the legacy grid. Press Esc to cancel.";
+            _status.Text = _actorMoveSnapToGrid
+                ? "Drag to move; snap-to-grid is on. Press Esc to cancel."
+                : "Drag to move; hold Ctrl/Cmd to snap to the legacy grid. Press Esc to cancel.";
         }
 
         if (!TryGetActorMovePlanePoint(screenPosition, out Vector3 pointerPoint)
@@ -110,7 +112,7 @@ public partial class GameBuilderApp
             return;
 
         Vector3 focusPosition = pointerPoint + _actorMovePointerOffset;
-        if (snapToGrid)
+        if (snapToGrid || _actorMoveSnapToGrid)
         {
             focusPosition.X = Mathf.Round(focusPosition.X / CopySnapHorizontal) * CopySnapHorizontal;
             focusPosition.Y = Mathf.Round(focusPosition.Y / CopySnapVertical) * CopySnapVertical;
@@ -271,11 +273,16 @@ public partial class GameBuilderApp
     private async void RunActorMoveSmoke()
     {
         int exitCode = 0;
+        bool originalMoveSnap = _actorMoveSnapToGrid;
+        bool restoreMoveSnapPreference = false;
         try
         {
             await WaitForUiFrames(3);
             if (_document is null || _welcome.Visible || !_editor.Visible)
                 throw new InvalidOperationException("The actor-move smoke requires an open project in the editor.");
+            if (!_actorMoveSnapToggle.IsVisibleInTree()
+                || !_actorMoveSnapToggle.GetGlobalRect().Intersects(GetViewport().GetVisibleRect()))
+                throw new InvalidOperationException("The persistent move-snap toggle is not visible in the editor.");
 
             WorldActorNode? actor = _actors.FirstOrDefault(candidate =>
             {
@@ -378,6 +385,44 @@ public partial class GameBuilderApp
                 || groupActor.GlobalPosition.DistanceTo(snappedGroupStart + snappedPosition - snappedStart) > 0.001f)
                 throw new InvalidOperationException("Ctrl/Cmd snap did not align the move focus to the legacy grid and translate its group together.");
             FinishActorMove();
+            restoreMoveSnapPreference = true;
+            _actorMoveSnapToggle.SetPressedNoSignal(true);
+            _actorMoveSnapToggle.EmitSignal("toggled", true);
+            var savedMovePreferences = new ConfigFile();
+            if (!_actorMoveSnapToGrid
+                || !_actorMoveSnapToggle.ButtonPressed
+                || savedMovePreferences.Load(EditorSettingsPath) != Error.Ok
+                || !savedMovePreferences.GetValue("editor", "move_snap_to_grid", false).AsBool())
+                throw new InvalidOperationException("The persistent move-snap toggle did not save and restore its enabled preference.");
+
+            pointerStart = _camera.UnprojectPosition(actor.GetWorldRenderBounds().GetCenter());
+            Vector3 persistentSnapStart = actor.GlobalPosition;
+            Vector3 persistentSnapGroupStart = groupActor.GlobalPosition;
+            int historyBeforePersistentSnap = _historyPosition;
+            _UnhandledInput(new InputEventMouseButton
+            {
+                ButtonIndex = MouseButton.Left,
+                Pressed = true,
+                Position = pointerStart
+            });
+            Vector3 persistentSnapTarget = persistentSnapStart
+                + _camera.GlobalBasis.X.Normalized() * 1.7f
+                + _camera.GlobalBasis.Y.Normalized() * 1.3f;
+            pointerTarget = _camera.UnprojectPosition(persistentSnapTarget - _actorMovePointerOffset);
+            UpdateActorMoveFromScreen(pointerTarget, snapToGrid: false);
+            Vector3 persistentSnapPosition = actor.GlobalPosition;
+            if (!_actorMoveDragging
+                || persistentSnapPosition.DistanceTo(persistentSnapStart) < 0.01f
+                || !Mathf.IsEqualApprox(persistentSnapPosition.X / CopySnapHorizontal, Mathf.Round(persistentSnapPosition.X / CopySnapHorizontal))
+                || !Mathf.IsEqualApprox(persistentSnapPosition.Y / CopySnapVertical, Mathf.Round(persistentSnapPosition.Y / CopySnapVertical))
+                || !Mathf.IsEqualApprox(persistentSnapPosition.Z / CopySnapHorizontal, Mathf.Round(persistentSnapPosition.Z / CopySnapHorizontal))
+                || groupActor.GlobalPosition.DistanceTo(persistentSnapGroupStart + persistentSnapPosition - persistentSnapStart) > 0.001f)
+                throw new InvalidOperationException("The persistent move-snap toggle did not snap the moved group when Ctrl/Cmd was not pressed.");
+            FinishActorMove();
+            if (_historyPosition != historyBeforePersistentSnap + 1)
+                throw new InvalidOperationException("Persistent snap movement was not committed as one undoable edit.");
+            SetActorMoveSnapPreference(originalMoveSnap);
+            restoreMoveSnapPreference = false;
             _autoSetSpawnOnMove = false;
             pointerStart = _camera.UnprojectPosition(actor.GetWorldRenderBounds().GetCenter());
             Transform3D beforeNoAutoset = actor.GlobalTransform;
@@ -456,7 +501,7 @@ public partial class GameBuilderApp
             string screenshotPath = ProjectSettings.GlobalizePath("res://.godot/actor-move-smoke.png");
             if (GetViewport().GetTexture().GetImage().SavePng(screenshotPath) != Error.Ok)
                 throw new InvalidOperationException("Could not write the actor-move smoke screenshot.");
-            GD.Print($"ACTOR_MOVE_SMOKE_OK drag=true cameraPlane=true groupSelection=true snap=legacy-grid=true autoSpawn=enabled+disabled undo=true redo=true cancel=true screenshot={screenshotPath}");
+            GD.Print($"ACTOR_MOVE_SMOKE_OK drag=true cameraPlane=true groupSelection=true snap=legacy-grid+persistent-toggle+persistence autoSpawn=enabled+disabled undo=true redo=true cancel=true screenshot={screenshotPath}");
         }
         catch (Exception exception)
         {
@@ -465,6 +510,8 @@ public partial class GameBuilderApp
         }
         finally
         {
+            if (restoreMoveSnapPreference)
+                SetActorMoveSnapPreference(originalMoveSnap);
             GetTree().Quit(exitCode);
         }
     }

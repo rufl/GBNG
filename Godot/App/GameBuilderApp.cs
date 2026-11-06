@@ -29,6 +29,7 @@ public partial class GameBuilderApp : Node3D
     private CheckBox _parentOnResetToggle = null!;
     private bool _parentOnReset = true;
     private bool _autoSetSpawnOnMove = true;
+    private bool _actorMoveSnapToGrid;
     private bool _autoSetSpawnOnRotate = true;
     private bool _invertMouseLook;
     private bool _showTooltips = true;
@@ -43,6 +44,7 @@ public partial class GameBuilderApp : Node3D
     private float _musicVolume = LegacyAudioSettings.DefaultMusicVolume;
     private const string EditorSettingsPath = "user://editor-settings.cfg";
     private CheckBox _autoSetSpawnOnMoveToggle = null!;
+    private CheckBox _actorMoveSnapToggle = null!;
     private CheckBox _autoSetSpawnOnRotateToggle = null!;
     private Label _spawnParentLabel = null!;
     private Button _spawnParentButton = null!;
@@ -959,6 +961,15 @@ public partial class GameBuilderApp : Node3D
         };
         _parentOnResetToggle.Toggled += SetParentOnResetPreference;
         left.AddChild(_parentOnResetToggle);
+        _actorMoveSnapToggle = new CheckBox
+        {
+            Name = "MoveSnapToggle",
+            Text = "Snap movement",
+            TooltipText = "Snap moved actors to the legacy grid. Ctrl/Cmd also snaps temporarily.",
+            ButtonPressed = _actorMoveSnapToGrid
+        };
+        _actorMoveSnapToggle.Toggled += SetActorMoveSnapPreference;
+        left.AddChild(_actorMoveSnapToggle);
         _actorSearchField = new LineEdit { Name = "ActorSearchField", PlaceholderText = "Search actors…" };
         _actorSearchField.TextChanged += _ => RefreshActorList();
         left.AddChild(_actorSearchField);
@@ -3549,6 +3560,7 @@ public partial class GameBuilderApp : Node3D
             ReadDisplayDimension(settings, "windowed_height", _windowedSize.Y));
         _autoSetSpawnOnMove = settings.GetValue("editor", "auto_set_spawn_on_move", true).AsBool();
         _autoSetSpawnOnRotate = settings.GetValue("editor", "auto_set_spawn_on_rotate", true).AsBool();
+        _actorMoveSnapToGrid = settings.GetValue("editor", "move_snap_to_grid", false).AsBool();
         _invertMouseLook = settings.GetValue("controls", "invert_vertical_look", false).AsBool();
         _mouseLookSensitivity = ReadControlPreference(settings, "mouse_look_sensitivity", LegacyControlsWindow.DefaultMouseLookSensitivity,
             LegacyControlsWindow.MinimumMouseLookSensitivity, LegacyControlsWindow.MaximumMouseLookSensitivity);
@@ -3580,6 +3592,15 @@ public partial class GameBuilderApp : Node3D
             && IsInstanceValid(_autoSetSpawnOnMoveToggle)
             && _autoSetSpawnOnMoveToggle.ButtonPressed != enabled)
             _autoSetSpawnOnMoveToggle.SetPressedNoSignal(enabled);
+        SaveEditorPreferences();
+    }
+    private void SetActorMoveSnapPreference(bool enabled)
+    {
+        _actorMoveSnapToGrid = enabled;
+        if (_actorMoveSnapToggle is not null
+            && IsInstanceValid(_actorMoveSnapToggle)
+            && _actorMoveSnapToggle.ButtonPressed != enabled)
+            _actorMoveSnapToggle.SetPressedNoSignal(enabled);
         SaveEditorPreferences();
     }
 
@@ -3666,6 +3687,7 @@ public partial class GameBuilderApp : Node3D
         settings.SetValue("display", "windowed_height", _windowedSize.Y);
         settings.SetValue("editor", "auto_set_spawn_on_move", _autoSetSpawnOnMove);
         settings.SetValue("editor", "auto_set_spawn_on_rotate", _autoSetSpawnOnRotate);
+        settings.SetValue("editor", "move_snap_to_grid", _actorMoveSnapToGrid);
         settings.SetValue("controls", "invert_vertical_look", _invertMouseLook);
         settings.SetValue("controls", "mouse_look_sensitivity", _mouseLookSensitivity);
         settings.SetValue("controls", "mouse_wheel_sensitivity", _mouseWheelSensitivity);
