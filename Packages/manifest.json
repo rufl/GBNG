@@ -20,6 +20,7 @@
     "dev.voltstro.unitywebbrowser.engine.cef.macos.x64": "2.2.8",
     "dev.voltstro.unitywebbrowser.engine.cef.macos.arm64": "2.2.8",
     "com.unity.netcode.gameobjects": "2.13.3",
+    "com.unity.nuget.newtonsoft-json": "3.2.2",
     "com.unity.transport": "2.6.0",
     "com.unity.postprocessing": "3.5.4",
     "com.unity.test-framework": "1.8.0",

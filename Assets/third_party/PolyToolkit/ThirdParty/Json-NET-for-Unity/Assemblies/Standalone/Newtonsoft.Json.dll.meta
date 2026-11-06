@@ -52,7 +52,7 @@ PluginImporter:
       first:
         Editor: Editor
       second:
-        enabled: 1
+        enabled: 0
         settings:
           DefaultValueInitialized: true
     data:
@@ -73,56 +73,56 @@ PluginImporter:
       first:
         Standalone: Linux
       second:
-        enabled: 1
+        enabled: 0
         settings:
           CPU: x86
     data:
       first:
         Standalone: Linux64
       second:
-        enabled: 1
+        enabled: 0
         settings:
           CPU: x86_64
     data:
       first:
         Standalone: LinuxUniversal
       second:
-        enabled: 1
+        enabled: 0
         settings:
           CPU: AnyCPU
     data:
       first:
         Standalone: OSXIntel
       second:
-        enabled: 1
+        enabled: 0
         settings:
           CPU: AnyCPU
     data:
       first:
         Standalone: OSXIntel64
       second:
-        enabled: 1
+        enabled: 0
         settings:
           CPU: AnyCPU
     data:
       first:
         Standalone: OSXUniversal
       second:
-        enabled: 1
+        enabled: 0
         settings:
           CPU: AnyCPU
     data:
       first:
         Standalone: Win
       second:
-        enabled: 1
+        enabled: 0
         settings:
           CPU: AnyCPU
     data:
       first:
         Standalone: Win64
       second:
-        enabled: 1
+        enabled: 0
         settings:
           CPU: AnyCPU
     data:
