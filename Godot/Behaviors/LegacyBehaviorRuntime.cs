@@ -1185,7 +1185,7 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
         }
     }
 
-    private double GetActorFloat(int actorId, int fieldId)
+    internal double GetActorFloat(int actorId, int fieldId)
     {
         WorldActorNode? actor = GetActor(actorId);
         if (actor is null)
@@ -1200,7 +1200,7 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
         };
     }
 
-    private void SetActorFloat(int actorId, int fieldId, double value)
+    internal void SetActorFloat(int actorId, int fieldId, double value)
     {
         WorldActorNode? actor = GetActor(actorId);
         if (actor is null)

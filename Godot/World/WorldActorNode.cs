@@ -215,6 +215,8 @@ public partial class WorldActorNode : RigidBody3D
         MaxContactsReported = ContactMonitor ? 16 : 0;
         GravityScale = State.EnableGravity ? 1f : 0f;
         Mass = State.Mass;
+        if (PhysicsMaterialOverride is PhysicsMaterial physicsMaterial)
+            physicsMaterial.Bounce = State.Bounciness;
         LinearDamp = State.Drag;
         AngularDamp = State.AngularDrag;
         bool keepUpright = LegacySaveDocument.ReadBool(State.Data["keepUpright"]);
