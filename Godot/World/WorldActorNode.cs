@@ -1,5 +1,9 @@
+using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using GBNG.Assets;
 using GBNG.Domain;
+using GBNG.Networking;
 using Godot;
 
 namespace GBNG.World;
@@ -56,17 +60,161 @@ public partial class WorldActorNode : RigidBody3D
     public bool IgnoreVerticalDesiredVelocity { get; set; }
     public bool UseStickyDesiredVelocity { get; set; }
 
-    internal static WorldActorNode? FindPlayerActorAtSlot(IReadOnlyList<WorldActorNode> actors, int targetSlot)
+    internal static WorldActorNode? FindPlayerActorAtSlot(
+        IReadOnlyList<WorldActorNode> actors,
+        int targetSlot,
+        IReadOnlyCollection<LegacyLanPlayer> players,
+        bool hasPeer,
+        LegacySaveDocument? document = null)
     {
         if (targetSlot <= 0)
             return null;
-        int slot = 0;
+
+        bool isLocalPlayer = !hasPeer;
+        bool hasTargetPlayerIdentity = isLocalPlayer;
+        long targetPlayerId = 0;
+        if (hasPeer)
+        {
+            foreach (LegacyLanPlayer player in players)
+            {
+                if (player.SlotNumber != targetSlot)
+                    continue;
+                if (hasTargetPlayerIdentity)
+                    return null;
+                hasTargetPlayerIdentity = true;
+                targetPlayerId = player.Id;
+            }
+        }
+
+        WorldActorNode? match = null;
+        bool hasControllerIdentity = false;
         foreach (WorldActorNode actor in actors)
         {
-            if (actor.State.IsPlayerControllable && ++slot == targetSlot)
-                return actor;
+            string playerId = LegacySaveDocument.ReadString(actor.State.Data["controllingVirtualPlayerId"]);
+            hasControllerIdentity |= hasPeer
+                ? playerId.Length > 0 && playerId != "local"
+                : playerId == "local";
+            bool controlsTarget = hasTargetPlayerIdentity && (isLocalPlayer
+                ? playerId == "local"
+                : long.TryParse(playerId, NumberStyles.None, CultureInfo.InvariantCulture, out long numericPlayerId)
+                    && numericPlayerId == targetPlayerId);
+            if (!controlsTarget)
+                continue;
+            if (match is not null)
+                return null;
+            match = actor;
         }
-        return null;
+        if (match is not null || hasControllerIdentity)
+            return match;
+        return FindConfiguredPlayerAtSlot(actors, targetSlot, document);
+    }
+
+    internal static WorldActorNode? FindConfiguredPlayerAtSlot(
+        IReadOnlyList<WorldActorNode> actors,
+        int targetSlot,
+        LegacySaveDocument? document)
+    {
+        if (document?.BehaviorDatabase is not JsonObject database
+            || database["brainIds"] is not JsonArray brainIds
+            || database["brains"] is not JsonArray brains)
+            return null;
+
+        WorldActorNode? match = null;
+        foreach (WorldActorNode actor in actors)
+        {
+            int playerNumber = ReadConfiguredPlayerNumber(actor.State.BrainName, brainIds, brains);
+            if (playerNumber != targetSlot)
+                continue;
+            if (match is not null)
+                return null;
+            match = actor;
+        }
+        return match;
+    }
+
+    private static int ReadConfiguredPlayerNumber(string brainName, JsonArray brainIds, JsonArray brains)
+    {
+        for (int brainIndex = 0; brainIndex < Math.Min(brainIds.Count, brains.Count); brainIndex++)
+        {
+            if (LegacySaveDocument.ReadString(brainIds[brainIndex]) != brainName
+                || brains[brainIndex] is not JsonObject brain
+                || brain["behaviorUses"] is not JsonArray uses)
+                continue;
+
+            bool hasPlayerPanel = false;
+            int playerNumber = 0;
+            foreach (JsonNode? node in uses)
+            {
+                if (node is not JsonObject use)
+                    continue;
+                string behaviorUri = LegacySaveDocument.ReadString(use["behaviorUri"]);
+                bool isV2Panel = behaviorUri == "builtin:Player Controls Panel v2";
+                if (!isV2Panel && behaviorUri != "builtin:Player Controls Panel")
+                    continue;
+                if (hasPlayerPanel)
+                    return 0;
+
+                hasPlayerPanel = true;
+                playerNumber = ReadPlayerNumberAssignment(use, isV2Panel ? "PlayerNumber" : "playerNumber", out bool autoAssign);
+                if (autoAssign)
+                    return 0;
+            }
+            return hasPlayerPanel ? playerNumber : 0;
+        }
+        return 0;
+    }
+
+    private static int ReadPlayerNumberAssignment(JsonObject use, string propertyName, out bool autoAssign)
+    {
+        const int defaultPlayerNumber = 1;
+        int playerNumber = defaultPlayerNumber;
+        autoAssign = false;
+        if (use["propertyAssignments"] is not JsonArray assignments)
+            return playerNumber;
+
+        foreach (JsonNode? node in assignments)
+        {
+            if (node is not JsonObject assignment)
+                continue;
+            string assignedName = LegacySaveDocument.ReadString(assignment["propertyName"]);
+            if (assignedName != propertyName && assignedName != "AutoAssign")
+                continue;
+            string encodedValue = LegacySaveDocument.ReadString(assignment["valueJson"]);
+            if (encodedValue.Length == 0)
+                continue;
+
+            JsonNode? value;
+            try
+            {
+                value = JsonNode.Parse(encodedValue)?["value"];
+            }
+            catch (JsonException)
+            {
+                return 0;
+            }
+            if (assignedName == "AutoAssign")
+            {
+                if (value is JsonValue boolValue && boolValue.TryGetValue(out bool enabled))
+                    autoAssign = enabled;
+            }
+            else
+            {
+                playerNumber = ReadPlayerNumberValue(value);
+            }
+        }
+        return playerNumber;
+    }
+
+    private static int ReadPlayerNumberValue(JsonNode? value)
+    {
+        if (value is not JsonValue jsonValue)
+            return 0;
+        if (jsonValue.TryGetValue(out int number))
+            return number;
+        return jsonValue.TryGetValue(out string? text)
+            && int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out number)
+                ? number
+                : 0;
     }
 
     public Aabb GetWorldRenderBounds()

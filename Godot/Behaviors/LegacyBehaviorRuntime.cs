@@ -87,7 +87,11 @@ public sealed partial class LegacyBehaviorRuntime : IDisposable
             requestCameraOffset,
             lanSession,
             reportBehaviorException,
-            new LegacyPlayerControlSlots(actors))
+            new LegacyPlayerControlSlots(
+                actors,
+                lanSession?.Players ?? Array.Empty<LegacyLanPlayer>(),
+                lanSession?.HasPeer == true,
+                document))
     {
     }
 
@@ -106,7 +110,14 @@ public sealed partial class LegacyBehaviorRuntime : IDisposable
         LegacyPlayerControlSlots? playerControlSlots)
     {
         _actors = actors;
-        _playerControlSlots = playerControlSlots ?? new LegacyPlayerControlSlots(actors);
+        _playerControlSlots = playerControlSlots
+            ?? new LegacyPlayerControlSlots(
+                actors,
+                lanSession?.Players ?? Array.Empty<LegacyLanPlayer>(),
+                lanSession?.HasPeer == true,
+                document);
+        if (lanSession?.IsClient != true)
+            _playerControlSlots.ClearNetworkOverrides();
         _document = document;
         _catalog = catalog;
         _world = world;
@@ -605,7 +616,11 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
 
     private void SyncActors()
     {
-        _playerControlSlots.Reconcile(_actors);
+        _playerControlSlots.Reconcile(
+            _actors,
+            _lanSession?.Players ?? Array.Empty<LegacyLanPlayer>(),
+            _lanSession?.HasPeer == true,
+            _document);
         _actorsByName.Clear();
         _actorsById.Clear();
         List<object> states = _actorStatesBuffer;

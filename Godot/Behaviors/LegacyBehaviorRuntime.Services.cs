@@ -1,7 +1,9 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using GBNG.Assets;
 using GBNG.Domain;
+using GBNG.Networking;
 using GBNG.World;
 using Godot;
 using GBNG.Audio;
@@ -596,7 +598,11 @@ public sealed partial class LegacyBehaviorRuntime
         if (_pendingPlayerControlTransfer is not { } request)
             return;
         _pendingPlayerControlTransfer = null;
-        _playerControlSlots.Reconcile(_actors);
+        _playerControlSlots.Reconcile(
+            _actors,
+            _lanSession?.Players ?? Array.Empty<LegacyLanPlayer>(),
+            _lanSession?.HasPeer == true,
+            _document);
 
         int localPlayerSlot = GetLocalPlayerSlot();
         WorldActorNode? current = _playerControlSlots.GetActorAtSlot(_actors, localPlayerSlot);
@@ -607,8 +613,16 @@ public sealed partial class LegacyBehaviorRuntime
             return;
 
         bool targetNeedsPhysics = target is not null && !target.State.IsPlayerControllable;
-        if (!_playerControlSlots.TryTransferControl(localPlayerSlot, request.FromActor, target))
+        string localPlayerId = _lanSession?.HasPeer == true
+            ? _lanSession.LocalPeerId.ToString(CultureInfo.InvariantCulture)
+            : "local";
+        if (!_playerControlSlots.TryTransferControl(localPlayerSlot, request.FromActor, target, localPlayerId, _actors))
             return;
+        _playerControlSlots.Reconcile(
+            _actors,
+            _lanSession?.Players ?? Array.Empty<LegacyLanPlayer>(),
+            _lanSession?.HasPeer == true,
+            _document);
         if (targetNeedsPhysics)
             target!.ApplyLegacyPhysicsSettings();
 

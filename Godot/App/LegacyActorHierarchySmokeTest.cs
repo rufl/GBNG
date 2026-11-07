@@ -33,7 +33,8 @@ public partial class GameBuilderApp
                     !actor.State.WasClonedByScript
                     && !actor.LegacyName.StartsWith("builtin:", StringComparison.Ordinal))
                 ?? throw new InvalidOperationException("The smoke project has no actor suitable for hierarchy fixtures.");
-            Vector3 origin = WorldActorNode.FindPlayerActorAtSlot(_actors, 1)?.GlobalPosition ?? _cameraTarget;
+            Vector3 origin = WorldActorNode.FindPlayerActorAtSlot(
+                _actors, 1, _lanSession.Players, _lanSession.HasPeer, _document)?.GlobalPosition ?? _cameraTarget;
             WorldActorNode zetaRoot = CreateHierarchySmokeActor(
                 source,
                 $"hierarchy-smoke-zeta-{suffix}",

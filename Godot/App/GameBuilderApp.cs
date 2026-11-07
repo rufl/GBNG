@@ -4493,9 +4493,9 @@ public partial class GameBuilderApp : Node3D
     private WorldActorNode? GetPlayerActor()
     {
         int targetSlot = _lanSession.IsClient ? _lanSession.LocalPlayerSlot : 1;
-        return _behaviorRuntime is null
-            ? WorldActorNode.FindPlayerActorAtSlot(_actors, targetSlot)
-            : _behaviorRuntime.GetPlayerActorAtSlot(targetSlot);
+        return _behaviorRuntime?.GetPlayerActorAtSlot(targetSlot)
+            ?? WorldActorNode.FindPlayerActorAtSlot(
+                _actors, targetSlot, _lanSession.Players, _lanSession.HasPeer, _document);
     }
     private WorldActorNode? GetCameraActor(WorldActorNode player)
     {

@@ -1,4 +1,7 @@
+using System.Globalization;
 using System.Text.Json;
+using GBNG.Domain;
+using GBNG.Networking;
 using GBNG.World;
 
 namespace GBNG.Behaviors;
@@ -7,71 +10,124 @@ internal sealed class LegacyPlayerControlSlots
 {
     private readonly List<string?> _actorNamesBySlot = new();
     private readonly Dictionary<string, int> _slotsByActorName = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _currentPlayerActorNames = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _observedPlayerActorNames = new(StringComparer.Ordinal);
-    private readonly List<string> _playerActorNamesToForget = new();
+    private readonly Dictionary<long, int> _slotsByPlayerId = new();
+    private readonly Dictionary<int, string> _actorNamesByCurrentSlot = new();
+    private readonly HashSet<int> _ambiguousSlots = new();
+    private readonly Dictionary<int, string?> _slotOverridesBySlot = new();
+    private bool _hasAuthoritativeNetworkSlots;
     private string? _serializedSlotsJson;
 
-    internal LegacyPlayerControlSlots(IReadOnlyList<WorldActorNode> actors)
+    internal LegacyPlayerControlSlots(
+        IReadOnlyList<WorldActorNode> actors,
+        IReadOnlyCollection<LegacyLanPlayer> players,
+        bool hasPeer,
+        LegacySaveDocument? document = null)
     {
-        Reconcile(actors);
+        Reconcile(actors, players, hasPeer, document);
     }
 
-    internal void Reconcile(IReadOnlyList<WorldActorNode> actors)
+    internal void Reconcile(
+        IReadOnlyList<WorldActorNode> actors,
+        IReadOnlyCollection<LegacyLanPlayer> players,
+        bool hasPeer,
+        LegacySaveDocument? document = null)
     {
-        _currentPlayerActorNames.Clear();
+        _slotsByPlayerId.Clear();
+        if (hasPeer)
+        {
+            foreach (LegacyLanPlayer player in players)
+            {
+                if (player.SlotNumber > 0)
+                    _slotsByPlayerId.TryAdd(player.Id, player.SlotNumber);
+            }
+        }
+
+        _actorNamesByCurrentSlot.Clear();
+        _ambiguousSlots.Clear();
+        bool hasControllerIdentity = false;
         foreach (WorldActorNode actor in actors)
         {
-            if (actor.State.IsPlayerControllable)
-                _currentPlayerActorNames.Add(actor.LegacyName);
+            string playerId = LegacySaveDocument.ReadString(actor.State.Data["controllingVirtualPlayerId"]);
+            hasControllerIdentity |= hasPeer
+                ? playerId.Length > 0 && playerId != "local"
+                : playerId == "local";
+            int playerSlot;
+            if (!hasPeer)
+            {
+                if (playerId != "local")
+                    continue;
+                playerSlot = 1;
+            }
+            else if (!long.TryParse(playerId, NumberStyles.None, CultureInfo.InvariantCulture, out long numericPlayerId)
+                || !_slotsByPlayerId.TryGetValue(numericPlayerId, out playerSlot))
+            {
+                continue;
+            }
+
+            if (_ambiguousSlots.Contains(playerSlot))
+                continue;
+            if (_actorNamesByCurrentSlot.TryGetValue(playerSlot, out string? existingActorName))
+            {
+                if (existingActorName != actor.LegacyName)
+                {
+                    _actorNamesByCurrentSlot.Remove(playerSlot);
+                    _ambiguousSlots.Add(playerSlot);
+                }
+            }
+            else
+            {
+                _actorNamesByCurrentSlot.Add(playerSlot, actor.LegacyName);
+            }
         }
 
-        for (int index = 0; index < _actorNamesBySlot.Count; index++)
+        if (!hasControllerIdentity)
         {
-            string? actorName = _actorNamesBySlot[index];
-            if (actorName is not null && !_currentPlayerActorNames.Contains(actorName))
-                ClearSlot(index);
+            if (hasPeer)
+            {
+                foreach (LegacyLanPlayer player in players)
+                {
+                    WorldActorNode? actor = WorldActorNode.FindPlayerActorAtSlot(
+                        actors, player.SlotNumber, players, hasPeer: true, document);
+                    if (actor is not null)
+                        _actorNamesByCurrentSlot.TryAdd(player.SlotNumber, actor.LegacyName);
+                }
+            }
+            else if (WorldActorNode.FindPlayerActorAtSlot(
+                actors, 1, players, hasPeer: false, document) is WorldActorNode localPlayer)
+            {
+                _actorNamesByCurrentSlot.Add(1, localPlayer.LegacyName);
+            }
+        }
+        if (_hasAuthoritativeNetworkSlots)
+        {
+            _actorNamesByCurrentSlot.Clear();
+            foreach (KeyValuePair<int, string?> assignment in _slotOverridesBySlot)
+            {
+                if (assignment.Value is not null)
+                    _actorNamesByCurrentSlot[assignment.Key] = assignment.Value;
+            }
+        }
+        else
+        {
+            foreach (KeyValuePair<int, string?> assignment in _slotOverridesBySlot)
+            {
+                if (assignment.Value is null)
+                    _actorNamesByCurrentSlot.Remove(assignment.Key);
+                else
+                    _actorNamesByCurrentSlot[assignment.Key] = assignment.Value;
+            }
         }
 
-        _playerActorNamesToForget.Clear();
-        foreach (string actorName in _observedPlayerActorNames)
+        for (int slotIndex = _actorNamesBySlot.Count - 1; slotIndex >= 0; slotIndex--)
         {
-            if (!_currentPlayerActorNames.Contains(actorName))
-                _playerActorNamesToForget.Add(actorName);
+            int playerSlot = slotIndex + 1;
+            if (!_actorNamesByCurrentSlot.ContainsKey(playerSlot))
+                SetSlot(playerSlot, null);
         }
-        foreach (string actorName in _playerActorNamesToForget)
-            _observedPlayerActorNames.Remove(actorName);
-
-        foreach (WorldActorNode actor in actors)
-        {
-            if (actor.State.IsPlayerControllable && _observedPlayerActorNames.Add(actor.LegacyName))
-                AssignFirstAvailableSlot(actor.LegacyName);
-        }
+        foreach (KeyValuePair<int, string> assignment in _actorNamesByCurrentSlot)
+            SetSlot(assignment.Key, assignment.Value);
         TrimTrailingEmptySlots();
     }
-
-    internal WorldActorNode? GetActorAtSlot(IReadOnlyList<WorldActorNode> actors, int playerSlot)
-    {
-        if (playerSlot <= 0 || playerSlot > _actorNamesBySlot.Count)
-            return null;
-
-        string? actorName = _actorNamesBySlot[playerSlot - 1];
-        if (actorName is null)
-            return null;
-
-        foreach (WorldActorNode actor in actors)
-        {
-            if (actor.LegacyName == actorName)
-                return actor;
-        }
-        return null;
-    }
-
-    internal int GetSlotForActor(string actorName)
-        => _slotsByActorName.TryGetValue(actorName, out int playerSlot) ? playerSlot : 0;
-
-    internal string ToJson()
-        => _serializedSlotsJson ??= JsonSerializer.Serialize(_actorNamesBySlot);
 
     internal bool TryApplyNetworkSlots(IReadOnlyList<WorldActorNode> actors, string json)
     {
@@ -106,19 +162,14 @@ internal sealed class LegacyPlayerControlSlots
                 return false;
         }
 
+        _hasAuthoritativeNetworkSlots = true;
+        _slotOverridesBySlot.Clear();
+        for (int index = 0; index < actorNames.Length; index++)
+            _slotOverridesBySlot[index + 1] = actorNames[index];
         _actorNamesBySlot.Clear();
         _slotsByActorName.Clear();
-        _observedPlayerActorNames.Clear();
-        _currentPlayerActorNames.Clear();
-        _playerActorNamesToForget.Clear();
-        foreach (WorldActorNode actor in actors)
+        foreach (string? actorName in actorNames)
         {
-            if (actor.State.IsPlayerControllable)
-                _observedPlayerActorNames.Add(actor.LegacyName);
-        }
-        for (int index = 0; index < actorNames.Length; index++)
-        {
-            string? actorName = actorNames[index];
             _actorNamesBySlot.Add(actorName);
             if (actorName is null)
                 continue;
@@ -128,8 +179,7 @@ internal sealed class LegacyPlayerControlSlots
             actor.State.WriteBool("isPlayerControllable", true);
             if (needsPhysicsUpdate)
                 actor.ApplyLegacyPhysicsSettings();
-            _observedPlayerActorNames.Add(actorName);
-            _slotsByActorName.Add(actorName, index + 1);
+            _slotsByActorName.Add(actorName, _actorNamesBySlot.Count);
         }
         TrimTrailingEmptySlots();
         _serializedSlotsJson = JsonSerializer.Serialize(_actorNamesBySlot);
@@ -137,29 +187,72 @@ internal sealed class LegacyPlayerControlSlots
     }
 
 
-    internal bool TryTransferControl(int playerSlot, string fromActorName, WorldActorNode? target)
+    internal bool TryTransferControl(
+        int playerSlot,
+        string fromActorName,
+        WorldActorNode? target,
+        string playerId,
+        IReadOnlyList<WorldActorNode> actors)
     {
-        if (playerSlot <= 0 || GetSlotForActor(fromActorName) != playerSlot)
+        if (playerSlot <= 0 || GetSlotForActor(fromActorName) != playerSlot || string.IsNullOrEmpty(playerId))
             return false;
         if (target is not null && target.LegacyName == fromActorName)
             return false;
+        int previousTargetSlot = target is null ? 0 : GetSlotForActor(target.LegacyName);
+
+        foreach (WorldActorNode actor in actors)
+        {
+            string controllingPlayerId = LegacySaveDocument.ReadString(actor.State.Data["controllingVirtualPlayerId"]);
+            if (actor.LegacyName == fromActorName
+                || actor == target
+                || controllingPlayerId == playerId)
+                actor.State.WriteString("controllingVirtualPlayerId", string.Empty);
+        }
 
         if (target is not null)
         {
             target.State.WriteBool("isPlayerControllable", true);
-            _observedPlayerActorNames.Add(target.LegacyName);
+            target.State.WriteString("controllingVirtualPlayerId", playerId);
         }
-
-        SetSlot(playerSlot, target?.LegacyName);
+        _slotOverridesBySlot[playerSlot] = target?.LegacyName;
+        if (previousTargetSlot > 0 && previousTargetSlot != playerSlot)
+            _slotOverridesBySlot[previousTargetSlot] = null;
         return true;
     }
-
-    private void AssignFirstAvailableSlot(string actorName)
+    internal void ClearNetworkOverrides()
     {
-        int emptyIndex = _actorNamesBySlot.IndexOf(null);
-        int playerSlot = emptyIndex >= 0 ? emptyIndex + 1 : _actorNamesBySlot.Count + 1;
-        SetSlot(playerSlot, actorName);
+        if (!_hasAuthoritativeNetworkSlots)
+            return;
+        _hasAuthoritativeNetworkSlots = false;
+        _slotOverridesBySlot.Clear();
+        _actorNamesBySlot.Clear();
+        _slotsByActorName.Clear();
+        _serializedSlotsJson = null;
     }
+
+    internal WorldActorNode? GetActorAtSlot(IReadOnlyList<WorldActorNode> actors, int playerSlot)
+    {
+        if (playerSlot <= 0 || playerSlot > _actorNamesBySlot.Count)
+            return null;
+
+        string? actorName = _actorNamesBySlot[playerSlot - 1];
+        if (actorName is null)
+            return null;
+
+        foreach (WorldActorNode actor in actors)
+        {
+            if (actor.LegacyName == actorName)
+                return actor;
+        }
+        return null;
+    }
+
+    internal int GetSlotForActor(string actorName)
+        => _slotsByActorName.TryGetValue(actorName, out int playerSlot) ? playerSlot : 0;
+
+    internal string ToJson()
+        => _serializedSlotsJson ??= JsonSerializer.Serialize(_actorNamesBySlot);
+
 
     private void SetSlot(int playerSlot, string? actorName)
     {
@@ -186,16 +279,6 @@ internal sealed class LegacyPlayerControlSlots
         TrimTrailingEmptySlots();
     }
 
-    private void ClearSlot(int slotIndex)
-    {
-        string? actorName = _actorNamesBySlot[slotIndex];
-        if (actorName is null)
-            return;
-
-        _actorNamesBySlot[slotIndex] = null;
-        _slotsByActorName.Remove(actorName);
-        _serializedSlotsJson = null;
-    }
 
     private void TrimTrailingEmptySlots()
     {

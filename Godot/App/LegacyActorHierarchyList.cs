@@ -122,7 +122,8 @@ public partial class GameBuilderApp
                 rows.Add(new ActorHierarchyRow(actor, path, isCopy, actor.IsOffstageEffective));
             }
 
-            WorldActorNode? localPlayer = WorldActorNode.FindPlayerActorAtSlot(_actors, 1);
+            WorldActorNode? localPlayer = WorldActorNode.FindPlayerActorAtSlot(
+                _actors, 1, _lanSession.Players, _lanSession.HasPeer, _document);
             Vector3 sortOrigin = localPlayer?.GlobalPosition ?? _cameraTarget;
             rows.Sort((left, right) => CompareActorHierarchyRows(left, right, sortOrigin));
             foreach (ActorHierarchyRow row in rows)

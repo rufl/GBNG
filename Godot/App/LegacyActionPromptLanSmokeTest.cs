@@ -24,18 +24,10 @@ public partial class GameBuilderApp
             if (transferTarget is null)
                 throw new InvalidOperationException("The LAN action-prompt smoke project has no unassigned transfer target.");
 
-            WorldActorNode? remotePlayer = null;
-            int playerSlot = 0;
-            foreach (WorldActorNode actor in _actors)
-            {
-                if (actor.State.IsPlayerControllable && ++playerSlot == 2)
-                {
-                    remotePlayer = actor;
-                    break;
-                }
-            }
+            WorldActorNode? remotePlayer = WorldActorNode.FindConfiguredPlayerAtSlot(_actors, 2, document);
             if (remotePlayer is null)
-                throw new InvalidOperationException("The LAN action-prompt smoke project has no second controllable player.");
+                throw new InvalidOperationException("The LAN action-prompt smoke project has no actor configured for player slot 2.");
+
 
             editor = new LegacyBehaviorAuthoringWindow(document, remotePlayer.State, OnBehaviorDataChanged, _ => null, ValidateBehaviorSourceForEditor, _catalog);
             AddChild(editor);
@@ -120,20 +112,30 @@ public partial class GameBuilderApp
         try
         {
             await WaitForUiFrames(2);
-            WorldActorNode? expectedRemotePlayer = WorldActorNode.FindPlayerActorAtSlot(_actors, 2);
             WorldActorNode? expectedTransferTarget = _actors.FirstOrDefault(actor =>
                 !actor.State.IsPlayerControllable
                 && !actor.LegacyName.StartsWith("builtin:", StringComparison.Ordinal));
-            if (expectedRemotePlayer is null || expectedTransferTarget is null)
+            if (expectedTransferTarget is null)
                 throw new InvalidOperationException("The LAN action-prompt smoke project has no actors for the slot-transfer check.");
-            string expectedRemotePlayerName = expectedRemotePlayer.LegacyName;
             string expectedTransferTargetName = expectedTransferTarget.LegacyName;
+            string? expectedRemotePlayerName = null;
             string? receivedPromptsJson = null;
             _lanSession.PlayerToolTipsReceived += prompts => receivedPromptsJson = prompts.ToJsonString();
             int port = ReadActionPromptSmokePort();
             Error joinError = _lanSession.Join("127.0.0.1", port, "Client");
             if (joinError != Error.Ok)
                 throw new InvalidOperationException($"The LAN action-prompt smoke client could not join port {port}: {_lanSession.Status}");
+            ulong playerRosterDeadline = Time.GetTicksMsec() + 45_000UL;
+            while (Time.GetTicksMsec() < playerRosterDeadline && expectedRemotePlayerName is null)
+            {
+                expectedRemotePlayerName = WorldActorNode.FindPlayerActorAtSlot(
+                    _actors, 2, _lanSession.Players, hasPeer: true, _document)?.LegacyName;
+                if (expectedRemotePlayerName is null)
+                    await WaitForUiFrames(1);
+            }
+            if (expectedRemotePlayerName is null)
+                throw new TimeoutException($"The LAN player roster did not assign a controlled actor to slot 2: {_lanSession.Status}");
+            string remotePlayerName = expectedRemotePlayerName;
 
             var action1Panel = (PanelContainer)_actionPrompt.FindChild("Action1Prompt", true, false);
             var action2Panel = (PanelContainer)_actionPrompt.FindChild("Action2Prompt", true, false);
@@ -144,13 +146,13 @@ public partial class GameBuilderApp
                 && (!_playMode || !_actionPrompt.Visible || !action1Panel.Visible || !action2Panel.Visible
                     || action1Text.Text != "Remote action" || action2Text.Text != "Remote secondary"
                     || _behaviorRuntime?.GetPlayerActorAtSlot(1)?.LegacyName != expectedTransferTargetName
-                    || _behaviorRuntime?.GetPlayerActorAtSlot(2)?.LegacyName != expectedRemotePlayerName
+                    || _behaviorRuntime?.GetPlayerActorAtSlot(2)?.LegacyName != remotePlayerName
                     || GetPlayerActor()?.State.Tint != ActionPromptLanSnapshotTint))
                 await WaitForUiFrames(1);
             if (!_playMode || !_actionPrompt.Visible || !action1Panel.Visible || !action2Panel.Visible
                 || action1Text.Text != "Remote action" || action2Text.Text != "Remote secondary"
                 || _behaviorRuntime?.GetPlayerActorAtSlot(1)?.LegacyName != expectedTransferTargetName
-                || _behaviorRuntime?.GetPlayerActorAtSlot(2)?.LegacyName != expectedRemotePlayerName
+                || _behaviorRuntime?.GetPlayerActorAtSlot(2)?.LegacyName != remotePlayerName
                 || GetPlayerActor()?.State.Tint != ActionPromptLanSnapshotTint)
                 throw new TimeoutException(
                     $"The client did not receive host prompts, control slots, and live snapshot: playMode={_playMode}, "
@@ -158,7 +160,7 @@ public partial class GameBuilderApp
                     + $"promptVisible={_actionPrompt.Visible}, action1='{action1Text.Text}', action2='{action2Text.Text}', "
                     + $"controlSlot1={_behaviorRuntime?.GetPlayerActorAtSlot(1)?.LegacyName ?? "<none>"}, "
                     + $"controlSlot2={_behaviorRuntime?.GetPlayerActorAtSlot(2)?.LegacyName ?? "<none>"}, "
-                    + $"expectedSlot1={expectedTransferTargetName}, expectedSlot2={expectedRemotePlayerName}, "
+                    + $"expectedSlot1={expectedTransferTargetName}, expectedSlot2={remotePlayerName}, "
                     + $"playerTint={GetPlayerActor()?.State.Tint}, expectedTint={ActionPromptLanSnapshotTint}, "
                     + $"received={receivedPromptsJson ?? "<none>"}.");
             await WaitForUiFrames(2);
