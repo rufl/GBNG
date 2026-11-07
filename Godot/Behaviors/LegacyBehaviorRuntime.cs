@@ -572,6 +572,37 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
         }
     }
 
+    internal (Vector3 Direction, Vector3 Origin, Vector3 HitPoint, string? TargetName) GetActorAimState(
+        WorldActorNode actor,
+        bool hasPlayerControl,
+        Basis cameraBasis,
+        Vector3 cameraPosition,
+        bool physicsQueryAvailable)
+    {
+        Vector3 direction = hasPlayerControl ? -cameraBasis.Z : -actor.GlobalBasis.Z;
+        Vector3 origin = hasPlayerControl ? cameraPosition : actor.GlobalPosition + new Vector3(0f, 0.5f, 0f);
+        Vector3 hitPoint = Vector3.Zero;
+        string? targetName = null;
+        bool aimingEnabled = LegacySaveDocument.ReadBool(actor.State.Data["enableAiming"]);
+        if (aimingEnabled && physicsQueryAvailable)
+        {
+            var query = PhysicsRayQueryParameters3D.Create(origin, origin + direction * 99f);
+            query.CollisionMask = ActorCollisionLayer | TerrainCollisionLayer;
+            query.CollideWithAreas = false;
+            query.CollideWithBodies = true;
+            query.Exclude = new Godot.Collections.Array<Rid> { actor.GetRid() };
+            Godot.Collections.Dictionary hit = _world.GetWorld3D().DirectSpaceState.IntersectRay(query);
+            if (hit.Count > 0)
+            {
+                hitPoint = CoordinateSpace.ToLegacy(hit["position"].AsVector3());
+                WorldActorNode? target = FindActorFromHit(hit);
+                if (target != actor)
+                    targetName = target?.LegacyName;
+            }
+        }
+        return (direction, origin, hitPoint, targetName);
+    }
+
     private void SyncActors()
     {
         _playerControlSlots.Reconcile(_actors);
@@ -669,29 +700,8 @@ function __gbInstallDatabase(databaseJson) { __gbConfigureDatabase(JSON.parse(da
             Vector3 worldThrottle = CoordinateSpace.ToLegacy(worldThrottleGodot.Normalized());
             Vector3 spawnPosition = actor.State.ReadLegacyVector("spawnPosition", actor.State.ReadLegacyVector("position", Vector3.Zero));
             Quaternion spawnRotation = actor.State.ReadLegacyQuaternion("spawnRotation");
-            Vector3 aimDirectionGodot = hasPlayerControl ? -actorCameraBasis.Z : -actor.GlobalBasis.Z;
-            Vector3 aimOriginGodot = hasPlayerControl ? actorCameraPosition : actor.GlobalPosition + new Vector3(0f, 0.5f, 0f);
-            Vector3 lastAimHitPoint = Vector3.Zero;
-            string? aimingAtName = null;
-            bool aimingEnabled = hasPlayerControl && LegacySaveDocument.ReadBool(actor.State.Data["enableAiming"]);
-            if (aimingEnabled && _physicsQueryAvailable)
-            {
-                var query = PhysicsRayQueryParameters3D.Create(
-                    aimOriginGodot,
-                    aimOriginGodot + aimDirectionGodot * 99f);
-                query.CollisionMask = ActorCollisionLayer | ActorTriggerCollisionLayer | TerrainCollisionLayer;
-                query.CollideWithAreas = true;
-                query.CollideWithBodies = true;
-                query.Exclude = new Godot.Collections.Array<Rid> { actor.GetRid() };
-                Godot.Collections.Dictionary hit = _world.GetWorld3D().DirectSpaceState.IntersectRay(query);
-                if (hit.Count > 0)
-                {
-                    lastAimHitPoint = CoordinateSpace.ToLegacy(hit["position"].AsVector3());
-                    WorldActorNode? target = FindActorFromHit(hit);
-                    if (target != actor)
-                        aimingAtName = target?.LegacyName;
-                }
-            }
+            (Vector3 aimDirectionGodot, Vector3 aimOriginGodot, Vector3 lastAimHitPoint, string? aimingAtName) =
+                GetActorAimState(actor, hasPlayerControl, actorCameraBasis, actorCameraPosition, _physicsQueryAvailable);
 
             Vector3 legacyMouseRayOrigin = CoordinateSpace.ToLegacy(actorMouseRayOrigin);
             Vector3 legacyMouseRayDirection = CoordinateSpace.ToLegacy(actorMouseRayDirection);

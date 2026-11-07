@@ -78,6 +78,60 @@ public partial class GameBuilderApp
             await WaitForUiFrames(2);
             if (actor.State.UseConcaveCollider || !concaveCollider.Disabled || convexBodyColliders.Any(collider => collider.Disabled))
                 throw new InvalidOperationException("Disabling useConcaveCollider did not restore convex mesh collision.");
+            actor.GlobalBasis = Basis.Identity;
+            actor.GlobalPosition = new Vector3(10000f, 10000f, 10000f);
+            runtime.SetActorBoolean(actorId, 8, true);
+            try
+            {
+                await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+                await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+                var initialAimState = runtime.GetActorAimState(actor, false, Basis.Identity, Vector3.Zero, true);
+                Vector3 aimDirection = initialAimState.Direction.Normalized();
+                if (aimDirection == Vector3.Zero)
+                    throw new InvalidOperationException("The non-player actor produced a zero aim direction.");
+                var aimTrigger = new Area3D
+                {
+                    Name = "AimSmokeTrigger",
+                    CollisionLayer = 4u,
+                    CollisionMask = 0u,
+                    Monitoring = false,
+                    Monitorable = true
+                };
+                aimTrigger.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = Vector3.One } });
+                _world.AddChild(aimTrigger);
+                aimTrigger.GlobalPosition = initialAimState.Origin + aimDirection * 2f;
+                var aimTarget = new StaticBody3D
+                {
+                    Name = "AimSmokeTarget",
+                    CollisionLayer = 1u,
+                    CollisionMask = 0u
+                };
+                aimTarget.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = Vector3.One } });
+                _world.AddChild(aimTarget);
+                aimTarget.GlobalPosition = initialAimState.Origin + aimDirection * 5f;
+                try
+                {
+                    await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+                    await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+                    var aimState = runtime.GetActorAimState(actor, false, Basis.Identity, Vector3.Zero, true);
+                    if (aimState.HitPoint == Vector3.Zero)
+                        throw new InvalidOperationException("A non-player actor with enableAiming did not perform its configured forward raycast.");
+                    float hitDistance = aimState.Origin.DistanceTo(CoordinateSpace.ToGodot(aimState.HitPoint));
+                    if (Math.Abs(hitDistance - 4.5f) > 0.2f)
+                        throw new InvalidOperationException($"The aim ray hit a trigger or missed the target body; expected 4.5 units, got {hitDistance}.");
+                }
+                finally
+                {
+                    aimTrigger.QueueFree();
+                    aimTarget.QueueFree();
+                }
+            }
+            finally
+            {
+                runtime.SetActorBoolean(actorId, 8, false);
+            }
+            await WaitForUiFrames(2);
+
 
             PhysicsMaterial material = actor.PhysicsMaterialOverride
                 ?? throw new InvalidOperationException("The root actor has no physics material override.");
@@ -121,7 +175,7 @@ public partial class GameBuilderApp
             if (actor.AxisLockAngularX || actor.AxisLockAngularY || actor.AxisLockAngularZ)
                 throw new InvalidOperationException("Disabling keepUpright did not release its angular axis locks.");
 
-            GD.Print("ACTOR_FIELD_SMOKE_OK concaveColliderLive=true bouncinessLive=true booleanSetterIds=true speculativeCcd=true keepUpright=true");
+            GD.Print("ACTOR_FIELD_SMOKE_OK concaveColliderLive=true bouncinessLive=true nonPlayerAiming=true triggerIgnore=true booleanSetterIds=true speculativeCcd=true keepUpright=true");
         }
         catch (Exception exception)
         {
