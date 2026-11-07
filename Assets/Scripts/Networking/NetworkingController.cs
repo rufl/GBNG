@@ -831,6 +831,7 @@ public class NetworkingController : Photon.PunBehaviour
         OnFatalError($"Could not start the direct-host server on {addressFamily} UDP port {hostPort}. Check that the address family is enabled and the port is available.");
         yield break;
       }
+      directWorldReady = true;
       DirectHostPortMapper.BeginHostMapping(hostPort);
       directRpcRouter.Initialize(directNetworkManager);
       RegisterDirectNetworkHandlers();
@@ -1003,6 +1004,7 @@ public class NetworkingController : Photon.PunBehaviour
       if (!string.IsNullOrEmpty(GameBuilderApplication.CurrentGameOptions.directHostMigrationSessionId)
         && preferredPlayerId > 1 && preferredPlayerId != joiningPlayerId)
         ReassignDirectPlayerOwnership(preferredPlayerId, joiningPlayerId);
+      SendDirectPlayerAssignment(clientId, joiningPlayerId);
       foreach (PhotonPlayer connectedPlayer in PhotonNetwork.playerList)
       {
         if (connectedPlayer.ID != joiningPlayerId)
