@@ -70,6 +70,7 @@ public class GamepadInputEdgeTests : InputTestFixture
     GameObject targetObject = new GameObject("GamepadInputEdgeTests Selected UI");
     Button targetButton = targetObject.AddComponent<Button>();
     GameObject rightTargetObject = new GameObject("GamepadInputEdgeTests Right UI");
+    rightTargetObject.SetActive(false);
     Button rightTarget = rightTargetObject.AddComponent<Button>();
     Navigation targetNavigation = targetButton.navigation;
     targetNavigation.mode = Navigation.Mode.Explicit;
@@ -79,7 +80,6 @@ public class GamepadInputEdgeTests : InputTestFixture
     targetButton.onClick.AddListener(() => submitCount++);
     rightTarget.onClick.AddListener(() => submitCount++);
     GamepadUiEventRecorder recorder = rightTargetObject.AddComponent<GamepadUiEventRecorder>();
-    eventSystem.SetSelectedGameObject(targetObject);
 
     GameObject inputObject = new GameObject("GamepadInputEdgeTests Input");
     Component input = inputObject.AddComponent(GameBuilderInputControlType);
@@ -94,6 +94,12 @@ public class GamepadInputEdgeTests : InputTestFixture
 
     try
     {
+      Press(gamepad.dpad.right);
+      UpdateGamepadUINavigationMethod.Invoke(navigation, null);
+      Assert.AreSame(targetObject, eventSystem.currentSelectedGameObject);
+      Release(gamepad.dpad.right);
+      UpdateGamepadUINavigationMethod.Invoke(navigation, null);
+      rightTargetObject.SetActive(true);
       Press(gamepad.dpad.right);
       UpdateGamepadUINavigationMethod.Invoke(navigation, null);
       Assert.AreSame(rightTargetObject, eventSystem.currentSelectedGameObject);
