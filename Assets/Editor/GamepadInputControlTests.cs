@@ -20,7 +20,6 @@ public class GamepadInputControlTests
   public void SetUp()
   {
     gamepad = InputSystem.AddDevice<Gamepad>();
-
     inputObject = new GameObject("GamepadInputControlTests Input");
     inputControl = inputObject.AddComponent<InputControl>();
 
@@ -75,6 +74,22 @@ public class GamepadInputControlTests
     Assert.IsFalse(inputControl.GetButton("Action2"));
     Assert.IsFalse(inputControl.GetButton("Sprint"));
   }
+
+  [Test]
+  public void NorthAndStartButtonsDriveViewAndPauseWhileHeldAndReleased()
+  {
+    QueueState(new GamepadState()
+      .WithButton(GamepadButton.North)
+      .WithButton(GamepadButton.Start));
+
+    Assert.IsTrue(inputControl.GetButton("View"));
+    Assert.IsTrue(inputControl.GetButton("Pause"));
+
+    QueueState(new GamepadState());
+    Assert.IsFalse(inputControl.GetButton("View"));
+    Assert.IsFalse(inputControl.GetButton("Pause"));
+  }
+
 
   [Test]
   public void GameplayFaceButtonsDoNotTriggerBuildModeActions()

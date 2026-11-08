@@ -186,14 +186,16 @@ migrated.
 
 Keyboard/mouse gameplay remains on Unity's legacy Input Manager. Gameplay also
 reads Unity's free Input System `Gamepad` layout: left stick moves, right stick
-looks, and triggers move vertically while flying. South/A jumps, West/X triggers
-the primary action, East/B the secondary action, and left-stick click sprints.
-Face-button actions are disabled in Build mode so they cannot become editor
-clicks; mouse and keyboard bindings are unchanged.
+looks using the existing look-sensitivity and invert options, and triggers move
+vertically while flying. South/A jumps, North/Y changes camera view, West/X
+triggers the primary action, East/B the secondary action, left-stick click
+sprints, and Start pauses/resumes the simulation. Jump and the primary/secondary
+actions are disabled in Build mode; camera-view switching remains available.
+Mouse and keyboard bindings are unchanged.
 The old Rewired action names are recoverable from the archive, but its original
-per-button assignments were not recovered. This is a conventional controller
-layout, not verified byte-for-byte mapping parity. Gamepad rebinding and UI
-navigation are not part of this replacement.
+per-button assignments were not recovered. This conventional layout is not
+verified byte-for-byte mapping parity. Gamepad rebinding and UI navigation are
+not part of this replacement.
 
 Assigned behavior labels use `getDescription()` when it returns a non-empty
 value; otherwise, the first-line `//` comment is the fallback label.

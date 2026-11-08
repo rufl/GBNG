@@ -255,9 +255,11 @@ public class InputControl : MonoBehaviour
     switch (action)
     {
       case "Jump": return ReadGamepadButton(gamepad.buttonSouth, query);
+      case "View": return ReadGamepadButton(gamepad.buttonNorth, query);
       case "Action1": return ReadGamepadButton(gamepad.buttonWest, query);
       case "Action2": return ReadGamepadButton(gamepad.buttonEast, query);
       case "Sprint": return ReadGamepadButton(gamepad.leftStickButton, query);
+      case "Pause": return ReadGamepadButton(gamepad.startButton, query);
       default: return false;
     }
   }
