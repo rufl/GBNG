@@ -3,7 +3,8 @@
   "rootNamespace": "",
   "references": [
     "Unity.InputSystem",
-    "Unity.InputSystem.TestFramework"
+    "Unity.InputSystem.TestFramework",
+    "UnityEngine.UI"
   ],
   "includePlatforms": [
     "Editor"

@@ -191,11 +191,16 @@ triggers move vertically while flying. South/A jumps, North/Y changes camera
 view, West/X triggers the primary action, East/B the secondary action,
 left-stick click sprints, and Start pauses/resumes the simulation. Jump and the
 primary/secondary actions are disabled in Build mode; camera-view switching
-remains available. Mouse and keyboard bindings are unchanged.
-The old Rewired action names are recoverable from the archive, but its original
-per-button assignments were not recovered. This conventional layout is not
-verified byte-for-byte mapping parity. Gamepad rebinding and UI navigation are
-not part of this replacement.
+remains available. With an active UI selection, D-pad moves between controls,
+South/A submits, and East/B cancels; these face buttons do not trigger gameplay
+actions while UI focus is active. If nothing is selected, the first D-pad press
+selects the first active, interactable control with navigation enabled. The
+existing keyboard/mouse input module and bindings remain unchanged.
+The archived Rewired module serialized the `Horizontal`, `Vertical`, `Submit`,
+and `Cancel` action names, but its original per-button assignments were not
+recovered. This conventional gameplay mapping and D-pad UI mapping are not
+verified byte-for-byte parity. Gamepad rebinding and physical-controller
+validation remain outstanding.
 
 Assigned behavior labels use `getDescription()` when it returns a non-empty
 value; otherwise, the first-line `//` comment is the fallback label.

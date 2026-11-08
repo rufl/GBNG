@@ -238,6 +238,12 @@ public class InputControl : MonoBehaviour
 
   bool IsGamepadActionEnabled(string action)
   {
+    if (GamepadUINavigation.IsConsumingFaceButtons &&
+      (action == "Jump" || action == "View" || action == "Action1" || action == "Action2"))
+    {
+      return false;
+    }
+
     if (action == "Jump" || action == "Action1" || action == "Action2")
     {
       // Face buttons must not become editor clicks while building.
