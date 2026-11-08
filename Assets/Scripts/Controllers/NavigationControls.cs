@@ -455,9 +455,9 @@ public class NavigationControls : MonoBehaviour, PlayerBody.ControllerInput
 
   public bool MouseLookActive()
   {
-    return CameraCapturedCursor() ||
-      (inputControl.GetButton("MoveCamera") && !userMain.CursorOverUI());
-    //return inputControl.GetButton("MoveCamera") && !userMain.CursorOverUI();
+    if (CameraCapturedCursor()) return true;
+    if (userMain.CursorOverUI()) return false;
+    return inputControl.IsGamepadLookActive() || inputControl.GetButton("MoveCamera");
   }
 
   // public bool CursorMouseLookActive()

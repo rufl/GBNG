@@ -17,6 +17,8 @@
 
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.Controls;
 
 public class InputControl : MonoBehaviour
 {
@@ -216,28 +218,112 @@ public class InputControl : MonoBehaviour
     }
   }
 
+  enum ButtonQuery
+  {
+    Held,
+    PressedThisFrame,
+    ReleasedThisFrame
+  }
+
+  static bool ReadGamepadButton(ButtonControl button, ButtonQuery query)
+  {
+    switch (query)
+    {
+      case ButtonQuery.Held: return button.isPressed;
+      case ButtonQuery.PressedThisFrame: return button.wasPressedThisFrame;
+      case ButtonQuery.ReleasedThisFrame: return button.wasReleasedThisFrame;
+      default: return false;
+    }
+  }
+
+  bool IsGamepadActionEnabled(string action)
+  {
+    if (action == "Jump" || action == "Action1" || action == "Action2")
+    {
+      // Face buttons must not become editor clicks while building.
+      return userMain != null && !userMain.InEditMode();
+    }
+
+    return true;
+  }
+
+  bool GetGamepadButton(string action, ButtonQuery query)
+  {
+    Gamepad gamepad = Gamepad.current;
+    if (gamepad == null || !IsGamepadActionEnabled(action)) return false;
+
+    switch (action)
+    {
+      case "Jump": return ReadGamepadButton(gamepad.buttonSouth, query);
+      case "Action1": return ReadGamepadButton(gamepad.buttonWest, query);
+      case "Action2": return ReadGamepadButton(gamepad.buttonEast, query);
+      case "Sprint": return ReadGamepadButton(gamepad.leftStickButton, query);
+      default: return false;
+    }
+  }
+
   public bool GetButton(string action)
   {
     if (!actions.ContainsKey(action)) Debug.Log(action);
 
-    return (Input.GetKey(actions[action].keyCode) && ModKeyHeld(actions[action].keyCode, actions[action].modKeyCode)) ||
-    (Input.GetKey(actions[action].keyCodeAlt) && ModKeyHeld(actions[action].keyCodeAlt, actions[action].modKeyCodeAlt));
+    ActionMap map = actions[action];
+    return (Input.GetKey(map.keyCode) && ModKeyHeld(map.keyCode, map.modKeyCode)) ||
+      (Input.GetKey(map.keyCodeAlt) && ModKeyHeld(map.keyCodeAlt, map.modKeyCodeAlt)) ||
+      GetGamepadButton(action, ButtonQuery.Held);
   }
 
   public bool GetButtonDown(string action)
   {
     if (!actions.ContainsKey(action)) Debug.Log(action);
 
-    return (Input.GetKeyDown(actions[action].keyCode) && ModKeyHeld(actions[action].keyCode, actions[action].modKeyCode)) ||
-    (Input.GetKeyDown(actions[action].keyCodeAlt) && ModKeyHeld(actions[action].keyCodeAlt, actions[action].modKeyCodeAlt));
+    ActionMap map = actions[action];
+    return (Input.GetKeyDown(map.keyCode) && ModKeyHeld(map.keyCode, map.modKeyCode)) ||
+      (Input.GetKeyDown(map.keyCodeAlt) && ModKeyHeld(map.keyCodeAlt, map.modKeyCodeAlt)) ||
+      GetGamepadButton(action, ButtonQuery.PressedThisFrame);
   }
 
   public bool GetButtonUp(string action)
   {
     if (!actions.ContainsKey(action)) Debug.Log(action);
 
-    return (Input.GetKeyUp(actions[action].keyCode) && ModKeyHeld(actions[action].keyCode, actions[action].modKeyCode)) ||
-    (Input.GetKeyUp(actions[action].keyCodeAlt) && ModKeyHeld(actions[action].keyCodeAlt, actions[action].modKeyCodeAlt));
+    ActionMap map = actions[action];
+    return (Input.GetKeyUp(map.keyCode) && ModKeyHeld(map.keyCode, map.modKeyCode)) ||
+      (Input.GetKeyUp(map.keyCodeAlt) && ModKeyHeld(map.keyCodeAlt, map.modKeyCodeAlt)) ||
+      GetGamepadButton(action, ButtonQuery.ReleasedThisFrame);
+  }
+  public Vector3 GetMoveAxes()
+  {
+    float moveX = Input.GetAxis("Move X");
+    float moveY = Input.GetAxis("Move Y");
+    float moveZ = Input.GetAxis("Move Z");
+    Gamepad gamepad = Gamepad.current;
+    if (gamepad == null) return new Vector3(moveX, moveY, moveZ);
+
+    Vector2 move = new Vector2(moveX, moveZ);
+    Vector2 stick = gamepad.leftStick.ReadValue();
+    if (stick != Vector2.zero)
+    {
+      move += stick;
+      if (move.sqrMagnitude > 1f) move.Normalize();
+    }
+
+    float vertical = TriggerAxis(gamepad.rightTrigger.ReadValue()) -
+      TriggerAxis(gamepad.leftTrigger.ReadValue());
+    if (vertical != 0f) moveY = Mathf.Clamp(moveY + vertical, -1f, 1f);
+    return new Vector3(move.x, moveY, move.y);
+  }
+
+  static float TriggerAxis(float value)
+  {
+    const float deadZone = 0.1f;
+    value = Mathf.Clamp01(value);
+    return value <= deadZone ? 0f : (value - deadZone) / (1f - deadZone);
+  }
+
+  public bool IsGamepadLookActive()
+  {
+    Gamepad gamepad = Gamepad.current;
+    return gamepad != null && gamepad.rightStick.ReadValue().sqrMagnitude > 0.01f;
   }
 
   //ctrl, cmd or none?
@@ -272,10 +358,6 @@ public class InputControl : MonoBehaviour
     }
   }
 
-  public Vector3 GetMoveAxes()
-  {
-    return new Vector3(Input.GetAxis("Move X"), Input.GetAxis("Move Y"), Input.GetAxis("Move Z"));
-  }
 
   public string GetKeysForAction(string action)
   {
@@ -296,12 +378,17 @@ public class InputControl : MonoBehaviour
   }
 
 
-
   public Vector2 GetLookAxes()
   {
     float invertMod = 1;
     if (userMain.playerOptions.invertMouselook) invertMod = -1;
-    return new Vector2(Input.GetAxis("Mouse X") * userMain.playerOptions.mouseLookSensitivity, invertMod * userMain.playerOptions.mouseLookSensitivity * Input.GetAxis("Mouse Y"));
+
+    Vector2 lookAxes = new Vector2(Input.GetAxis("Mouse X"), Input.GetAxis("Mouse Y"));
+    Gamepad gamepad = Gamepad.current;
+    if (gamepad != null) lookAxes += gamepad.rightStick.ReadValue();
+    return new Vector2(
+      lookAxes.x * userMain.playerOptions.mouseLookSensitivity,
+      invertMod * userMain.playerOptions.mouseLookSensitivity * lookAxes.y);
   }
 
   public float GetZoom()
