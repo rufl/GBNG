@@ -2075,8 +2075,11 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
     }
 
     view.TransferOwnership(requestingPlayer.ID);
+#if USE_PUN
     actor.OnOwnershipTransfered();
+#endif
   }
+
 
   public IEnumerable<VoosActor> EnumerateCopiesOf(VoosActor actor)
   {

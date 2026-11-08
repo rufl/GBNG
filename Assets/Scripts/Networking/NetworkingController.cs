@@ -1027,8 +1027,7 @@ public class NetworkingController : Photon.PunBehaviour
     foreach (VoosActor actor in voosEngine.EnumerateActors())
     {
       if (actor.reliablePhotonView == null || actor.reliablePhotonView.ownerId != previousPlayerId) continue;
-      actor.reliablePhotonView.ApplyOwnership(currentPlayerId);
-      actor.OnOwnershipTransfered();
+      actor.reliablePhotonView.ApplyOwnershipAndNotify(currentPlayerId);
     }
   }
 
@@ -1531,7 +1530,6 @@ public class NetworkingController : Photon.PunBehaviour
     {
       if (actor.reliablePhotonView == null || actor.reliablePhotonView.ownerId != playerId) continue;
       actor.reliablePhotonView.TransferOwnership(PhotonNetwork.player.ID);
-      actor.OnOwnershipTransfered();
     }
   }
 
@@ -2154,8 +2152,7 @@ public class NetworkingController : Photon.PunBehaviour
       foreach (VoosActor actor in voosEngine.EnumerateActors())
       {
         if (actor.reliablePhotonView == null || actor.reliablePhotonView.ownerId != previousHostPlayerId) continue;
-        actor.reliablePhotonView.ApplyOwnership(1);
-        actor.OnOwnershipTransfered();
+        actor.reliablePhotonView.ApplyOwnershipAndNotify(1);
       }
     }
 #endif

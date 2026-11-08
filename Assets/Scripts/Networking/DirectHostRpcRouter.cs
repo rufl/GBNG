@@ -800,12 +800,12 @@ public sealed class DirectHostRpcRouter : MonoBehaviour
         if (manager.IsServer)
         {
           if (view.ownerId != PhotonNetwork.GetDirectPlayerId(senderClientId)) return;
-          view.ApplyOwnership(newOwnerId);
+          view.ApplyOwnershipAndNotify(newOwnerId);
           foreach (ulong clientId in manager.ConnectedClientsIds)
             if (clientId != manager.LocalClientId && clientId != senderClientId)
               SendPacket(OwnershipName, clientId, packet, NetworkDelivery.ReliableSequenced);
         }
-        else if (senderClientId == NetworkManager.ServerClientId) view.ApplyOwnership(newOwnerId);
+        else if (senderClientId == NetworkManager.ServerClientId) view.ApplyOwnershipAndNotify(newOwnerId);
       }
     }
     catch (Exception e) { Debug.LogError($"Invalid direct multiplayer ownership update from client {senderClientId}: {e}"); }

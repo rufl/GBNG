@@ -187,8 +187,8 @@ public class WorkshopMenu : ThumbnailMenu
 
   void OnWorkshopListLoaded(WorkshopItemListEventArgs args, ItemListData data)
   {
+    if (this == null) return;
     gettingItemList = false;
-
     if (args.IsError)
     {
       Debug.Log($"Sorry, encountered an error: {args.ErrorMessage}");

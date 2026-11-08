@@ -151,9 +151,18 @@ public class PhotonView : MonoBehaviour
     owner = PhotonNetwork.FindPlayer(newOwnerId);
   }
 
+  internal void ApplyOwnershipAndNotify(int newOwnerId)
+  {
+    bool ownershipChanged = ownerId != newOwnerId;
+    ApplyOwnership(newOwnerId);
+    if (!ownershipChanged) return;
+    VoosActor actor = GetComponent<VoosActor>();
+    if (actor != null) actor.OnOwnershipTransfered();
+  }
+
   internal void TransferOwnership(int newOwnerId)
   {
-    ApplyOwnership(newOwnerId);
+    ApplyOwnershipAndNotify(newOwnerId);
     DirectHostRpcRouter.SendOwnership(viewID, newOwnerId);
   }
 }
