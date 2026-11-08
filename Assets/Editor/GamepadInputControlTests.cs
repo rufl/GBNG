@@ -54,6 +54,7 @@ public class GamepadInputControlTests
     InputSystem.Update();
   }
 
+
   [Test]
   public void FaceButtonsDriveGameplayActionsWhileHeldAndReleased()
   {
@@ -145,4 +146,5 @@ public class GamepadInputControlTests
     Assert.IsFalse(inputControl.IsGamepadLookActive());
   }
 }
+
 #endif
