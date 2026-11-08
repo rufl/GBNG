@@ -199,9 +199,10 @@ selects the first active, interactable control with navigation enabled. The
 existing keyboard/mouse input module and bindings remain unchanged.
 The archived Rewired module serialized the `Horizontal`, `Vertical`, `Submit`,
 and `Cancel` action names, but its original per-button assignments were not
-recovered. This conventional gameplay mapping and D-pad UI mapping are not
-verified byte-for-byte parity. Gamepad rebinding and physical-controller
-validation remain outstanding.
+recovered. This replacement reads `Gamepad.current`; it has no per-player device
+pairing or rebinding. The archived data does not establish whether the Steam
+release exposed either feature. The mappings are not byte-for-byte parity, and
+physical-controller validation remains outstanding.
 
 Assigned behavior labels use `getDescription()` when it returns a non-empty
 value; otherwise, the first-line `//` comment is the fallback label.
