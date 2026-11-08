@@ -1,27 +1,19 @@
-These are some reference GameBuilder builds.
+These archives are historical Game Builder builds, not current releases.
 
-If you don't have it already, you will need to install the free 7-Zip tool to unzip these archives:
-  https://www.7-zip.org/
+To extract the split Steam archive, install 7-Zip (https://www.7-zip.org/),
+right-click `gamebuilder-ARCHIVE.7z.001`, choose 7-Zip, then choose an
+extraction option.
 
-gamebuilder-ARCHIVE.7z.001
-  Archival build (last version published to Steam).
-  This build corresponds to the last version released to
-  Steam. It has most plugins enabled, for example 2D UI,
-  rich JS editor, etc.
-  
-  To unzip this, right click the 001 file, select the "7-Zip" menu, and choose
-  an extraction option.
+`gamebuilder-ARCHIVE.7z.001` is the last build published to Steam. Its
+multiplayer instructions apply only to that historical binary: it used Photon
+PUN and required a PUN App ID.
 
-  Multiplayer is not enabled, but it's easy and free to enable it for your own
-  private use: Sign up for Photon (photonengine.com) and follow their
-  instructions to get a "PUN App ID". Then create a file called
-  "photon-app-id.txt" next to "Game Builder.exe" and paste your App ID in there.
-  When you run Game Builder now, you will see all multiplayer menus enabled. You
-  can have your friends follow these steps with the same App ID and join each
-  others' games.
+The current `unity` branch uses Unity Netcode for GameObjects and Unity
+Transport for player-hosted multiplayer. It does not require PUN or a paid
+Unity networking service. See the root README for current networking and build
+instructions.
 
-gamebuilder-OSS.7z
-  Reference build for Open Source version.
-  This is the build that you get when you check out
-  and compile the open-source codebase as-is, without
-  enabling any extra plugins.
+`gamebuilder-OSS.7z` is an older prebuilt runtime, not a source archive and not
+a reproducible build of the current source. To build the current project,
+checkout the `unity` branch and use `Game Builder | Build` in the pinned Unity
+editor.

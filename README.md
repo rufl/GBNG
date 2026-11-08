@@ -1,4 +1,4 @@
-This project is no longer actively developed or maintained.
+This is an unofficial, community-maintained fork of Google Game Builder. Active development is on the `unity` and `godot` branches.
 
 # Game Builder
 
@@ -16,7 +16,7 @@ This is not an officially supported Google product.
 
 This fork keeps the implementations separate:
 
-* [`unity`](https://github.com/rufl/GBNG/tree/unity) preserves the original Unity project, pinned to Unity 6000.6.6f1; keep changes limited to compatibility, quality-of-life, and stability work.
+* [`unity`](https://github.com/rufl/GBNG/tree/unity) is the actively developed Unity 6 continuation, with restored editor features, a bundled Monaco code editor, and player-hosted NGO/UTP multiplayer without paid Unity networking services.
 * [`godot`](https://github.com/rufl/GBNG/tree/godot) is the GBNG — New Gen rewrite, targeting Godot 4.7.2 .NET, .NET 10, and ClearScript/V8 7.5.1.1 while reusing the original `.voos` projects and assets.
 
 ## Prerequisites
@@ -36,7 +36,7 @@ This fork keeps the implementations separate:
 * `v8_in_unity/` — native plugin wrapper, C ABI, platform projects, and regression harness; see [`BUILDING.md`](v8_in_unity/BUILDING.md).
 * `ProjectSettings/` — pinned Unity editor version and project settings.
 * `tools/codegen/` — Python generators and the `gen-all.sh` entry point.
-* `tools/integrations/` — optional Photon, Steamworks, and embedded-browser setup and patches.
+* `tools/integrations/` — legacy Photon migration patches and Monaco JavaScript-highlighting maintenance scripts; current multiplayer does not use PUN.
 * `tools/public-session-directory/` — dependency-free HTTP session directory and optional UDP relay; see its [operations and protocol guide](tools/public-session-directory/README.md).
 * `tools/licensing/`, `tools/documentation/`, and `tools/maintenance/` — license, documentation, and maintenance utilities.
 * `tools/asset-inventory/` — generated visual asset and license catalog.
@@ -58,15 +58,11 @@ Windows standalone builds produced by `Game Builder | Build` use Unity's direct 
 
 
 
-## Building the standalone EXE
+## Building a standalone player
 
-To build a standalone, you *must* use the menu item `Game Builder
-| Build`. Going through the normal Unity Build Settings window will *not* work.
-Once done, your build will be located under the `build_output` folder.
+Use `Game Builder | Build` to package the currently selected standalone target. This menu runs the fork's platform-specific packaging steps; output goes to `build_output`. For macOS Intel, select the `StandaloneOSX` target and use `Game Builder | Build macOS Intel (Rosetta)`, which writes `build_output_macos_intel_rosetta`. The bundled macOS V8 runtime is x86_64-only, so native Apple Silicon builds are rejected.
 
-We have included a reference build (`builds/gamebuilder-OSS.7z`). This is the
-build that you should get if you simply build a Windows standalone as-is,
-without enabling any extra plugins.
+The archives in `builds/` are historical binaries and do not represent a build of the current source. See [the archive notes](builds/README.txt).
 
 ## Feedback
 
@@ -89,10 +85,7 @@ The catalog lists license evidence and marks files without a located notice as u
 
 # Optional integrations
 
-The `unity` branch runs without Unity Asset Store plugins. Built-in 2D drawing,
-local OBJ/FBX model loading, the built-in and saved actor libraries, and in-app
-project saving are part of the baseline. Optional integrations below may
-require separate plugins, accounts, or API keys.
+The core Unity editor runs without paid Unity Asset Store plugins. Built-in 2D drawing, local OBJ/FBX model loading, actor libraries, project saving, and direct-host multiplayer are part of the baseline. Steam Workshop uses the included Steamworks.NET package but requires the Steam client, a logged-in account, and a valid App ID. Optional online services may require an account, API key, or internet access.
 
 The built-in UGUI replacement resolves the archived procedural-image component
 references, including rounded-corner modifiers, borders, stencil masks, and UI
@@ -359,7 +352,7 @@ The Compose stack also runs the self-hosted UDP relay. Set
 `RELAY_PUBLIC_ADDRESS` to a DNS name or IP reachable by hosts and players.
 Open inbound UDP `47801` (relay control) and UDP `48000-48999` (allocated game
 routes) on the server and forward them to this Docker host. Caddy/Funnel
-terminate HTTPS only; neither proxies UDP. Hosts and players need outbound UDP
+terminate HTTPS only; neither proxies UDP. Hosts and players need outbound UDP access to the relay.
 The default Compose relay binds IPv4. For IPv6-only players, the optional
 `compose.ipv6.yaml` overlay enables a dual-stack UDP relay; Docker and the
 server host must also support IPv6 and publish the relay ports over IPv6.
@@ -480,6 +473,7 @@ adapter forwards actor-state and transform RPCs, terrain edits, player identity
 and poses, ownership changes, and observable player state (tint, visibility,
 avatar animation, and tool-effect data). LAN/DNS/loopback smokes exercise host
 discovery, direct joins, identity, RPC targeting, map switching, and kicking.
+Three independent Unity player processes on DDJARIN passed the three-player ownership-chain smoke over both LAN (`192.168.1.77`) and Tailscale (`100.86.44.23`): `PASS|owner=3|hostLocal=false|client2Kinematic=true|client3Kinematic=false`. This validates separate network paths on one machine, not cross-device reachability.
 Standalone loopback tests transfer a 400 KiB initial snapshot and a 256 KiB
 Photon RPC through live NGO/UTP managers. Client-originated `AllViaServer` RPCs
 execute on the host and echo back to their origin in host-relayed order. Reliable
@@ -633,6 +627,4 @@ See the LICENSE file for the project license. Third-party notices remain applica
 
 ## Contributing
 
-This repository does not currently accept pull requests, but
-you are welcome to fork it to make your own version of it, if you
-want to.
+This fork is independently maintained. Pull requests should target the branch they are intended to change: `unity` or `godot`.
