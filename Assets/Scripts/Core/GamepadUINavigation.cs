@@ -64,6 +64,15 @@ public class GamepadUINavigation : MonoBehaviour
       return;
     }
 
+    if (HasGameplayAxisInput(gamepad))
+    {
+      if (eventSystem.currentSelectedGameObject != null)
+      {
+        eventSystem.SetSelectedGameObject(null);
+      }
+      lastMoveDirection = Vector2.zero;
+      return;
+    }
     MoveSelection(gamepad);
 
     GameObject selected = eventSystem.currentSelectedGameObject;
@@ -80,6 +89,14 @@ public class GamepadUINavigation : MonoBehaviour
       buttonEventData.Reset();
       ExecuteEvents.ExecuteHierarchy(selected, buttonEventData, ExecuteEvents.cancelHandler);
     }
+  }
+
+  static bool HasGameplayAxisInput(Gamepad gamepad)
+  {
+    return gamepad.leftStick.ReadValue().sqrMagnitude > 0.01f ||
+      gamepad.rightStick.ReadValue().sqrMagnitude > 0.01f ||
+      gamepad.leftTrigger.ReadValue() > 0.1f ||
+      gamepad.rightTrigger.ReadValue() > 0.1f;
   }
 
   void MoveSelection(Gamepad gamepad)

@@ -131,6 +131,29 @@ public class GamepadInputEdgeTests : InputTestFixture
       Press(gamepad.buttonNorth);
       UpdateGamepadUINavigationMethod.Invoke(navigation, null);
       Assert.IsFalse(ReadAction(GetButtonDownMethod, input, "View"));
+      Release(gamepad.buttonNorth);
+      UpdateGamepadUINavigationMethod.Invoke(navigation, null);
+
+      InputSystem.QueueStateEvent(gamepad, new GamepadState { leftStick = Vector2.right });
+      InputSystem.Update();
+      UpdateGamepadUINavigationMethod.Invoke(navigation, null);
+      Assert.IsNull(eventSystem.currentSelectedGameObject);
+
+      eventSystem.SetSelectedGameObject(rightTargetObject);
+      InputSystem.QueueStateEvent(gamepad, new GamepadState { rightStick = Vector2.right });
+      InputSystem.Update();
+      UpdateGamepadUINavigationMethod.Invoke(navigation, null);
+      Assert.IsNull(eventSystem.currentSelectedGameObject);
+
+      eventSystem.SetSelectedGameObject(rightTargetObject);
+      InputSystem.QueueStateEvent(gamepad, new GamepadState { rightTrigger = 0.5f });
+      InputSystem.Update();
+      UpdateGamepadUINavigationMethod.Invoke(navigation, null);
+      Assert.IsNull(eventSystem.currentSelectedGameObject);
+
+      Press(gamepad.buttonSouth);
+      UpdateGamepadUINavigationMethod.Invoke(navigation, null);
+      Assert.IsTrue(ReadAction(GetButtonDownMethod, input, "Jump"));
     }
     finally
     {

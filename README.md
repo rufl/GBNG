@@ -193,7 +193,8 @@ left-stick click sprints, and Start pauses/resumes the simulation. Jump and the
 primary/secondary actions are disabled in Build mode; camera-view switching
 remains available. With an active UI selection, D-pad moves between controls,
 South/A submits, and East/B cancels; these face buttons do not trigger gameplay
-actions while UI focus is active. If nothing is selected, the first D-pad press
+actions while UI focus is active. Stick or trigger input clears UI selection and
+returns face buttons to gameplay. If nothing is selected, the first D-pad press
 selects the first active, interactable control with navigation enabled. The
 existing keyboard/mouse input module and bindings remain unchanged.
 The archived Rewired module serialized the `Horizontal`, `Vertical`, `Submit`,

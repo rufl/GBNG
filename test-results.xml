@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<test-run id="2" testcasecount="48" result="Passed" total="48" passed="48" failed="0" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-11-08 21:32:05Z" end-time="2026-11-08 21:32:06Z" duration="1.7072584">
-  <test-suite type="TestSuite" id="1000" name="Game Builder" fullname="Game Builder" runstate="Runnable" testcasecount="48" result="Passed" start-time="2026-11-08 21:32:05Z" end-time="2026-11-08 21:32:06Z" duration="1.707258" total="48" passed="48" failed="0" inconclusive="0" skipped="0" asserts="0">
+<test-run id="2" testcasecount="48" result="Passed" total="48" passed="48" failed="0" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-11-08 21:34:42Z" end-time="2026-11-08 21:34:44Z" duration="2.2315608">
+  <test-suite type="TestSuite" id="1000" name="Game Builder" fullname="Game Builder" runstate="Runnable" testcasecount="48" result="Passed" start-time="2026-11-08 21:34:42Z" end-time="2026-11-08 21:34:44Z" duration="2.231561" total="48" passed="48" failed="0" inconclusive="0" skipped="0" asserts="0">
     <properties>
       <property name="platform" value="EditMode" />
     </properties>
-    <test-suite type="Assembly" id="1060" name="Assembly-CSharp-Editor.dll" fullname="C:/lichforge/code/GAMEBUILDER/Library/ScriptAssemblies/Assembly-CSharp-Editor.dll" runstate="Runnable" testcasecount="46" result="Passed" start-time="2026-11-08 21:32:05Z" end-time="2026-11-08 21:32:06Z" duration="1.621399" total="46" passed="46" failed="0" inconclusive="0" skipped="0" asserts="0">
+    <test-suite type="Assembly" id="1060" name="Assembly-CSharp-Editor.dll" fullname="C:/lichforge/code/GAMEBUILDER/Library/ScriptAssemblies/Assembly-CSharp-Editor.dll" runstate="Runnable" testcasecount="46" result="Passed" start-time="2026-11-08 21:34:42Z" end-time="2026-11-08 21:34:44Z" duration="2.149294" total="46" passed="46" failed="0" inconclusive="0" skipped="0" asserts="0">
       <properties>
-        <property name="_PID" value="29272" />
+        <property name="_PID" value="25504" />
         <property name="_APPDOMAIN" value="Unity Child Domain" />
         <property name="platform" value="EditMode" />
         <property name="EditorOnly" value="True" />
       </properties>
-      <test-suite type="TestFixture" id="1001" name="CardDetailAnimationTests" fullname="CardDetailAnimationTests" classname="CardDetailAnimationTests" runstate="Runnable" testcasecount="3" result="Passed" start-time="2026-11-08 21:32:05Z" end-time="2026-11-08 21:32:05Z" duration="0.476945" total="3" passed="3" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <test-suite type="TestFixture" id="1001" name="CardDetailAnimationTests" fullname="CardDetailAnimationTests" classname="CardDetailAnimationTests" runstate="Runnable" testcasecount="3" result="Passed" start-time="2026-11-08 21:34:42Z" end-time="2026-11-08 21:34:42Z" duration="0.447429" total="3" passed="3" failed="0" inconclusive="0" skipped="0" asserts="0">
         <properties />
-        <test-case id="1002" name="CloseAnimationFadesOutAndThenDeactivatesPanel" fullname="CardDetailAnimationTests.CloseAnimationFadesOutAndThenDeactivatesPanel" methodname="CloseAnimationFadesOutAndThenDeactivatesPanel" classname="CardDetailAnimationTests" runstate="Runnable" seed="980423085" result="Passed" start-time="2026-11-08 21:32:05Z" end-time="2026-11-08 21:32:05Z" duration="0.257887" asserts="0">
+        <test-case id="1002" name="CloseAnimationFadesOutAndThenDeactivatesPanel" fullname="CardDetailAnimationTests.CloseAnimationFadesOutAndThenDeactivatesPanel" methodname="CloseAnimationFadesOutAndThenDeactivatesPanel" classname="CardDetailAnimationTests" runstate="Runnable" seed="1222342853" result="Passed" start-time="2026-11-08 21:34:42Z" end-time="2026-11-08 21:34:42Z" duration="0.237715" asserts="0">
           <properties>
             <property name="_JOINTYPE" value="UnityCombinatorial" />
             <property name="retryIteration" value="0" />
@@ -24,14 +24,14 @@ Font Asset [hinted-Assailand SDF] Units Per EM set to 1000. Please commit the ne
 Font Asset [hinted-Assailand-Italic SDF] Units Per EM set to 1000. Please commit the newly serialized value.
 ]]></output>
         </test-case>
-        <test-case id="1004" name="ProgrammaticCloseRemainsImmediate" fullname="CardDetailAnimationTests.ProgrammaticCloseRemainsImmediate" methodname="ProgrammaticCloseRemainsImmediate" classname="CardDetailAnimationTests" runstate="Runnable" seed="320781938" result="Passed" start-time="2026-11-08 21:32:05Z" end-time="2026-11-08 21:32:05Z" duration="0.037727" asserts="0">
+        <test-case id="1004" name="ProgrammaticCloseRemainsImmediate" fullname="CardDetailAnimationTests.ProgrammaticCloseRemainsImmediate" methodname="ProgrammaticCloseRemainsImmediate" classname="CardDetailAnimationTests" runstate="Runnable" seed="62424719" result="Passed" start-time="2026-11-08 21:34:42Z" end-time="2026-11-08 21:34:42Z" duration="0.043014" asserts="0">
           <properties>
             <property name="_JOINTYPE" value="UnityCombinatorial" />
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1003" name="ReopeningDuringFadeCancelsThePendingHide" fullname="CardDetailAnimationTests.ReopeningDuringFadeCancelsThePendingHide" methodname="ReopeningDuringFadeCancelsThePendingHide" classname="CardDetailAnimationTests" runstate="Runnable" seed="1024569588" result="Passed" start-time="2026-11-08 21:32:05Z" end-time="2026-11-08 21:32:05Z" duration="0.153145" asserts="0">
+        <test-case id="1003" name="ReopeningDuringFadeCancelsThePendingHide" fullname="CardDetailAnimationTests.ReopeningDuringFadeCancelsThePendingHide" methodname="ReopeningDuringFadeCancelsThePendingHide" classname="CardDetailAnimationTests" runstate="Runnable" seed="392722470" result="Passed" start-time="2026-11-08 21:34:42Z" end-time="2026-11-08 21:34:42Z" duration="0.137434" asserts="0">
           <properties>
             <property name="_JOINTYPE" value="UnityCombinatorial" />
             <property name="retryIteration" value="0" />
@@ -39,92 +39,92 @@ Font Asset [hinted-Assailand-Italic SDF] Units Per EM set to 1000. Please commit
           </properties>
         </test-case>
       </test-suite>
-      <test-suite type="TestFixture" id="1005" name="DirectActorOwnershipTests" fullname="DirectActorOwnershipTests" classname="DirectActorOwnershipTests" runstate="Runnable" testcasecount="3" result="Passed" start-time="2026-11-08 21:32:05Z" end-time="2026-11-08 21:32:05Z" duration="0.045116" total="3" passed="3" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <test-suite type="TestFixture" id="1005" name="DirectActorOwnershipTests" fullname="DirectActorOwnershipTests" classname="DirectActorOwnershipTests" runstate="Runnable" testcasecount="3" result="Passed" start-time="2026-11-08 21:34:42Z" end-time="2026-11-08 21:34:42Z" duration="0.042532" total="3" passed="3" failed="0" inconclusive="0" skipped="0" asserts="0">
         <properties />
-        <test-case id="1006" name="DisconnectReclaimsActorAndReactivatesLocalPhysics" fullname="DirectActorOwnershipTests.DisconnectReclaimsActorAndReactivatesLocalPhysics" methodname="DisconnectReclaimsActorAndReactivatesLocalPhysics" classname="DirectActorOwnershipTests" runstate="Runnable" seed="200282510" result="Passed" start-time="2026-11-08 21:32:05Z" end-time="2026-11-08 21:32:05Z" duration="0.014908" asserts="0">
+        <test-case id="1006" name="DisconnectReclaimsActorAndReactivatesLocalPhysics" fullname="DirectActorOwnershipTests.DisconnectReclaimsActorAndReactivatesLocalPhysics" methodname="DisconnectReclaimsActorAndReactivatesLocalPhysics" classname="DirectActorOwnershipTests" runstate="Runnable" seed="1040993301" result="Passed" start-time="2026-11-08 21:34:42Z" end-time="2026-11-08 21:34:42Z" duration="0.014303" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1007" name="IncomingOwnershipUpdateReactivatesLocalPhysics" fullname="DirectActorOwnershipTests.IncomingOwnershipUpdateReactivatesLocalPhysics" methodname="IncomingOwnershipUpdateReactivatesLocalPhysics" classname="DirectActorOwnershipTests" runstate="Runnable" seed="987004020" result="Passed" start-time="2026-11-08 21:32:05Z" end-time="2026-11-08 21:32:05Z" duration="0.006741" asserts="0">
+        <test-case id="1007" name="IncomingOwnershipUpdateReactivatesLocalPhysics" fullname="DirectActorOwnershipTests.IncomingOwnershipUpdateReactivatesLocalPhysics" methodname="IncomingOwnershipUpdateReactivatesLocalPhysics" classname="DirectActorOwnershipTests" runstate="Runnable" seed="113291914" result="Passed" start-time="2026-11-08 21:34:42Z" end-time="2026-11-08 21:34:42Z" duration="0.007604" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1008" name="OwnershipLossReactivatesRemoteCatchUpPhysics" fullname="DirectActorOwnershipTests.OwnershipLossReactivatesRemoteCatchUpPhysics" methodname="OwnershipLossReactivatesRemoteCatchUpPhysics" classname="DirectActorOwnershipTests" runstate="Runnable" seed="1907920448" result="Passed" start-time="2026-11-08 21:32:05Z" end-time="2026-11-08 21:32:05Z" duration="0.009976" asserts="0">
+        <test-case id="1008" name="OwnershipLossReactivatesRemoteCatchUpPhysics" fullname="DirectActorOwnershipTests.OwnershipLossReactivatesRemoteCatchUpPhysics" methodname="OwnershipLossReactivatesRemoteCatchUpPhysics" classname="DirectActorOwnershipTests" runstate="Runnable" seed="1786131915" result="Passed" start-time="2026-11-08 21:34:42Z" end-time="2026-11-08 21:34:42Z" duration="0.009191" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
       </test-suite>
-      <test-suite type="TestFixture" id="1009" name="DirectHostPasswordTests" fullname="DirectHostPasswordTests" classname="DirectHostPasswordTests" runstate="Runnable" testcasecount="11" result="Passed" start-time="2026-11-08 21:32:05Z" end-time="2026-11-08 21:32:05Z" duration="0.051209" total="11" passed="11" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <test-suite type="TestFixture" id="1009" name="DirectHostPasswordTests" fullname="DirectHostPasswordTests" classname="DirectHostPasswordTests" runstate="Runnable" testcasecount="11" result="Passed" start-time="2026-11-08 21:34:42Z" end-time="2026-11-08 21:34:42Z" duration="0.045220" total="11" passed="11" failed="0" inconclusive="0" skipped="0" asserts="0">
         <properties />
-        <test-case id="1021" name="ConnectionApprovalAllowsOpenHostsAndTheLocalHostClient" fullname="DirectHostPasswordTests.ConnectionApprovalAllowsOpenHostsAndTheLocalHostClient" methodname="ConnectionApprovalAllowsOpenHostsAndTheLocalHostClient" classname="DirectHostPasswordTests" runstate="Runnable" seed="368055016" result="Passed" start-time="2026-11-08 21:32:05Z" end-time="2026-11-08 21:32:05Z" duration="0.001812" asserts="0">
+        <test-case id="1021" name="ConnectionApprovalAllowsOpenHostsAndTheLocalHostClient" fullname="DirectHostPasswordTests.ConnectionApprovalAllowsOpenHostsAndTheLocalHostClient" methodname="ConnectionApprovalAllowsOpenHostsAndTheLocalHostClient" classname="DirectHostPasswordTests" runstate="Runnable" seed="124465621" result="Passed" start-time="2026-11-08 21:34:42Z" end-time="2026-11-08 21:34:42Z" duration="0.001683" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1020" name="ConnectionApprovalChecksRemotePasswordAndDisablesNgoPlayerSpawn" fullname="DirectHostPasswordTests.ConnectionApprovalChecksRemotePasswordAndDisablesNgoPlayerSpawn" methodname="ConnectionApprovalChecksRemotePasswordAndDisablesNgoPlayerSpawn" classname="DirectHostPasswordTests" runstate="Runnable" seed="1724236929" result="Passed" start-time="2026-11-08 21:32:05Z" end-time="2026-11-08 21:32:05Z" duration="0.000413" asserts="0">
+        <test-case id="1020" name="ConnectionApprovalChecksRemotePasswordAndDisablesNgoPlayerSpawn" fullname="DirectHostPasswordTests.ConnectionApprovalChecksRemotePasswordAndDisablesNgoPlayerSpawn" methodname="ConnectionApprovalChecksRemotePasswordAndDisablesNgoPlayerSpawn" classname="DirectHostPasswordTests" runstate="Runnable" seed="2051460922" result="Passed" start-time="2026-11-08 21:34:42Z" end-time="2026-11-08 21:34:42Z" duration="0.000391" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1019" name="EmptyPasswordMatchesOnlyAnEmptyConnectionPayload" fullname="DirectHostPasswordTests.EmptyPasswordMatchesOnlyAnEmptyConnectionPayload" methodname="EmptyPasswordMatchesOnlyAnEmptyConnectionPayload" classname="DirectHostPasswordTests" runstate="Runnable" seed="267165940" result="Passed" start-time="2026-11-08 21:32:05Z" end-time="2026-11-08 21:32:05Z" duration="0.000410" asserts="0">
+        <test-case id="1019" name="EmptyPasswordMatchesOnlyAnEmptyConnectionPayload" fullname="DirectHostPasswordTests.EmptyPasswordMatchesOnlyAnEmptyConnectionPayload" methodname="EmptyPasswordMatchesOnlyAnEmptyConnectionPayload" classname="DirectHostPasswordTests" runstate="Runnable" seed="899504770" result="Passed" start-time="2026-11-08 21:34:42Z" end-time="2026-11-08 21:34:42Z" duration="0.000421" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1018" name="PasswordComparisonAcceptsOnlyTheExactSecret" fullname="DirectHostPasswordTests.PasswordComparisonAcceptsOnlyTheExactSecret" methodname="PasswordComparisonAcceptsOnlyTheExactSecret" classname="DirectHostPasswordTests" runstate="Runnable" seed="1665293038" result="Passed" start-time="2026-11-08 21:32:05Z" end-time="2026-11-08 21:32:05Z" duration="0.000293" asserts="0">
+        <test-case id="1018" name="PasswordComparisonAcceptsOnlyTheExactSecret" fullname="DirectHostPasswordTests.PasswordComparisonAcceptsOnlyTheExactSecret" methodname="PasswordComparisonAcceptsOnlyTheExactSecret" classname="DirectHostPasswordTests" runstate="Runnable" seed="1509191474" result="Passed" start-time="2026-11-08 21:34:42Z" end-time="2026-11-08 21:34:42Z" duration="0.000300" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1016" name="PasswordEncodingAcceptsMaximumAndRejectsOversizeValues" fullname="DirectHostPasswordTests.PasswordEncodingAcceptsMaximumAndRejectsOversizeValues" methodname="PasswordEncodingAcceptsMaximumAndRejectsOversizeValues" classname="DirectHostPasswordTests" runstate="Runnable" seed="1099825088" result="Passed" start-time="2026-11-08 21:32:05Z" end-time="2026-11-08 21:32:05Z" duration="0.000413" asserts="0">
+        <test-case id="1016" name="PasswordEncodingAcceptsMaximumAndRejectsOversizeValues" fullname="DirectHostPasswordTests.PasswordEncodingAcceptsMaximumAndRejectsOversizeValues" methodname="PasswordEncodingAcceptsMaximumAndRejectsOversizeValues" classname="DirectHostPasswordTests" runstate="Runnable" seed="772781562" result="Passed" start-time="2026-11-08 21:34:42Z" end-time="2026-11-08 21:34:42Z" duration="0.000413" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1017" name="PasswordEncodingEnforcesMaximumUtf8ByteCount" fullname="DirectHostPasswordTests.PasswordEncodingEnforcesMaximumUtf8ByteCount" methodname="PasswordEncodingEnforcesMaximumUtf8ByteCount" classname="DirectHostPasswordTests" runstate="Runnable" seed="2054409073" result="Passed" start-time="2026-11-08 21:32:05Z" end-time="2026-11-08 21:32:05Z" duration="0.000254" asserts="0">
+        <test-case id="1017" name="PasswordEncodingEnforcesMaximumUtf8ByteCount" fullname="DirectHostPasswordTests.PasswordEncodingEnforcesMaximumUtf8ByteCount" methodname="PasswordEncodingEnforcesMaximumUtf8ByteCount" classname="DirectHostPasswordTests" runstate="Runnable" seed="2032716621" result="Passed" start-time="2026-11-08 21:34:42Z" end-time="2026-11-08 21:34:42Z" duration="0.000338" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-suite type="ParameterizedMethod" id="1015" name="PasswordEncodingEnforcesUtf8ByteBounds" fullname="DirectHostPasswordTests.PasswordEncodingEnforcesUtf8ByteBounds" classname="DirectHostPasswordTests" runstate="Runnable" testcasecount="5" result="Passed" start-time="2026-11-08 21:32:05Z" end-time="2026-11-08 21:32:05Z" duration="0.029895" total="5" passed="5" failed="0" inconclusive="0" skipped="0" asserts="0">
+        <test-suite type="ParameterizedMethod" id="1015" name="PasswordEncodingEnforcesUtf8ByteBounds" fullname="DirectHostPasswordTests.PasswordEncodingEnforcesUtf8ByteBounds" classname="DirectHostPasswordTests" runstate="Runnable" testcasecount="5" result="Passed" start-time="2026-11-08 21:34:42Z" end-time="2026-11-08 21:34:42Z" duration="0.027787" total="5" passed="5" failed="0" inconclusive="0" skipped="0" asserts="0">
           <properties />
-          <test-case id="1010" name="PasswordEncodingEnforcesUtf8ByteBounds(&quot;&quot;,True)" fullname="DirectHostPasswordTests.PasswordEncodingEnforcesUtf8ByteBounds(&quot;&quot;,True)" methodname="PasswordEncodingEnforcesUtf8ByteBounds" classname="DirectHostPasswordTests" runstate="Runnable" seed="1087221795" result="Passed" start-time="2026-11-08 21:32:05Z" end-time="2026-11-08 21:32:05Z" duration="0.002232" asserts="0">
+          <test-case id="1010" name="PasswordEncodingEnforcesUtf8ByteBounds(&quot;&quot;,True)" fullname="DirectHostPasswordTests.PasswordEncodingEnforcesUtf8ByteBounds(&quot;&quot;,True)" methodname="PasswordEncodingEnforcesUtf8ByteBounds" classname="DirectHostPasswordTests" runstate="Runnable" seed="712846023" result="Passed" start-time="2026-11-08 21:34:42Z" end-time="2026-11-08 21:34:42Z" duration="0.002225" asserts="0">
             <properties>
               <property name="retryIteration" value="0" />
               <property name="repeatIteration" value="0" />
             </properties>
           </test-case>
-          <test-case id="1011" name="PasswordEncodingEnforcesUtf8ByteBounds(&quot;12345678&quot;,True)" fullname="DirectHostPasswordTests.PasswordEncodingEnforcesUtf8ByteBounds(&quot;12345678&quot;,True)" methodname="PasswordEncodingEnforcesUtf8ByteBounds" classname="DirectHostPasswordTests" runstate="Runnable" seed="2131517922" result="Passed" start-time="2026-11-08 21:32:05Z" end-time="2026-11-08 21:32:05Z" duration="0.003818" asserts="0">
+          <test-case id="1011" name="PasswordEncodingEnforcesUtf8ByteBounds(&quot;12345678&quot;,True)" fullname="DirectHostPasswordTests.PasswordEncodingEnforcesUtf8ByteBounds(&quot;12345678&quot;,True)" methodname="PasswordEncodingEnforcesUtf8ByteBounds" classname="DirectHostPasswordTests" runstate="Runnable" seed="896656994" result="Passed" start-time="2026-11-08 21:34:42Z" end-time="2026-11-08 21:34:42Z" duration="0.003849" asserts="0">
             <properties>
               <property name="retryIteration" value="0" />
               <property name="repeatIteration" value="0" />
             </properties>
           </test-case>
-          <test-case id="1012" name="PasswordEncodingEnforcesUtf8ByteBounds(&quot;1234567&quot;,False)" fullname="DirectHostPasswordTests.PasswordEncodingEnforcesUtf8ByteBounds(&quot;1234567&quot;,False)" methodname="PasswordEncodingEnforcesUtf8ByteBounds" classname="DirectHostPasswordTests" runstate="Runnable" seed="1990331774" result="Passed" start-time="2026-11-08 21:32:05Z" end-time="2026-11-08 21:32:05Z" duration="0.002271" asserts="0">
+          <test-case id="1012" name="PasswordEncodingEnforcesUtf8ByteBounds(&quot;1234567&quot;,False)" fullname="DirectHostPasswordTests.PasswordEncodingEnforcesUtf8ByteBounds(&quot;1234567&quot;,False)" methodname="PasswordEncodingEnforcesUtf8ByteBounds" classname="DirectHostPasswordTests" runstate="Runnable" seed="1165227114" result="Passed" start-time="2026-11-08 21:34:42Z" end-time="2026-11-08 21:34:42Z" duration="0.002537" asserts="0">
             <properties>
               <property name="retryIteration" value="0" />
               <property name="repeatIteration" value="0" />
             </properties>
           </test-case>
-          <test-case id="1013" name="PasswordEncodingEnforcesUtf8ByteBounds(&quot;éééé&quot;,True)" fullname="DirectHostPasswordTests.PasswordEncodingEnforcesUtf8ByteBounds(&quot;éééé&quot;,True)" methodname="PasswordEncodingEnforcesUtf8ByteBounds" classname="DirectHostPasswordTests" runstate="Runnable" seed="1099761261" result="Passed" start-time="2026-11-08 21:32:05Z" end-time="2026-11-08 21:32:05Z" duration="0.002421" asserts="0">
+          <test-case id="1013" name="PasswordEncodingEnforcesUtf8ByteBounds(&quot;éééé&quot;,True)" fullname="DirectHostPasswordTests.PasswordEncodingEnforcesUtf8ByteBounds(&quot;éééé&quot;,True)" methodname="PasswordEncodingEnforcesUtf8ByteBounds" classname="DirectHostPasswordTests" runstate="Runnable" seed="1274349378" result="Passed" start-time="2026-11-08 21:34:42Z" end-time="2026-11-08 21:34:42Z" duration="0.002450" asserts="0">
             <properties>
               <property name="retryIteration" value="0" />
               <property name="repeatIteration" value="0" />
             </properties>
           </test-case>
-          <test-case id="1014" name="PasswordEncodingEnforcesUtf8ByteBounds(&quot;ééééé&quot;,True)" fullname="DirectHostPasswordTests.PasswordEncodingEnforcesUtf8ByteBounds(&quot;ééééé&quot;,True)" methodname="PasswordEncodingEnforcesUtf8ByteBounds" classname="DirectHostPasswordTests" runstate="Runnable" seed="427999459" result="Passed" start-time="2026-11-08 21:32:05Z" end-time="2026-11-08 21:32:05Z" duration="0.002914" asserts="0">
+          <test-case id="1014" name="PasswordEncodingEnforcesUtf8ByteBounds(&quot;ééééé&quot;,True)" fullname="DirectHostPasswordTests.PasswordEncodingEnforcesUtf8ByteBounds(&quot;ééééé&quot;,True)" methodname="PasswordEncodingEnforcesUtf8ByteBounds" classname="DirectHostPasswordTests" runstate="Runnable" seed="1472970993" result="Passed" start-time="2026-11-08 21:34:42Z" end-time="2026-11-08 21:34:42Z" duration="0.003001" asserts="0">
             <properties>
               <property name="retryIteration" value="0" />
               <property name="repeatIteration" value="0" />
@@ -132,66 +132,66 @@ Font Asset [hinted-Assailand-Italic SDF] Units Per EM set to 1000. Please commit
           </test-case>
         </test-suite>
       </test-suite>
-      <test-suite type="TestFixture" id="1022" name="DirectHostRelayInviteTests" fullname="DirectHostRelayInviteTests" classname="DirectHostRelayInviteTests" runstate="Runnable" testcasecount="5" result="Passed" start-time="2026-11-08 21:32:05Z" end-time="2026-11-08 21:32:06Z" duration="0.749385" total="5" passed="5" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <test-suite type="TestFixture" id="1022" name="DirectHostRelayInviteTests" fullname="DirectHostRelayInviteTests" classname="DirectHostRelayInviteTests" runstate="Runnable" testcasecount="5" result="Passed" start-time="2026-11-08 21:34:42Z" end-time="2026-11-08 21:34:44Z" duration="1.342087" total="5" passed="5" failed="0" inconclusive="0" skipped="0" asserts="0">
         <properties />
-        <test-case id="1024" name="LegacyDirectInviteRemainsJoinableWithoutRelayFields" fullname="DirectHostRelayInviteTests.LegacyDirectInviteRemainsJoinableWithoutRelayFields" methodname="LegacyDirectInviteRemainsJoinableWithoutRelayFields" classname="DirectHostRelayInviteTests" runstate="Runnable" seed="580281899" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.034767" asserts="0">
+        <test-case id="1024" name="LegacyDirectInviteRemainsJoinableWithoutRelayFields" fullname="DirectHostRelayInviteTests.LegacyDirectInviteRemainsJoinableWithoutRelayFields" methodname="LegacyDirectInviteRemainsJoinableWithoutRelayFields" classname="DirectHostRelayInviteTests" runstate="Runnable" seed="253875756" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.044663" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1027" name="RelayAddressSelectionReportsWhenNoFamilyHasARoute" fullname="DirectHostRelayInviteTests.RelayAddressSelectionReportsWhenNoFamilyHasARoute" methodname="RelayAddressSelectionReportsWhenNoFamilyHasARoute" classname="DirectHostRelayInviteTests" runstate="Runnable" seed="963985848" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.011815" asserts="0">
+        <test-case id="1027" name="RelayAddressSelectionReportsWhenNoFamilyHasARoute" fullname="DirectHostRelayInviteTests.RelayAddressSelectionReportsWhenNoFamilyHasARoute" methodname="RelayAddressSelectionReportsWhenNoFamilyHasARoute" classname="DirectHostRelayInviteTests" runstate="Runnable" seed="1618331127" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.018336" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1026" name="RelayAddressSelectionSkipsUnreachableAddressFamily" fullname="DirectHostRelayInviteTests.RelayAddressSelectionSkipsUnreachableAddressFamily" methodname="RelayAddressSelectionSkipsUnreachableAddressFamily" classname="DirectHostRelayInviteTests" runstate="Runnable" seed="1346897501" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.000395" asserts="0">
+        <test-case id="1026" name="RelayAddressSelectionSkipsUnreachableAddressFamily" fullname="DirectHostRelayInviteTests.RelayAddressSelectionSkipsUnreachableAddressFamily" methodname="RelayAddressSelectionSkipsUnreachableAddressFamily" classname="DirectHostRelayInviteTests" runstate="Runnable" seed="668041675" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.000411" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1023" name="RelayInvitePreservesPinnedCertificateAndEndpoints" fullname="DirectHostRelayInviteTests.RelayInvitePreservesPinnedCertificateAndEndpoints" methodname="RelayInvitePreservesPinnedCertificateAndEndpoints" classname="DirectHostRelayInviteTests" runstate="Runnable" seed="2087047223" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.005364" asserts="0">
+        <test-case id="1023" name="RelayInvitePreservesPinnedCertificateAndEndpoints" fullname="DirectHostRelayInviteTests.RelayInvitePreservesPinnedCertificateAndEndpoints" methodname="RelayInvitePreservesPinnedCertificateAndEndpoints" classname="DirectHostRelayInviteTests" runstate="Runnable" seed="719058015" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.001248" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1025" name="RelayInviteRejectsMalformedSessionIdsAndControlPorts" fullname="DirectHostRelayInviteTests.RelayInviteRejectsMalformedSessionIdsAndControlPorts" methodname="RelayInviteRejectsMalformedSessionIdsAndControlPorts" classname="DirectHostRelayInviteTests" runstate="Runnable" seed="810376733" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.001879" asserts="0">
+        <test-case id="1025" name="RelayInviteRejectsMalformedSessionIdsAndControlPorts" fullname="DirectHostRelayInviteTests.RelayInviteRejectsMalformedSessionIdsAndControlPorts" methodname="RelayInviteRejectsMalformedSessionIdsAndControlPorts" classname="DirectHostRelayInviteTests" runstate="Runnable" seed="193566969" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.000395" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
       </test-suite>
-      <test-suite type="TestFixture" id="1028" name="DirectHostRpcRoutingTests" fullname="DirectHostRpcRoutingTests" classname="DirectHostRpcRoutingTests" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.014521" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <test-suite type="TestFixture" id="1028" name="DirectHostRpcRoutingTests" fullname="DirectHostRpcRoutingTests" classname="DirectHostRpcRoutingTests" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.011187" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
         <properties />
-        <test-case id="1029" name="AllViaServerWaitsForHostOnClientsAndEchoesToOrigin" fullname="DirectHostRpcRoutingTests.AllViaServerWaitsForHostOnClientsAndEchoesToOrigin" methodname="AllViaServerWaitsForHostOnClientsAndEchoesToOrigin" classname="DirectHostRpcRoutingTests" runstate="Runnable" seed="1036022033" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.000811" asserts="0">
+        <test-case id="1029" name="AllViaServerWaitsForHostOnClientsAndEchoesToOrigin" fullname="DirectHostRpcRoutingTests.AllViaServerWaitsForHostOnClientsAndEchoesToOrigin" methodname="AllViaServerWaitsForHostOnClientsAndEchoesToOrigin" classname="DirectHostRpcRoutingTests" runstate="Runnable" seed="37213862" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.000693" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1030" name="RpcTargetsRetainLocalOthersAndMasterClientSemantics" fullname="DirectHostRpcRoutingTests.RpcTargetsRetainLocalOthersAndMasterClientSemantics" methodname="RpcTargetsRetainLocalOthersAndMasterClientSemantics" classname="DirectHostRpcRoutingTests" runstate="Runnable" seed="1960070195" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.000271" asserts="0">
-          <properties>
-            <property name="retryIteration" value="0" />
-            <property name="repeatIteration" value="0" />
-          </properties>
-        </test-case>
-      </test-suite>
-      <test-suite type="TestFixture" id="1031" name="DirectSessionDirectoryRetryPolicyTests" fullname="DirectSessionDirectoryRetryPolicyTests" classname="DirectSessionDirectoryRetryPolicyTests" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.019733" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
-        <properties />
-        <test-case id="1032" name="PermanentMigrationRejectionStopsRetriesButTransientFailuresRetry" fullname="DirectSessionDirectoryRetryPolicyTests.PermanentMigrationRejectionStopsRetriesButTransientFailuresRetry" methodname="PermanentMigrationRejectionStopsRetriesButTransientFailuresRetry" classname="DirectSessionDirectoryRetryPolicyTests" runstate="Runnable" seed="167770150" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.000846" asserts="0">
+        <test-case id="1030" name="RpcTargetsRetainLocalOthersAndMasterClientSemantics" fullname="DirectHostRpcRoutingTests.RpcTargetsRetainLocalOthersAndMasterClientSemantics" methodname="RpcTargetsRetainLocalOthersAndMasterClientSemantics" classname="DirectHostRpcRoutingTests" runstate="Runnable" seed="1073884495" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.000193" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
       </test-suite>
-      <test-suite type="TestFixture" id="1033" name="ExampleGameTemplateTests" fullname="ExampleGameTemplateTests" classname="ExampleGameTemplateTests" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.022102" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <test-suite type="TestFixture" id="1031" name="DirectSessionDirectoryRetryPolicyTests" fullname="DirectSessionDirectoryRetryPolicyTests" classname="DirectSessionDirectoryRetryPolicyTests" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.009826" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
         <properties />
-        <test-case id="1034" name="DrivingTemplateAssignsEachCarToADistinctPlayerSlot" fullname="ExampleGameTemplateTests.DrivingTemplateAssignsEachCarToADistinctPlayerSlot" methodname="DrivingTemplateAssignsEachCarToADistinctPlayerSlot" classname="ExampleGameTemplateTests" runstate="Runnable" seed="1165665693" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.006530" asserts="0">
+        <test-case id="1032" name="PermanentMigrationRejectionStopsRetriesButTransientFailuresRetry" fullname="DirectSessionDirectoryRetryPolicyTests.PermanentMigrationRejectionStopsRetriesButTransientFailuresRetry" methodname="PermanentMigrationRejectionStopsRetriesButTransientFailuresRetry" classname="DirectSessionDirectoryRetryPolicyTests" runstate="Runnable" seed="1331999498" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.000539" asserts="0">
+          <properties>
+            <property name="retryIteration" value="0" />
+            <property name="repeatIteration" value="0" />
+          </properties>
+        </test-case>
+      </test-suite>
+      <test-suite type="TestFixture" id="1033" name="ExampleGameTemplateTests" fullname="ExampleGameTemplateTests" classname="ExampleGameTemplateTests" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.014201" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <test-case id="1034" name="DrivingTemplateAssignsEachCarToADistinctPlayerSlot" fullname="ExampleGameTemplateTests.DrivingTemplateAssignsEachCarToADistinctPlayerSlot" methodname="DrivingTemplateAssignsEachCarToADistinctPlayerSlot" classname="ExampleGameTemplateTests" runstate="Runnable" seed="1315220842" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.005508" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
@@ -200,135 +200,135 @@ Font Asset [hinted-Assailand-Italic SDF] Units Per EM set to 1000. Please commit
 ]]></output>
         </test-case>
       </test-suite>
-      <test-suite type="TestFixture" id="1035" name="GamepadInputControlTests" fullname="GamepadInputControlTests" classname="GamepadInputControlTests" runstate="Runnable" testcasecount="5" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.068965" total="5" passed="5" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <test-suite type="TestFixture" id="1035" name="GamepadInputControlTests" fullname="GamepadInputControlTests" classname="GamepadInputControlTests" runstate="Runnable" testcasecount="5" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.067124" total="5" passed="5" failed="0" inconclusive="0" skipped="0" asserts="0">
         <properties />
-        <test-case id="1036" name="FaceButtonsDriveGameplayActionsWhileHeldAndReleased" fullname="GamepadInputControlTests.FaceButtonsDriveGameplayActionsWhileHeldAndReleased" methodname="FaceButtonsDriveGameplayActionsWhileHeldAndReleased" classname="GamepadInputControlTests" runstate="Runnable" seed="1234051473" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.048174" asserts="0">
+        <test-case id="1036" name="FaceButtonsDriveGameplayActionsWhileHeldAndReleased" fullname="GamepadInputControlTests.FaceButtonsDriveGameplayActionsWhileHeldAndReleased" methodname="FaceButtonsDriveGameplayActionsWhileHeldAndReleased" classname="GamepadInputControlTests" runstate="Runnable" seed="728706422" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.046236" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1038" name="GameplayFaceButtonsDoNotTriggerBuildModeActions" fullname="GamepadInputControlTests.GameplayFaceButtonsDoNotTriggerBuildModeActions" methodname="GameplayFaceButtonsDoNotTriggerBuildModeActions" classname="GamepadInputControlTests" runstate="Runnable" seed="1468249141" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.001556" asserts="0">
+        <test-case id="1038" name="GameplayFaceButtonsDoNotTriggerBuildModeActions" fullname="GamepadInputControlTests.GameplayFaceButtonsDoNotTriggerBuildModeActions" methodname="GameplayFaceButtonsDoNotTriggerBuildModeActions" classname="GamepadInputControlTests" runstate="Runnable" seed="356321888" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.001089" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1039" name="LeftStickAndTriggersMapToMovementAxes" fullname="GamepadInputControlTests.LeftStickAndTriggersMapToMovementAxes" methodname="LeftStickAndTriggersMapToMovementAxes" classname="GamepadInputControlTests" runstate="Runnable" seed="619625916" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.003375" asserts="0">
+        <test-case id="1039" name="LeftStickAndTriggersMapToMovementAxes" fullname="GamepadInputControlTests.LeftStickAndTriggersMapToMovementAxes" methodname="LeftStickAndTriggersMapToMovementAxes" classname="GamepadInputControlTests" runstate="Runnable" seed="956110052" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.003242" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1037" name="NorthAndStartButtonsDriveViewAndPauseWhileHeldAndReleased" fullname="GamepadInputControlTests.NorthAndStartButtonsDriveViewAndPauseWhileHeldAndReleased" methodname="NorthAndStartButtonsDriveViewAndPauseWhileHeldAndReleased" classname="GamepadInputControlTests" runstate="Runnable" seed="844199722" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.000828" asserts="0">
+        <test-case id="1037" name="NorthAndStartButtonsDriveViewAndPauseWhileHeldAndReleased" fullname="GamepadInputControlTests.NorthAndStartButtonsDriveViewAndPauseWhileHeldAndReleased" methodname="NorthAndStartButtonsDriveViewAndPauseWhileHeldAndReleased" classname="GamepadInputControlTests" runstate="Runnable" seed="1665685111" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.000873" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1040" name="RightStickMapsToLookWithSensitivityAndInvertSettings" fullname="GamepadInputControlTests.RightStickMapsToLookWithSensitivityAndInvertSettings" methodname="RightStickMapsToLookWithSensitivityAndInvertSettings" classname="GamepadInputControlTests" runstate="Runnable" seed="800505540" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.001076" asserts="0">
+        <test-case id="1040" name="RightStickMapsToLookWithSensitivityAndInvertSettings" fullname="GamepadInputControlTests.RightStickMapsToLookWithSensitivityAndInvertSettings" methodname="RightStickMapsToLookWithSensitivityAndInvertSettings" classname="GamepadInputControlTests" runstate="Runnable" seed="710796092" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.001180" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
       </test-suite>
-      <test-suite type="TestFixture" id="1041" name="ImageVoosAssetTests" fullname="ImageVoosAssetTests" classname="ImageVoosAssetTests" runstate="Runnable" testcasecount="3" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.025808" total="3" passed="3" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <test-suite type="TestFixture" id="1041" name="ImageVoosAssetTests" fullname="ImageVoosAssetTests" classname="ImageVoosAssetTests" runstate="Runnable" testcasecount="3" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.025621" total="3" passed="3" failed="0" inconclusive="0" skipped="0" asserts="0">
         <properties />
-        <test-case id="1042" name="AttributionSurvivesImageUriSaveAndLoad" fullname="ImageVoosAssetTests.AttributionSurvivesImageUriSaveAndLoad" methodname="AttributionSurvivesImageUriSaveAndLoad" classname="ImageVoosAssetTests" runstate="Runnable" seed="1464322540" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.009058" asserts="0">
+        <test-case id="1042" name="AttributionSurvivesImageUriSaveAndLoad" fullname="ImageVoosAssetTests.AttributionSurvivesImageUriSaveAndLoad" methodname="AttributionSurvivesImageUriSaveAndLoad" classname="ImageVoosAssetTests" runstate="Runnable" seed="1260812429" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.008449" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1043" name="CommonsSearchAllowsAttributionAndPublicDomainLicensesOnly" fullname="ImageVoosAssetTests.CommonsSearchAllowsAttributionAndPublicDomainLicensesOnly" methodname="CommonsSearchAllowsAttributionAndPublicDomainLicensesOnly" classname="ImageVoosAssetTests" runstate="Runnable" seed="710421345" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.000603" asserts="0">
+        <test-case id="1043" name="CommonsSearchAllowsAttributionAndPublicDomainLicensesOnly" fullname="ImageVoosAssetTests.CommonsSearchAllowsAttributionAndPublicDomainLicensesOnly" methodname="CommonsSearchAllowsAttributionAndPublicDomainLicensesOnly" classname="ImageVoosAssetTests" runstate="Runnable" seed="359066833" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.000538" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1044" name="LegacyImageUrisAndTheirFragmentsRemainUnchanged" fullname="ImageVoosAssetTests.LegacyImageUrisAndTheirFragmentsRemainUnchanged" methodname="LegacyImageUrisAndTheirFragmentsRemainUnchanged" classname="ImageVoosAssetTests" runstate="Runnable" seed="545937724" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.000704" asserts="0">
+        <test-case id="1044" name="LegacyImageUrisAndTheirFragmentsRemainUnchanged" fullname="ImageVoosAssetTests.LegacyImageUrisAndTheirFragmentsRemainUnchanged" methodname="LegacyImageUrisAndTheirFragmentsRemainUnchanged" classname="ImageVoosAssetTests" runstate="Runnable" seed="1477247728" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.000640" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
       </test-suite>
-      <test-suite type="TestFixture" id="1045" name="SteamWorkshopMetadataTests" fullname="SteamWorkshopMetadataTests" classname="SteamWorkshopMetadataTests" runstate="Runnable" testcasecount="4" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.063024" total="4" passed="4" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <test-suite type="TestFixture" id="1045" name="SteamWorkshopMetadataTests" fullname="SteamWorkshopMetadataTests" classname="SteamWorkshopMetadataTests" runstate="Runnable" testcasecount="4" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.067703" total="4" passed="4" failed="0" inconclusive="0" skipped="0" asserts="0">
         <properties />
-        <test-case id="1047" name="DoesNotResolvePreviewMetadataOutsideContentFolder" fullname="SteamWorkshopMetadataTests.DoesNotResolvePreviewMetadataOutsideContentFolder" methodname="DoesNotResolvePreviewMetadataOutsideContentFolder" classname="SteamWorkshopMetadataTests" runstate="Runnable" seed="1445832861" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.024876" asserts="0">
+        <test-case id="1047" name="DoesNotResolvePreviewMetadataOutsideContentFolder" fullname="SteamWorkshopMetadataTests.DoesNotResolvePreviewMetadataOutsideContentFolder" methodname="DoesNotResolvePreviewMetadataOutsideContentFolder" classname="SteamWorkshopMetadataTests" runstate="Runnable" seed="84107870" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.022180" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1046" name="ReadsLapinerToolsMetadataAndPreviewFile" fullname="SteamWorkshopMetadataTests.ReadsLapinerToolsMetadataAndPreviewFile" methodname="ReadsLapinerToolsMetadataAndPreviewFile" classname="SteamWorkshopMetadataTests" runstate="Runnable" seed="705340221" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.006105" asserts="0">
+        <test-case id="1046" name="ReadsLapinerToolsMetadataAndPreviewFile" fullname="SteamWorkshopMetadataTests.ReadsLapinerToolsMetadataAndPreviewFile" methodname="ReadsLapinerToolsMetadataAndPreviewFile" classname="SteamWorkshopMetadataTests" runstate="Runnable" seed="433128890" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.006017" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1048" name="RejectsLegacyMetadataWithoutPublishedId" fullname="SteamWorkshopMetadataTests.RejectsLegacyMetadataWithoutPublishedId" methodname="RejectsLegacyMetadataWithoutPublishedId" classname="SteamWorkshopMetadataTests" runstate="Runnable" seed="907956184" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.003044" asserts="0">
+        <test-case id="1048" name="RejectsLegacyMetadataWithoutPublishedId" fullname="SteamWorkshopMetadataTests.RejectsLegacyMetadataWithoutPublishedId" methodname="RejectsLegacyMetadataWithoutPublishedId" classname="SteamWorkshopMetadataTests" runstate="Runnable" seed="176365012" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.003178" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1049" name="WritesXmlSerializerCompatibleMetadataAndCanReadItBack" fullname="SteamWorkshopMetadataTests.WritesXmlSerializerCompatibleMetadataAndCanReadItBack" methodname="WritesXmlSerializerCompatibleMetadataAndCanReadItBack" classname="SteamWorkshopMetadataTests" runstate="Runnable" seed="1766219019" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.015088" asserts="0">
+        <test-case id="1049" name="WritesXmlSerializerCompatibleMetadataAndCanReadItBack" fullname="SteamWorkshopMetadataTests.WritesXmlSerializerCompatibleMetadataAndCanReadItBack" methodname="WritesXmlSerializerCompatibleMetadataAndCanReadItBack" classname="SteamWorkshopMetadataTests" runstate="Runnable" seed="1806420316" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.024480" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
       </test-suite>
-      <test-suite type="TestFixture" id="1050" name="SteamWorkshopQuerySettingsTests" fullname="SteamWorkshopQuerySettingsTests" classname="SteamWorkshopQuerySettingsTests" runstate="Runnable" testcasecount="7" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.052248" total="7" passed="7" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <test-suite type="TestFixture" id="1050" name="SteamWorkshopQuerySettingsTests" fullname="SteamWorkshopQuerySettingsTests" classname="SteamWorkshopQuerySettingsTests" runstate="Runnable" testcasecount="7" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.045126" total="7" passed="7" failed="0" inconclusive="0" skipped="0" asserts="0">
         <properties />
-        <test-case id="1053" name="FavoriteChangeUpdatesTheItemForBothAddAndRemove" fullname="SteamWorkshopQuerySettingsTests.FavoriteChangeUpdatesTheItemForBothAddAndRemove" methodname="FavoriteChangeUpdatesTheItemForBothAddAndRemove" classname="SteamWorkshopQuerySettingsTests" runstate="Runnable" seed="809128634" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.001516" asserts="0">
+        <test-case id="1053" name="FavoriteChangeUpdatesTheItemForBothAddAndRemove" fullname="SteamWorkshopQuerySettingsTests.FavoriteChangeUpdatesTheItemForBothAddAndRemove" methodname="FavoriteChangeUpdatesTheItemForBothAddAndRemove" classname="SteamWorkshopQuerySettingsTests" runstate="Runnable" seed="1857215213" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.001345" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1052" name="FavoriteQueryFlagsOnlyItemsInTheSteamFavoriteSet" fullname="SteamWorkshopQuerySettingsTests.FavoriteQueryFlagsOnlyItemsInTheSteamFavoriteSet" methodname="FavoriteQueryFlagsOnlyItemsInTheSteamFavoriteSet" classname="SteamWorkshopQuerySettingsTests" runstate="Runnable" seed="1363477882" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.001497" asserts="0">
+        <test-case id="1052" name="FavoriteQueryFlagsOnlyItemsInTheSteamFavoriteSet" fullname="SteamWorkshopQuerySettingsTests.FavoriteQueryFlagsOnlyItemsInTheSteamFavoriteSet" methodname="FavoriteQueryFlagsOnlyItemsInTheSteamFavoriteSet" classname="SteamWorkshopQuerySettingsTests" runstate="Runnable" seed="1594841057" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.001395" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1056" name="RenderIconResolutionIsCappedByCameraPixelRect" fullname="SteamWorkshopQuerySettingsTests.RenderIconResolutionIsCappedByCameraPixelRect" methodname="RenderIconResolutionIsCappedByCameraPixelRect" classname="SteamWorkshopQuerySettingsTests" runstate="Runnable" seed="763079343" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.000989" asserts="0">
+        <test-case id="1056" name="RenderIconResolutionIsCappedByCameraPixelRect" fullname="SteamWorkshopQuerySettingsTests.RenderIconResolutionIsCappedByCameraPixelRect" methodname="RenderIconResolutionIsCappedByCameraPixelRect" classname="SteamWorkshopQuerySettingsTests" runstate="Runnable" seed="1872984541" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.000938" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1057" name="RenderIconRestoresCameraStateAndWritesPng" fullname="SteamWorkshopQuerySettingsTests.RenderIconRestoresCameraStateAndWritesPng" methodname="RenderIconRestoresCameraStateAndWritesPng" classname="SteamWorkshopQuerySettingsTests" runstate="Runnable" seed="674151012" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.026271" asserts="0">
+        <test-case id="1057" name="RenderIconRestoresCameraStateAndWritesPng" fullname="SteamWorkshopQuerySettingsTests.RenderIconRestoresCameraStateAndWritesPng" methodname="RenderIconRestoresCameraStateAndWritesPng" classname="SteamWorkshopQuerySettingsTests" runstate="Runnable" seed="654946096" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.024695" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1051" name="ResetItemSearchRestoresLegacyAnyTagSearchDefaults" fullname="SteamWorkshopQuerySettingsTests.ResetItemSearchRestoresLegacyAnyTagSearchDefaults" methodname="ResetItemSearchRestoresLegacyAnyTagSearchDefaults" classname="SteamWorkshopQuerySettingsTests" runstate="Runnable" seed="1079279593" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.002016" asserts="0">
+        <test-case id="1051" name="ResetItemSearchRestoresLegacyAnyTagSearchDefaults" fullname="SteamWorkshopQuerySettingsTests.ResetItemSearchRestoresLegacyAnyTagSearchDefaults" methodname="ResetItemSearchRestoresLegacyAnyTagSearchDefaults" classname="SteamWorkshopQuerySettingsTests" runstate="Runnable" seed="2045969354" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.001387" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1054" name="UploadProgressUsesLegacyWeightedStagesAndKeepsCompletedProgress" fullname="SteamWorkshopQuerySettingsTests.UploadProgressUsesLegacyWeightedStagesAndKeepsCompletedProgress" methodname="UploadProgressUsesLegacyWeightedStagesAndKeepsCompletedProgress" classname="SteamWorkshopQuerySettingsTests" runstate="Runnable" seed="1484087328" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.000846" asserts="0">
+        <test-case id="1054" name="UploadProgressUsesLegacyWeightedStagesAndKeepsCompletedProgress" fullname="SteamWorkshopQuerySettingsTests.UploadProgressUsesLegacyWeightedStagesAndKeepsCompletedProgress" methodname="UploadProgressUsesLegacyWeightedStagesAndKeepsCompletedProgress" classname="SteamWorkshopQuerySettingsTests" runstate="Runnable" seed="63225827" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.000662" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1055" name="WorkshopItemIsReadyRequiresInstalledCurrentContent" fullname="SteamWorkshopQuerySettingsTests.WorkshopItemIsReadyRequiresInstalledCurrentContent" methodname="WorkshopItemIsReadyRequiresInstalledCurrentContent" classname="SteamWorkshopQuerySettingsTests" runstate="Runnable" seed="824810514" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.000346" asserts="0">
+        <test-case id="1055" name="WorkshopItemIsReadyRequiresInstalledCurrentContent" fullname="SteamWorkshopQuerySettingsTests.WorkshopItemIsReadyRequiresInstalledCurrentContent" methodname="WorkshopItemIsReadyRequiresInstalledCurrentContent" classname="SteamWorkshopQuerySettingsTests" runstate="Runnable" seed="778177310" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.000278" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
       </test-suite>
-      <test-suite type="TestFixture" id="1058" name="WorkshopMenuCallbackTests" fullname="WorkshopMenuCallbackTests" classname="WorkshopMenuCallbackTests" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.018396" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <test-suite type="TestFixture" id="1058" name="WorkshopMenuCallbackTests" fullname="WorkshopMenuCallbackTests" classname="WorkshopMenuCallbackTests" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.017213" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
         <properties />
-        <test-case id="1059" name="LateWorkshopResultsAfterMenuDestructionAreIgnored" fullname="WorkshopMenuCallbackTests.LateWorkshopResultsAfterMenuDestructionAreIgnored" methodname="LateWorkshopResultsAfterMenuDestructionAreIgnored" classname="WorkshopMenuCallbackTests" runstate="Runnable" seed="481834091" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.003480" asserts="0">
+        <test-case id="1059" name="LateWorkshopResultsAfterMenuDestructionAreIgnored" fullname="WorkshopMenuCallbackTests.LateWorkshopResultsAfterMenuDestructionAreIgnored" methodname="LateWorkshopResultsAfterMenuDestructionAreIgnored" classname="WorkshopMenuCallbackTests" runstate="Runnable" seed="1418370773" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.003436" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
@@ -336,22 +336,22 @@ Font Asset [hinted-Assailand-Italic SDF] Units Per EM set to 1000. Please commit
         </test-case>
       </test-suite>
     </test-suite>
-    <test-suite type="Assembly" id="1064" name="GameBuilder.GamepadEdgeTests.dll" fullname="C:/lichforge/code/GAMEBUILDER/Library/ScriptAssemblies/GameBuilder.GamepadEdgeTests.dll" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.064805" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+    <test-suite type="Assembly" id="1064" name="GameBuilder.GamepadEdgeTests.dll" fullname="C:/lichforge/code/GAMEBUILDER/Library/ScriptAssemblies/GameBuilder.GamepadEdgeTests.dll" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.062790" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
       <properties>
-        <property name="_PID" value="29272" />
+        <property name="_PID" value="25504" />
         <property name="_APPDOMAIN" value="Unity Child Domain" />
         <property name="platform" value="EditMode" />
         <property name="EditorOnly" value="True" />
       </properties>
-      <test-suite type="TestFixture" id="1061" name="GamepadInputEdgeTests" fullname="GamepadInputEdgeTests" classname="GamepadInputEdgeTests" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.050953" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <test-suite type="TestFixture" id="1061" name="GamepadInputEdgeTests" fullname="GamepadInputEdgeTests" classname="GamepadInputEdgeTests" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.050052" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
         <properties />
-        <test-case id="1063" name="DpadNavigatesAndSelectedUiButtonsDoNotTriggerGameplayActions" fullname="GamepadInputEdgeTests.DpadNavigatesAndSelectedUiButtonsDoNotTriggerGameplayActions" methodname="DpadNavigatesAndSelectedUiButtonsDoNotTriggerGameplayActions" classname="GamepadInputEdgeTests" runstate="Runnable" seed="1431918330" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.033231" asserts="0">
+        <test-case id="1063" name="DpadNavigatesAndSelectedUiButtonsDoNotTriggerGameplayActions" fullname="GamepadInputEdgeTests.DpadNavigatesAndSelectedUiButtonsDoNotTriggerGameplayActions" methodname="DpadNavigatesAndSelectedUiButtonsDoNotTriggerGameplayActions" classname="GamepadInputEdgeTests" runstate="Runnable" seed="1822706912" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.031179" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
           </properties>
         </test-case>
-        <test-case id="1062" name="GameplayActionsTrackVirtualGamepadPressAndReleaseEdges" fullname="GamepadInputEdgeTests.GameplayActionsTrackVirtualGamepadPressAndReleaseEdges" methodname="GameplayActionsTrackVirtualGamepadPressAndReleaseEdges" classname="GamepadInputEdgeTests" runstate="Runnable" seed="1341654894" result="Passed" start-time="2026-11-08 21:32:06Z" end-time="2026-11-08 21:32:06Z" duration="0.004402" asserts="0">
+        <test-case id="1062" name="GameplayActionsTrackVirtualGamepadPressAndReleaseEdges" fullname="GamepadInputEdgeTests.GameplayActionsTrackVirtualGamepadPressAndReleaseEdges" methodname="GameplayActionsTrackVirtualGamepadPressAndReleaseEdges" classname="GamepadInputEdgeTests" runstate="Runnable" seed="55882940" result="Passed" start-time="2026-11-08 21:34:44Z" end-time="2026-11-08 21:34:44Z" duration="0.008706" asserts="0">
           <properties>
             <property name="retryIteration" value="0" />
             <property name="repeatIteration" value="0" />
