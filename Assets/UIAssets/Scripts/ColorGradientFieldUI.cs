@@ -23,6 +23,8 @@ public class ColorGradientFieldUI : GradientFieldUI<Color>
 
   [SerializeField] UnityEngine.UI.RawImage gradientImage;
   [SerializeField] ColorEditFormUI colorEditForm;
+  Texture2D gradientTexture;
+  [SerializeField] ColorEditFormUI colorEditForm;
 
   protected override void UpdateStops()
   {
@@ -39,7 +41,7 @@ public class ColorGradientFieldUI : GradientFieldUI<Color>
     // Create new texture.
     int width = Mathf.CeilToInt(gradientTransform.rect.width);
     int height = 1;
-    Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, true);
+    Texture2D texture = GetOrCreateGradientTexture(width);
 
     // Generate Gradient from stops.
     IModel model = GetModel();
@@ -65,6 +67,34 @@ public class ColorGradientFieldUI : GradientFieldUI<Color>
     }
     texture.Apply();
     gradientImage.texture = texture;
+  }
+
+  Texture2D GetOrCreateGradientTexture(int width)
+  {
+    if (gradientTexture != null && gradientTexture.width == width) return gradientTexture;
+
+    ReleaseGradientTexture();
+    gradientTexture = new Texture2D(width, 1, TextureFormat.RGBA32, true);
+    return gradientTexture;
+  }
+
+  void ReleaseGradientTexture()
+  {
+    Texture2D ownedTexture = gradientTexture;
+    gradientTexture = null;
+    if (ownedTexture == null) return;
+
+    if (gradientImage != null && gradientImage.texture == ownedTexture)
+    {
+      gradientImage.texture = null;
+    }
+    if (Application.isPlaying) Destroy(ownedTexture);
+    else DestroyImmediate(ownedTexture);
+  }
+
+  void OnDestroy()
+  {
+    ReleaseGradientTexture();
   }
 
   protected override bool CanAddStop()
