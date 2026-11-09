@@ -30,6 +30,7 @@ public class AvatarMaterialControl : MonoBehaviour
   Material avatarEyesMaterialInstance;
   Material avatarHoloMaterialInstance;
   Material avatarEyesHoloMaterialInstance;
+  Material[] hologramEffectMaterialInstances;
 
   [SerializeField] MeshRenderer[] avatarPermanentRenderers;
   [SerializeField] MeshRenderer[] avatarRenderers;
@@ -52,6 +53,13 @@ public class AvatarMaterialControl : MonoBehaviour
     avatarEyesMaterialInstance = Instantiate(avatarEyesMaterial);
     avatarHoloMaterialInstance = Instantiate(avatarHoloMaterial);
     avatarEyesHoloMaterialInstance = Instantiate(avatarEyesHoloMaterial);
+    hologramEffectMaterialInstances = new Material[hologramEffects.Length];
+    for (int i = 0; i < hologramEffects.Length; i++)
+    {
+      MeshRenderer renderer = hologramEffects[i];
+      hologramEffectMaterialInstances[i] = Instantiate(renderer.sharedMaterial);
+      renderer.sharedMaterial = hologramEffectMaterialInstances[i];
+    }
   }
 
   public void SetToHologramMaterial()
@@ -61,16 +69,16 @@ public class AvatarMaterialControl : MonoBehaviour
     isHologram = true;
     foreach (MeshRenderer renderer in avatarRenderers)
     {
-      renderer.material = avatarHoloMaterialInstance;
+      renderer.sharedMaterial = avatarHoloMaterialInstance;
     }
 
-    avatarEyeRenderer.material = avatarEyesHoloMaterialInstance;
+    avatarEyeRenderer.sharedMaterial = avatarEyesHoloMaterialInstance;
 
     foreach (MeshRenderer renderer in avatarPermanentRenderers)
     {
-      renderer.material = avatarHoloMaterialInstance;
+      renderer.sharedMaterial = avatarHoloMaterialInstance;
     }
-    avatarPermanentEyeRenderer.material = avatarEyesHoloMaterialInstance;
+    avatarPermanentEyeRenderer.sharedMaterial = avatarEyesHoloMaterialInstance;
 
   }
 
@@ -80,10 +88,10 @@ public class AvatarMaterialControl : MonoBehaviour
 
     foreach (MeshRenderer renderer in avatarRenderers)
     {
-      renderer.material = avatarMaterialInstance;
+      renderer.sharedMaterial = avatarMaterialInstance;
     }
 
-    avatarEyeRenderer.material = avatarEyesMaterialInstance;
+    avatarEyeRenderer.sharedMaterial = avatarEyesMaterialInstance;
   }
 
   internal void SetTint(Color effectiveTint)
@@ -95,9 +103,9 @@ public class AvatarMaterialControl : MonoBehaviour
 
     Color holoColor = ArtUtil.GetHologramColor(effectiveTint);
 
-    foreach (MeshRenderer renderer in hologramEffects)
+    for (int i = 0; i < hologramEffectMaterialInstances.Length; i++)
     {
-      renderer.material.SetColor("_MainTint", holoColor);
+      hologramEffectMaterialInstances[i].SetColor("_MainTint", holoColor);
     }
     avatarHoloMaterialInstance.SetColor("_MainTint", holoColor);
     avatarEyesHoloMaterialInstance.SetColor("_MainTint", holoColor);
@@ -111,4 +119,18 @@ public class AvatarMaterialControl : MonoBehaviour
       SetToStandardMaterial();
     }
   }
+  void OnDestroy()
+  {
+    RuntimeModelResourceSet.DestroyResource(avatarMaterialInstance);
+    RuntimeModelResourceSet.DestroyResource(avatarEyesMaterialInstance);
+    RuntimeModelResourceSet.DestroyResource(avatarHoloMaterialInstance);
+    RuntimeModelResourceSet.DestroyResource(avatarEyesHoloMaterialInstance);
+
+    if (hologramEffectMaterialInstances == null) return;
+    foreach (Material material in hologramEffectMaterialInstances)
+    {
+      RuntimeModelResourceSet.DestroyResource(material);
+    }
+  }
+
 }

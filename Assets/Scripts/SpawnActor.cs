@@ -77,7 +77,6 @@ public class SpawnActor : MonoBehaviour
     spawnMaterialInstance.SetColor("_Color0", ArtUtil.GetHologramColor(color));
   }
 
-  MeshRenderer[] renderers;
 
   void OnRenderable(GameObject _gameobject)
   {
@@ -93,13 +92,13 @@ public class SpawnActor : MonoBehaviour
     _gameobject.transform.localScale = spawnScale;
     _gameobject.SetActive(true);
 
-    renderers = _gameobject.GetComponentsInChildren<MeshRenderer>();
+    MeshRenderer[] renderers = _gameobject.GetComponentsInChildren<MeshRenderer>();
 
     foreach (MeshRenderer _render in renderers)
     {
-      _render.material = spawnMaterialInstance;
-      _render.material.SetFloat(spawnDissolveVariable, 0);
+      _render.sharedMaterial = spawnMaterialInstance;
     }
+    spawnMaterialInstance.SetFloat(spawnDissolveVariable, 0);
 
     foreach (Collider col in _gameobject.GetComponentsInChildren<Collider>())
     {
@@ -118,12 +117,7 @@ public class SpawnActor : MonoBehaviour
     {
       lerpVal = Mathf.Clamp01(lerpVal + Time.unscaledDeltaTime * 2);
 
-      foreach (MeshRenderer _render in renderers)
-      {
-        //_render.material = spawnMaterialInstance;
-        _render.material.SetFloat(spawnDissolveVariable, lerpVal);
-
-      }
+      spawnMaterialInstance.SetFloat(spawnDissolveVariable, lerpVal);
 
       yield return null;
     }
@@ -151,6 +145,7 @@ public class SpawnActor : MonoBehaviour
 
     destructionDesired = true;
     AssetCache.ReleaseAssetClone(previewGameobject);
+    previewGameobject = null;
   }
 
   void Update()
@@ -160,4 +155,12 @@ public class SpawnActor : MonoBehaviour
       Destroy(gameObject);
     }
   }
+  void OnDestroy()
+  {
+    AssetCache.ReleaseAssetClone(previewGameobject);
+    previewGameobject = null;
+    RuntimeModelResourceSet.DestroyResource(spawnMaterialInstance);
+    spawnMaterialInstance = null;
+  }
+
 }

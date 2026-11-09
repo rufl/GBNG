@@ -172,14 +172,14 @@ public class AssetToolbar : Toolbar
 
     foreach (MeshRenderer _render in newModelObject.GetComponentsInChildren<MeshRenderer>())
     {
-      _render.material = previewMaterial;
+      _render.sharedMaterial = previewMaterial;
       // Texture tex = _render.material.mainTexture;
       // _render.material.SetTexture("_MainTex", tex);
     }
 
     foreach (SkinnedMeshRenderer _render in newModelObject.GetComponentsInChildren<SkinnedMeshRenderer>())
     {
-      _render.material = previewMaterial;
+      _render.sharedMaterial = previewMaterial;
       // Texture tex = _render.material.mainTexture;
       // _render.material.SetTexture("_MainTex", tex);
     }

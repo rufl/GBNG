@@ -188,6 +188,86 @@ public class GameDetailThumbnailLifecycleTests
       if (texture != null) UnityEngine.Object.DestroyImmediate(texture);
     }
   }
+  [Test]
+  public void PreviewAndAvatarMaterialInstancesAreReleasedOnOwnerTeardown()
+  {
+    Shader shader = Shader.Find("Standard");
+    Assert.IsNotNull(shader);
+
+    GameObject previewObject = new GameObject("Create tool preview material owner");
+    GameObject spawnObject = new GameObject("Spawn preview material owner");
+    GameObject avatarObject = new GameObject("Avatar material owner");
+    previewObject.SetActive(false);
+    spawnObject.SetActive(false);
+    avatarObject.SetActive(false);
+
+    Material previewMaterial = new Material(shader);
+    Material spawnMaterial = new Material(shader);
+    Material[] avatarMaterials = new Material[6];
+    try
+    {
+      CreateToolPreview preview = previewObject.AddComponent<CreateToolPreview>();
+      SpawnActor spawn = spawnObject.AddComponent<SpawnActor>();
+      AvatarMaterialControl avatar = avatarObject.AddComponent<AvatarMaterialControl>();
+
+      FieldInfo previewMaterialField = typeof(CreateToolPreview).GetField("materialCopy", PrivateInstance);
+      FieldInfo spawnMaterialField = typeof(SpawnActor).GetField("spawnMaterialInstance", PrivateInstance);
+      Assert.IsNotNull(previewMaterialField);
+      Assert.IsNotNull(spawnMaterialField);
+      previewMaterialField.SetValue(preview, previewMaterial);
+      spawnMaterialField.SetValue(spawn, spawnMaterial);
+
+      string[] avatarMaterialFields = {
+        "avatarMaterialInstance",
+        "avatarEyesMaterialInstance",
+        "avatarHoloMaterialInstance",
+        "avatarEyesHoloMaterialInstance"
+      };
+      for (int i = 0; i < avatarMaterialFields.Length; i++)
+      {
+        FieldInfo field = typeof(AvatarMaterialControl).GetField(avatarMaterialFields[i], PrivateInstance);
+        Assert.IsNotNull(field);
+        avatarMaterials[i] = new Material(shader);
+        field.SetValue(avatar, avatarMaterials[i]);
+      }
+
+      avatarMaterials[4] = new Material(shader);
+      avatarMaterials[5] = new Material(shader);
+      FieldInfo effectMaterialsField = typeof(AvatarMaterialControl).GetField(
+        "hologramEffectMaterialInstances", PrivateInstance);
+      Assert.IsNotNull(effectMaterialsField);
+      effectMaterialsField.SetValue(avatar, new[] { avatarMaterials[4], avatarMaterials[5] });
+
+      MethodInfo previewOnDestroy = typeof(CreateToolPreview).GetMethod("OnDestroy", PrivateInstance);
+      MethodInfo spawnOnDestroy = typeof(SpawnActor).GetMethod("OnDestroy", PrivateInstance);
+      MethodInfo avatarOnDestroy = typeof(AvatarMaterialControl).GetMethod("OnDestroy", PrivateInstance);
+      Assert.IsNotNull(previewOnDestroy);
+      Assert.IsNotNull(spawnOnDestroy);
+      Assert.IsNotNull(avatarOnDestroy);
+      previewOnDestroy.Invoke(preview, null);
+      spawnOnDestroy.Invoke(spawn, null);
+      avatarOnDestroy.Invoke(avatar, null);
+
+      Assert.IsTrue(previewMaterial == null, "CreateToolPreview must release its owned material.");
+      Assert.IsTrue(spawnMaterial == null, "SpawnActor must release its owned material.");
+      for (int i = 0; i < avatarMaterials.Length; i++)
+      {
+        Assert.IsTrue(avatarMaterials[i] == null, "AvatarMaterialControl must release every owned material.");
+      }
+    }
+    finally
+    {
+      Object.DestroyImmediate(previewObject);
+      Object.DestroyImmediate(spawnObject);
+      Object.DestroyImmediate(avatarObject);
+      if (previewMaterial != null) Object.DestroyImmediate(previewMaterial);
+      if (spawnMaterial != null) Object.DestroyImmediate(spawnMaterial);
+      foreach (Material material in avatarMaterials)
+      {
+        if (material != null) Object.DestroyImmediate(material);
+      }
+    }
+  }
 
 
 

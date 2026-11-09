@@ -90,12 +90,12 @@ public class CreateToolPreview : MonoBehaviour
   {
     foreach (MeshRenderer _render in newModelObject.GetComponentsInChildren<MeshRenderer>(true))
     {
-      _render.material = materialCopy;
+      _render.sharedMaterial = materialCopy;
     }
 
     foreach (SkinnedMeshRenderer _render in newModelObject.GetComponentsInChildren<SkinnedMeshRenderer>(true))
     {
-      _render.material = materialCopy;
+      _render.sharedMaterial = materialCopy;
     }
 
     foreach (Collider col in newModelObject.GetComponentsInChildren<Collider>(true))
@@ -113,5 +113,7 @@ public class CreateToolPreview : MonoBehaviour
   {
     AssetCache.ReleaseAssetClone(resultRenderable);
     resultRenderable = null;
+    RuntimeModelResourceSet.DestroyResource(materialCopy);
+    materialCopy = null;
   }
 }
