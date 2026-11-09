@@ -193,3 +193,48 @@ public class WorkshopMenuCallbackTests
   }
 }
 #endif
+#if UNITY_EDITOR && !USE_STEAMWORKS
+public class WorkshopMenuNoSteamSortTests
+{
+  [NUnit.Framework.Test]
+  public void NoSteamWorkshopMenusUseNameSortInsteadOfThrowing()
+  {
+    AssertSortLabel(typeof(WorkshopMenu));
+    AssertSortLabel(typeof(ActorPrefabWorkshopMenu));
+    AssertSortLabel(typeof(CardPackWorkshopMenu));
+  }
+
+  static void AssertSortLabel(System.Type menuType)
+  {
+    UnityEngine.GameObject menuObject = new UnityEngine.GameObject(menuType.Name + " No Steam Sort Test");
+    menuObject.SetActive(false);
+    UnityEngine.Component menu = menuObject.AddComponent(menuType);
+    UnityEngine.GameObject labelObject = new UnityEngine.GameObject(
+      menuType.Name + " Sort Label",
+      typeof(UnityEngine.RectTransform),
+      typeof(UnityEngine.CanvasRenderer),
+      typeof(TMPro.TextMeshProUGUI));
+    TMPro.TextMeshProUGUI sortLabel = labelObject.GetComponent<TMPro.TextMeshProUGUI>();
+    System.Reflection.FieldInfo sortTextField = typeof(ThumbnailMenu).GetField(
+      "sortText", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+    System.Reflection.MethodInfo changeSort = menuType.GetMethod(
+      "ChangeSort", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+    try
+    {
+      NUnit.Framework.Assert.IsNotNull(sortTextField);
+      NUnit.Framework.Assert.IsNotNull(changeSort);
+      sortTextField.SetValue(menu, sortLabel);
+      changeSort.Invoke(menu, new object[] { ThumbnailMenu.Direction.Left });
+      NUnit.Framework.Assert.AreEqual("Name (A-Z)", sortLabel.text);
+      changeSort.Invoke(menu, new object[] { ThumbnailMenu.Direction.Right });
+      NUnit.Framework.Assert.AreEqual("Name (Z-A)", sortLabel.text);
+    }
+    finally
+    {
+      UnityEngine.Object.DestroyImmediate(menuObject);
+      UnityEngine.Object.DestroyImmediate(labelObject);
+    }
+  }
+}
+#endif

@@ -293,7 +293,15 @@ public class WorkshopMenu : ThumbnailMenu
 #else
   protected override void ChangeSort(Direction direction)
   {
-    throw new System.NotImplementedException();
+    if (sortText != null)
+    {
+      sortText.text = direction == Direction.Left ? "Name (A-Z)" : "Name (Z-A)";
+    }
+
+    SetSorting((left, right) =>
+      direction == Direction.Left
+        ? string.Compare(left.GetName(), right.GetName(), System.StringComparison.OrdinalIgnoreCase)
+        : string.Compare(right.GetName(), left.GetName(), System.StringComparison.OrdinalIgnoreCase));
   }
 
 #endif

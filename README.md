@@ -628,12 +628,14 @@ the `renderuri` command above. No Poly API key or SDK setup is available.
 
 * Without Steam initialization, Workshop search and upload are unavailable.
   The Workshop menus stop loading for unavailable and error results, and tolerate
-  missing optional loading and empty-state UI references. The saved local
-  Workshop asset cache still works. Editor builds retain the disk-backed local
-  Workshop source. Local model import needs no TriLib.
+  missing optional loading and empty-state UI references. Without Steamworks
+  compile symbols, the sort controls use a name-order fallback (A–Z / Z–A).
+  The saved local Workshop asset cache still works. Editor builds retain the
+  disk-backed local Workshop source. Local model import needs no TriLib.
 * `WorkshopMenuCallbackTests` covers no-Steam and failed-query feedback across
   the game, actor-prefab, and card-pack lists; it also tests late results after
-  the main Workshop menu closes.
+  the main Workshop menu closes. `WorkshopMenuNoSteamSortTests` covers the
+  fallback sort labels for all three lists.
 
 
 ## Archival Build
