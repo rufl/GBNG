@@ -268,6 +268,54 @@ public class GameDetailThumbnailLifecycleTests
       }
     }
   }
+  [Test]
+  public void GrassSpawnReleasesMaterialsAndUnregistersFromBenderOnDestroy()
+  {
+    Shader shader = Shader.Find("Standard");
+    Assert.IsNotNull(shader);
+
+    GameObject grassSpawnObject = new GameObject("Grass spawn material owner");
+    GameObject benderObject = new GameObject("Grass bender material registry");
+    grassSpawnObject.SetActive(false);
+    benderObject.SetActive(false);
+    Material[] materials = { new Material(shader), new Material(shader) };
+    try
+    {
+      GrassSpawn grassSpawn = grassSpawnObject.AddComponent<GrassSpawn>();
+      GrassBend bender = benderObject.AddComponent<GrassBend>();
+
+      FieldInfo materialsField = typeof(GrassSpawn).GetField("materialInstances", PrivateInstance);
+      FieldInfo benderField = typeof(GrassSpawn).GetField("bender", PrivateInstance);
+      FieldInfo registeredSetsField = typeof(GrassBend).GetField("materialSets", PrivateInstance);
+      Assert.IsNotNull(materialsField);
+      Assert.IsNotNull(benderField);
+      Assert.IsNotNull(registeredSetsField);
+      materialsField.SetValue(grassSpawn, materials);
+      benderField.SetValue(grassSpawn, bender);
+      bender.AddMaterials(materials);
+
+      MethodInfo onDestroy = typeof(GrassSpawn).GetMethod("OnDestroy", PrivateInstance);
+      Assert.IsNotNull(onDestroy);
+      onDestroy.Invoke(grassSpawn, null);
+
+      Assert.IsTrue(materials[0] == null && materials[1] == null,
+        "GrassSpawn must destroy every material instance it created.");
+      var registeredSets =
+        (System.Collections.Generic.HashSet<Material[]>)registeredSetsField.GetValue(bender);
+      Assert.IsFalse(registeredSets.Contains(materials),
+        "GrassBend must not retain a destroyed GrassSpawn material set.");
+    }
+    finally
+    {
+      Object.DestroyImmediate(grassSpawnObject);
+      Object.DestroyImmediate(benderObject);
+      foreach (Material material in materials)
+      {
+        if (material != null) Object.DestroyImmediate(material);
+      }
+    }
+  }
+
 
 
 

@@ -179,6 +179,9 @@ instances and release them with the owning component. Preview renderers share
 their assigned instance instead of creating implicit per-renderer material
 copies.
 
+GrassSpawn unregisters its material set from GrassBend and destroys its owned
+material instances when the component is torn down.
+
 The full MIT/BSD notices ship with the application at
 `StreamingAssets/third_party/UnityMeshImporter-LICENSE.md`.
 

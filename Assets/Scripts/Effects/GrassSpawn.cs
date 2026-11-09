@@ -62,6 +62,18 @@ public class GrassSpawn : MonoBehaviour
     bender.RemoveMaterials(materialInstances);
   }
 
+  void OnDestroy()
+  {
+    if (materialInstances == null) return;
+
+    if (bender != null) bender.RemoveMaterials(materialInstances);
+    foreach (Material material in materialInstances)
+    {
+      RuntimeModelResourceSet.DestroyResource(material);
+    }
+    materialInstances = null;
+  }
+
   public void SetIsVisible(bool on)
   {
     visible = on;
