@@ -207,6 +207,8 @@ Actor renderable tint and `_Running` shader state use per-renderer property
 blocks, preserving actor-specific appearance while sharing source materials.
 Actor bounciness uses actor-owned `PhysicsMaterial` copies per collider and
 releases them when the renderable is replaced or the actor is destroyed.
+`GameUiMain` releases its `Draw2DUnityImpl` UI material on teardown; invalid font
+configuration fails before that runtime material is allocated.
 
 GameBuilderStage destroys its per-scene skybox and ground material instances on
 teardown. It restores the previous global skybox only when RenderSettings still

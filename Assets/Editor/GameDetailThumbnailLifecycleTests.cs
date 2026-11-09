@@ -1950,5 +1950,93 @@ public class GameDetailThumbnailLifecycleTests
     }
   }
 
+  [Test]
+  public void GameUiMainReleasesItsDraw2DMaterialOnTeardown()
+  {
+    TextAsset fontConfig = null;
+    Texture2D fontAtlas = null;
+    GameObject owner = null;
+    Draw2DUnityImpl draw2D = null;
+    Material ownedMaterial = null;
+    try
+    {
+      fontConfig = new TextAsset(
+        "<font><info size=\"16\"/><common scaleW=\"1\" scaleH=\"1\"/>" +
+        "<pages><page id=\"0\"/></pages><chars /></font>");
+      fontAtlas = new Texture2D(1, 1);
+      draw2D = new Draw2DUnityImpl(fontConfig, fontAtlas);
+      FieldInfo materialField = typeof(Draw2DUnityImpl).GetField(
+        "material", PrivateInstance);
+      FieldInfo draw2DField = typeof(GameUiMain).GetField(
+        "draw2D", PrivateInstance);
+      MethodInfo onDestroy = typeof(GameUiMain).GetMethod(
+        "OnDestroy", PrivateInstance);
+      Assert.IsNotNull(materialField);
+      Assert.IsNotNull(draw2DField);
+      Assert.IsNotNull(onDestroy);
+      ownedMaterial = (Material)materialField.GetValue(draw2D);
+      Assert.IsNotNull(ownedMaterial);
+
+      owner = new GameObject("Game UI Draw2D material owner");
+      owner.SetActive(false);
+      GameUiMain gameUiMain = owner.AddComponent<GameUiMain>();
+      draw2DField.SetValue(gameUiMain, draw2D);
+      onDestroy.Invoke(gameUiMain, null);
+      draw2D = null;
+
+      Assert.IsTrue(ownedMaterial == null,
+        "GameUiMain teardown must destroy the Draw2D renderer's owned material.");
+      Assert.IsNull(draw2DField.GetValue(gameUiMain));
+    }
+    finally
+    {
+      if (draw2D != null) draw2D.Dispose();
+      if (owner != null) Object.DestroyImmediate(owner);
+      if (fontConfig != null) Object.DestroyImmediate(fontConfig);
+      if (fontAtlas != null) Object.DestroyImmediate(fontAtlas);
+    }
+  }
+
+  [Test]
+  public void InvalidDraw2DFontDoesNotLeaveAnOwnedMaterial()
+  {
+    TextAsset fontConfig = null;
+    Texture2D fontAtlas = null;
+    Material[] materialsBefore = null;
+    try
+    {
+      fontConfig = new TextAsset("<font />");
+      fontAtlas = new Texture2D(1, 1);
+      materialsBefore = Resources.FindObjectsOfTypeAll<Material>();
+      Assert.Throws<System.InvalidOperationException>(
+        () => new Draw2DUnityImpl(fontConfig, fontAtlas));
+
+      bool leakedMaterialFound = false;
+      foreach (Material material in Resources.FindObjectsOfTypeAll<Material>())
+      {
+        if (material == null) continue;
+        bool existedBeforeConstructor = false;
+        foreach (Material existing in materialsBefore)
+        {
+          if (object.ReferenceEquals(existing, material))
+          {
+            existedBeforeConstructor = true;
+            break;
+          }
+        }
+        if (existedBeforeConstructor) continue;
+        leakedMaterialFound = true;
+        Object.DestroyImmediate(material);
+      }
+      Assert.IsFalse(leakedMaterialFound,
+        "Invalid font data must fail before allocating the Draw2D material.");
+    }
+    finally
+    {
+      if (fontConfig != null) Object.DestroyImmediate(fontConfig);
+      if (fontAtlas != null) Object.DestroyImmediate(fontAtlas);
+    }
+  }
+
 }
 #endif

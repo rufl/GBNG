@@ -231,6 +231,13 @@ public class GameUiMain : MonoBehaviour
     Util.FindIfNotSet(this, ref imageLoader);
   }
 
+  private void OnDestroy()
+  {
+    if (draw2D == null) return;
+    draw2D.Dispose();
+    draw2D = null;
+  }
+
   private void Update()
   {
     userMain = userMain ?? GameObject.FindObjectOfType<UserMain>();

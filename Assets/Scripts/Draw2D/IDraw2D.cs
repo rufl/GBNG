@@ -22,7 +22,7 @@ public enum Draw2DMode
   OnRenderImage
 }
 
-public interface IDraw2D
+public interface IDraw2D : System.IDisposable
 {
   Draw2DMode GetDraw2DMode();
   void StartRendering(RenderTexture source, RenderTexture destination);

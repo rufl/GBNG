@@ -49,21 +49,6 @@ public class Draw2DUnityImpl : IDraw2D
     if (fontAtlas == null) throw new ArgumentNullException(nameof(fontAtlas));
 
     bitmapFontAtlas = fontAtlas;
-    bitmapFontAtlas.filterMode = FilterMode.Bilinear;
-    bitmapFontAtlas.wrapMode = TextureWrapMode.Clamp;
-
-    Shader shader = Shader.Find("UI/Default") ?? Shader.Find("Sprites/Default") ?? Shader.Find("Hidden/Internal-Colored");
-    if (shader == null) Debug.LogError("No Unity shader is available for the built-in 2D renderer.");
-    if (shader != null)
-    {
-      material = new Material(shader);
-      material.hideFlags = HideFlags.HideAndDontSave;
-      material.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-      material.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-      material.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
-      material.SetInt("_ZWrite", 0);
-      material.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.Always);
-    }
 
     XmlDocument document = new XmlDocument();
     document.LoadXml(fontConfig.text);
@@ -110,6 +95,26 @@ public class Draw2DUnityImpl : IDraw2D
         vBottom = (y + height) / atlasHeight
       });
     }
+    bitmapFontAtlas.filterMode = FilterMode.Bilinear;
+    bitmapFontAtlas.wrapMode = TextureWrapMode.Clamp;
+
+    Shader shader = Shader.Find("UI/Default") ?? Shader.Find("Sprites/Default") ?? Shader.Find("Hidden/Internal-Colored");
+    if (shader == null) Debug.LogError("No Unity shader is available for the built-in 2D renderer.");
+    if (shader != null)
+    {
+      material = new Material(shader);
+      material.hideFlags = HideFlags.HideAndDontSave;
+      material.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+      material.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+      material.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
+      material.SetInt("_ZWrite", 0);
+      material.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.Always);
+    }
+  }
+
+  public void Dispose()
+  {
+    RuntimeModelResourceSet.DestroyResource(material);
   }
 
   private static int ReadFontMetric(XmlElement element, string attribute)
