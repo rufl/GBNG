@@ -626,9 +626,14 @@ the `renderuri` command above. No Poly API key or SDK setup is available.
   The adapter exposes add/remove favorite callbacks and camera-to-PNG icon capture.
 
 
-* Without Steam initialization, Workshop search and upload are unavailable;
-  the saved local Workshop asset cache still works. Editor builds retain the
-  disk-backed local Workshop source. Local model import needs no TriLib.
+* Without Steam initialization, Workshop search and upload are unavailable.
+  The Workshop menus stop loading for unavailable and error results, and tolerate
+  missing optional loading and empty-state UI references. The saved local
+  Workshop asset cache still works. Editor builds retain the disk-backed local
+  Workshop source. Local model import needs no TriLib.
+* `WorkshopMenuCallbackTests` covers no-Steam and failed-query feedback across
+  the game, actor-prefab, and card-pack lists; it also tests late results after
+  the main Workshop menu closes.
 
 
 ## Archival Build

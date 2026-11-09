@@ -133,12 +133,13 @@ public class WorkshopMenu : ThumbnailMenu
 
     if (!SteamRuntime.Initialized)
     {
-      Debug.Log($"Steam Workshop is not available right now. Did you launch from Steam?");
+      if (workingFeedback != null) workingFeedback.SetActive(false);
+      Debug.Log("Steam Workshop is not available right now. Did you launch from Steam?");
       return;
     }
 
-    workingFeedback.SetActive(true);
-    noResultsFeedback.SetActive(false);
+    if (workingFeedback != null) workingFeedback.SetActive(true);
+    if (noResultsFeedback != null) noResultsFeedback.SetActive(false);
 
   
 
@@ -191,6 +192,7 @@ public class WorkshopMenu : ThumbnailMenu
     gettingItemList = false;
     if (args.IsError)
     {
+      if (workingFeedback != null) workingFeedback.SetActive(false);
       Debug.Log($"Sorry, encountered an error: {args.ErrorMessage}");
       return;
     }
@@ -203,11 +205,10 @@ public class WorkshopMenu : ThumbnailMenu
 
     pageCount = args.ItemList.PagesItems;
 
-    workingFeedback.SetActive(false);
+    if (workingFeedback != null) workingFeedback.SetActive(false);
 
-    if (args.ItemList.Items.Count == 0)
+    if (args.ItemList.Items.Count == 0 && noResultsFeedback != null)
     {
-
       noResultsFeedback.SetActive(true);
     }
 
