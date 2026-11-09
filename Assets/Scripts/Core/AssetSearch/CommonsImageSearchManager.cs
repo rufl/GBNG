@@ -128,7 +128,7 @@ public class CommonsImageSearchManager : MonoBehaviour
         yield break;
       }
 
-      Array.Sort(response.query.pages, (left, right) => left.index.CompareTo(right.index));
+      SortPages(response.query.pages);
       int acceptedCount = 0;
       foreach (CommonsPage page in response.query.pages)
       {
@@ -235,6 +235,18 @@ public class CommonsImageSearchManager : MonoBehaviour
     if (string.IsNullOrWhiteSpace(value)) return string.Empty;
     string plainText = Regex.Replace(WebUtility.HtmlDecode(value), "<[^>]*>", " ");
     return Regex.Replace(plainText, "\\s+", " ").Trim();
+  }
+
+  static void SortPages(CommonsPage[] pages)
+  {
+    Array.Sort(pages, ComparePages);
+  }
+
+  static int ComparePages(CommonsPage left, CommonsPage right)
+  {
+    if (left == null) return right == null ? 0 : 1;
+    if (right == null) return -1;
+    return left.index.CompareTo(right.index);
   }
 
   [Serializable]

@@ -102,6 +102,7 @@ Failed HTTP sound downloads are reported and are not cached as audio clips.
 Web image searches abort their active API and thumbnail requests when cleared,
 replaced, or torn down; late callbacks are ignored and unclaimed textures released.
 Each library owns its cancellation handle, so canceling one search leaves others running.
+Null Wikimedia page entries are skipped while valid pages remain ordered by search index.
 
 The synthetic Custom behavior-card panel persists its display order per actor in
 brain metadata, separate from the behavior-use order that controls runtime execution.
