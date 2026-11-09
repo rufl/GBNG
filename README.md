@@ -185,6 +185,11 @@ material instances when the component is torn down.
 Tool-effect tint materials are explicitly owned per renderer and released with
 their effect component.
 
+GameBuilderStage destroys its per-scene skybox and ground material instances on
+teardown. It restores the previous global skybox only when RenderSettings still
+references an instance owned by that stage; caller-owned temporary skyboxes
+remain untouched.
+
 The full MIT/BSD notices ship with the application at
 `StreamingAssets/third_party/UnityMeshImporter-LICENSE.md`.
 

@@ -158,6 +158,7 @@ public class GameBuilderStage : MonoBehaviour
 
   bool hideAllGrass = false;
   Material tempSkyBox;
+  Material skyboxBeforeStage;
   Material tempGroundMaterial;
 
   public event System.Action OnUpdateGroundType;
@@ -229,6 +230,7 @@ public class GameBuilderStage : MonoBehaviour
 
   void Awake()
   {
+    skyboxBeforeStage = RenderSettings.skybox;
     photonView = PhotonView.Get(this);
     Util.FindIfNotSet(this, ref skyboxRotator);
     Util.FindIfNotSet(this, ref terrain);
@@ -257,6 +259,33 @@ public class GameBuilderStage : MonoBehaviour
   void OnDisable()
   {
     GameBuilderApplication.onQualityLevelChanged -= OnQualityLevelChanged;
+  }
+
+  void OnDestroy()
+  {
+    if (skyboxMaterials != null)
+    {
+      foreach (Material material in skyboxMaterials)
+      {
+        if (material != null && RenderSettings.skybox == material)
+        {
+          RenderSettings.skybox = skyboxBeforeStage;
+        }
+        RuntimeModelResourceSet.DestroyResource(material);
+      }
+      skyboxMaterials = null;
+    }
+
+    if (groundMaterials != null)
+    {
+      foreach (Material material in groundMaterials)
+      {
+        RuntimeModelResourceSet.DestroyResource(material);
+      }
+      groundMaterials = null;
+    }
+
+    skyboxBeforeStage = null;
   }
 
   public Vector3 GetWorldMax()

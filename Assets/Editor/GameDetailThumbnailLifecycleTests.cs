@@ -360,6 +360,120 @@ public class GameDetailThumbnailLifecycleTests
       if (particleMaterial != null) Object.DestroyImmediate(particleMaterial);
     }
   }
+  [Test]
+  public void GameBuilderStageReleasesOwnedMaterialsAndRestoresGlobalSkybox()
+  {
+    Shader shader = Shader.Find("Standard");
+    Assert.IsNotNull(shader);
+
+    GameObject stageObject = new GameObject("Game Builder stage material owner");
+    stageObject.SetActive(false);
+    GameBuilderStage stage = stageObject.AddComponent<GameBuilderStage>();
+    Material previousSkybox = new Material(shader);
+    Material ownedSkybox = new Material(shader);
+    Material ownedGround = new Material(shader);
+    Material baseSkybox = new Material(shader);
+    Material baseGround = new Material(shader);
+    Material previousRenderSettingsSkybox = RenderSettings.skybox;
+    try
+    {
+      string[] fieldNames = {
+        "skyboxBeforeStage",
+        "skyboxMaterials",
+        "groundMaterials",
+        "skyboxMaterialsBase",
+        "groundMaterialsBase"
+      };
+      object[] fieldValues = {
+        previousSkybox,
+        new[] { ownedSkybox },
+        new[] { ownedGround },
+        new[] { baseSkybox },
+        new[] { baseGround }
+      };
+      for (int i = 0; i < fieldNames.Length; i++)
+      {
+        FieldInfo field = typeof(GameBuilderStage).GetField(fieldNames[i], PrivateInstance);
+        Assert.IsNotNull(field);
+        field.SetValue(stage, fieldValues[i]);
+      }
+      RenderSettings.skybox = ownedSkybox;
+
+      MethodInfo onDestroy = typeof(GameBuilderStage).GetMethod("OnDestroy", PrivateInstance);
+      Assert.IsNotNull(onDestroy);
+      onDestroy.Invoke(stage, null);
+
+      Assert.AreSame(previousSkybox, RenderSettings.skybox,
+        "Destroying a stage must not leave the global skybox pointing at a destroyed instance.");
+      Assert.IsTrue(ownedSkybox == null && ownedGround == null,
+        "The stage must destroy its cloned skybox and ground materials.");
+      Assert.IsTrue(previousSkybox != null && baseSkybox != null && baseGround != null,
+        "Stage teardown must preserve caller-owned and serialized source materials.");
+    }
+    finally
+    {
+      RenderSettings.skybox = previousRenderSettingsSkybox;
+      Object.DestroyImmediate(stageObject);
+      if (previousSkybox != null) Object.DestroyImmediate(previousSkybox);
+      if (ownedSkybox != null) Object.DestroyImmediate(ownedSkybox);
+      if (ownedGround != null) Object.DestroyImmediate(ownedGround);
+      if (baseSkybox != null) Object.DestroyImmediate(baseSkybox);
+      if (baseGround != null) Object.DestroyImmediate(baseGround);
+    }
+  }
+  [Test]
+  public void GameBuilderStagePreservesCallerOwnedTemporarySkyboxOnTeardown()
+  {
+    Shader shader = Shader.Find("Standard");
+    Assert.IsNotNull(shader);
+
+    GameObject stageObject = new GameObject("Game Builder temporary skybox owner");
+    stageObject.SetActive(false);
+    GameBuilderStage stage = stageObject.AddComponent<GameBuilderStage>();
+    Material previousSkybox = new Material(shader);
+    Material temporarySkybox = new Material(shader);
+    Material ownedSkybox = new Material(shader);
+    Material ownedGround = new Material(shader);
+    Material previousRenderSettingsSkybox = RenderSettings.skybox;
+    try
+    {
+      string[] fieldNames = { "skyboxBeforeStage", "skyboxMaterials", "groundMaterials" };
+      object[] fieldValues = {
+        previousSkybox,
+        new[] { ownedSkybox },
+        new[] { ownedGround }
+      };
+      for (int i = 0; i < fieldNames.Length; i++)
+      {
+        FieldInfo field = typeof(GameBuilderStage).GetField(fieldNames[i], PrivateInstance);
+        Assert.IsNotNull(field);
+        field.SetValue(stage, fieldValues[i]);
+      }
+      RenderSettings.skybox = temporarySkybox;
+
+      MethodInfo onDestroy = typeof(GameBuilderStage).GetMethod("OnDestroy", PrivateInstance);
+      Assert.IsNotNull(onDestroy);
+      onDestroy.Invoke(stage, null);
+
+      Assert.AreSame(temporarySkybox, RenderSettings.skybox,
+        "Stage teardown must leave a caller-owned temporary skybox active.");
+      Assert.IsTrue(ownedSkybox == null && ownedGround == null,
+        "The stage must still release its own material instances.");
+      Assert.IsTrue(temporarySkybox != null && previousSkybox != null,
+        "Stage teardown must not destroy caller-owned skybox materials.");
+    }
+    finally
+    {
+      RenderSettings.skybox = previousRenderSettingsSkybox;
+      Object.DestroyImmediate(stageObject);
+      if (previousSkybox != null) Object.DestroyImmediate(previousSkybox);
+      if (temporarySkybox != null) Object.DestroyImmediate(temporarySkybox);
+      if (ownedSkybox != null) Object.DestroyImmediate(ownedSkybox);
+      if (ownedGround != null) Object.DestroyImmediate(ownedGround);
+    }
+  }
+
+
 
 
 
