@@ -193,13 +193,14 @@ public class MultiplayerMenu : ThumbnailMenu
   {
 #if USE_PUN
     string gameName = "<no name>";
-    Texture2D tnTexture = spoofGameTexture;
 
     if (room.CustomProperties.ContainsKey(NetworkingController.GameDisplayNameRoomProperty))
     {
       gameName = (string)room.CustomProperties[NetworkingController.GameDisplayNameRoomProperty];
     }
 
+    GameThumbnail thumbnail = Instantiate(gameThumbnailPrefab).GetComponent<GameThumbnail>();
+    thumbnail.SetThumbnail(spoofGameTexture);
     if (room.CustomProperties.ContainsKey(NetworkingController.ThumbnailZippedJpegRoomProperty))
     {
       try
@@ -207,7 +208,8 @@ public class MultiplayerMenu : ThumbnailMenu
         byte[] tnBytes = (byte[])room.CustomProperties[NetworkingController.ThumbnailZippedJpegRoomProperty];
         if (tnBytes != null)
         {
-          tnTexture = Util.ZippedJpegToTexture2D(tnBytes);
+          Texture2D thumbnailTexture = Util.ZippedJpegToTexture2D(tnBytes);
+          thumbnail.SetOwnedThumbnail(thumbnailTexture);
         }
       }
       catch (System.Exception)
@@ -216,8 +218,6 @@ public class MultiplayerMenu : ThumbnailMenu
       }
     }
 
-    GameThumbnail thumbnail = Instantiate(gameThumbnailPrefab).GetComponent<GameThumbnail>();
-    thumbnail.SetThumbnail(tnTexture);
     thumbnail.SetGameSource(GameDetail.GameSource.Multiplayer);
     thumbnail.SetName(gameName);
     thumbnail.OnClick = () => ShowRoomDetails(thumbnail, room.Name);
@@ -407,22 +407,6 @@ public class MultiplayerMenu : ThumbnailMenu
     {
       foreach (DirectSessionDirectory.SessionInfo session in publicSessions)
       {
-        Texture2D thumbnailTexture = spoofGameTexture;
-        string thumbnailBase64 = session.ThumbnailZippedJpegBase64;
-        int maxEncodedThumbnailChars = ((DirectSessionDirectory.MaxPublicThumbnailBytes + 2) / 3) * 4;
-        if (!string.IsNullOrEmpty(thumbnailBase64) && thumbnailBase64.Length <= maxEncodedThumbnailChars)
-        {
-          try
-          {
-            byte[] thumbnailBytes = System.Convert.FromBase64String(thumbnailBase64);
-            if (thumbnailBytes.Length > 0 && thumbnailBytes.Length <= DirectSessionDirectory.MaxPublicThumbnailBytes)
-              thumbnailTexture = Util.ZippedJpegToTexture2D(thumbnailBytes);
-          }
-          catch (System.Exception)
-          {
-            // Keep the generic multiplayer image for malformed thumbnails.
-          }
-        }
         DirectHostDiscovery.HostInfo host = new DirectHostDiscovery.HostInfo
         {
           Address = session.Address,
@@ -433,7 +417,27 @@ public class MultiplayerMenu : ThumbnailMenu
           ServerCertificatePem = session.ServerCertificatePem
         };
         GameThumbnail publicThumbnail = Instantiate(gameThumbnailPrefab).GetComponent<GameThumbnail>();
-        publicThumbnail.SetThumbnail(thumbnailTexture);
+        publicThumbnail.SetThumbnail(spoofGameTexture);
+
+        string thumbnailBase64 = session.ThumbnailZippedJpegBase64;
+        int maxEncodedThumbnailChars = ((DirectSessionDirectory.MaxPublicThumbnailBytes + 2) / 3) * 4;
+        if (!string.IsNullOrEmpty(thumbnailBase64) && thumbnailBase64.Length <= maxEncodedThumbnailChars)
+        {
+          try
+          {
+            byte[] thumbnailBytes = System.Convert.FromBase64String(thumbnailBase64);
+            if (thumbnailBytes.Length > 0 && thumbnailBytes.Length <= DirectSessionDirectory.MaxPublicThumbnailBytes)
+            {
+              Texture2D thumbnailTexture = Util.ZippedJpegToTexture2D(thumbnailBytes);
+              publicThumbnail.SetOwnedThumbnail(thumbnailTexture);
+            }
+          }
+          catch (System.Exception)
+          {
+            // Keep the generic multiplayer image for malformed thumbnails.
+          }
+        }
+
         publicThumbnail.SetGameSource(GameDetail.GameSource.Multiplayer);
         publicThumbnail.SetName(session.Name);
         string relayAddress = session.RelayAddress;

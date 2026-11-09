@@ -683,6 +683,87 @@ public class GameDetailThumbnailLifecycleTests
   }
 
   [Test]
+  public void GameThumbnailReleasesOnlyItsExplicitlyOwnedThumbnail()
+  {
+    GameObject thumbnailObject = new GameObject("Owned game thumbnail lifecycle test",
+      typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage));
+    thumbnailObject.SetActive(false);
+    GameThumbnail thumbnail = thumbnailObject.AddComponent<GameThumbnail>();
+    FieldInfo imageField = typeof(ThumbnailItem).GetField("thumbnailImage", PrivateInstance);
+    Texture2D firstTexture = new Texture2D(2, 2);
+    Texture2D secondTexture = new Texture2D(2, 2);
+    Texture2D sharedTexture = new Texture2D(2, 2);
+
+    try
+    {
+      Assert.IsNotNull(imageField);
+      imageField.SetValue(thumbnail, thumbnailObject.GetComponent<RawImage>());
+      thumbnailObject.SetActive(true);
+      thumbnail.SetOwnedThumbnail(firstTexture);
+      thumbnail.SetOwnedThumbnail(secondTexture);
+
+      Assert.IsTrue(firstTexture == null, "Replacing an owned thumbnail must destroy its previous texture.");
+      Assert.AreSame(secondTexture, thumbnail.GetTexture());
+      thumbnail.SetThumbnail(sharedTexture);
+      Assert.AreSame(sharedTexture, thumbnail.GetTexture());
+
+      thumbnail.Destruct();
+      thumbnailObject = null;
+      Assert.IsTrue(secondTexture == null, "Destroying the thumbnail must release its explicitly owned texture.");
+      Assert.IsNotNull(sharedTexture, "Destroying the thumbnail must preserve a caller-owned shared texture.");
+    }
+    finally
+    {
+      if (thumbnailObject != null) Object.DestroyImmediate(thumbnailObject);
+      if (firstTexture != null) Object.DestroyImmediate(firstTexture);
+      if (secondTexture != null) Object.DestroyImmediate(secondTexture);
+      if (sharedTexture != null) Object.DestroyImmediate(sharedTexture);
+    }
+  }
+
+  [Test]
+  public void ZippedJpegDecoderReleasesTextureWhenDecompressionFails()
+  {
+    var existingTextures = new System.Collections.Generic.List<Texture2D>();
+    foreach (Texture2D texture in Resources.FindObjectsOfTypeAll<Texture2D>())
+    {
+      if (texture != null) existingTextures.Add(texture);
+    }
+    bool threw = false;
+    try
+    {
+      Util.ZippedJpegToTexture2D(new byte[] { 1, 2, 3 });
+    }
+    catch (System.Exception)
+    {
+      threw = true;
+    }
+
+    var leakedTextures = new System.Collections.Generic.List<Texture2D>();
+    foreach (Texture2D texture in Resources.FindObjectsOfTypeAll<Texture2D>())
+    {
+      if (texture == null) continue;
+      bool existedBefore = false;
+      foreach (Texture2D existing in existingTextures)
+      {
+        if (object.ReferenceEquals(existing, texture))
+        {
+          existedBefore = true;
+          break;
+        }
+      }
+      if (!existedBefore) leakedTextures.Add(texture);
+    }
+    foreach (Texture2D texture in leakedTextures)
+    {
+      Object.DestroyImmediate(texture);
+    }
+
+    Assert.IsTrue(threw, "Invalid gzip bytes must fail to decode.");
+    Assert.IsEmpty(leakedTextures, "Failed decompression must release the allocated Texture2D.");
+  }
+
+  [Test]
   public void RuntimeTextureOwnerReleasesReplacedAndFinalOwnedTextures()
   {
     System.Type ownerType = typeof(GameDetail).Assembly.GetType("RuntimeTextureOwner");

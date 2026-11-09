@@ -727,9 +727,18 @@ public static partial class Util
   public static Texture2D ZippedJpegToTexture2D(byte[] zippedJpegBytes, bool nonReadable = true)
   {
     Texture2D rv = new Texture2D(1, 1);
-    byte[] jpegBytes = Util.UnGZip(zippedJpegBytes);
-    rv.LoadImage(jpegBytes, nonReadable);
-    return rv;
+    try
+    {
+      byte[] jpegBytes = Util.UnGZip(zippedJpegBytes);
+      rv.LoadImage(jpegBytes, nonReadable);
+      return rv;
+    }
+    catch
+    {
+      if (Application.isPlaying) UnityEngine.Object.Destroy(rv);
+      else UnityEngine.Object.DestroyImmediate(rv);
+      throw;
+    }
   }
 
   public static IEnumerable<string> EnumerateLines(this string s)

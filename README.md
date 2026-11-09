@@ -109,6 +109,10 @@ Actor captures restore the helper camera's prior world pose before later capture
 ImageLoader releases per-URL Sprite and Texture caches and clears in-flight
 requests when the service is destroyed; late Workshop callbacks are ignored.
 
+Public-session thumbnails own their decoded textures and release them when
+their thumbnail items are destroyed or refreshed. Compressed thumbnail decode
+failures also dispose their temporary texture.
+
 Template thumbnails load once even while their menu item is inactive. Requests
 are disposed on completion, replacement, or teardown; generated image objects
 are released when replaced or torn down.

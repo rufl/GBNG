@@ -26,6 +26,7 @@ public class ThumbnailItem : MonoBehaviour
   [SerializeField] GameObject thumbnailLoadingObject;
   [SerializeField] UnityEngine.UI.Button thumbnailButton;
   [SerializeField] UnityEngine.UI.Image outline;
+  Texture2D ownedThumbnailTexture;
 
   WWW thumbnailDownloading = null;
 
@@ -85,7 +86,9 @@ public class ThumbnailItem : MonoBehaviour
 
   public void Destruct()
   {
-    Destroy(gameObject);
+    ReleaseOwnedThumbnail();
+    if (Application.isPlaying) Destroy(gameObject);
+    else DestroyImmediate(gameObject);
   }
 
   public void SetThumbnail(Texture2D texture)
@@ -100,6 +103,31 @@ public class ThumbnailItem : MonoBehaviour
     {
       thumbnailLoadingObject.SetActive(false);
     }
+  }
+
+  public void SetOwnedThumbnail(Texture2D texture)
+  {
+    if (texture == null) return;
+    if (ownedThumbnailTexture != texture)
+    {
+      ReleaseOwnedThumbnail();
+      ownedThumbnailTexture = texture;
+    }
+    SetThumbnail(texture);
+  }
+
+  void ReleaseOwnedThumbnail()
+  {
+    if (ownedThumbnailTexture == null) return;
+    Texture2D texture = ownedThumbnailTexture;
+    ownedThumbnailTexture = null;
+    if (Application.isPlaying) Destroy(texture);
+    else DestroyImmediate(texture);
+  }
+
+  protected virtual void OnDestroy()
+  {
+    ReleaseOwnedThumbnail();
   }
 
   public void SetDownloadedThumbnail()
