@@ -90,6 +90,7 @@ Workshop browsing refreshes when the menu is reopened; changing search or sort
 returns to the first page. The Game Library ignores subscribed-item results from
 previous opens or refreshes; actor and card Workshop menus also reject stale
 results after close, search, sort, or page changes.
+Workshop image previews reuse one cached Sprite per URL across displays, avoiding a new Unity Sprite allocation on every request.
 
 Template thumbnails load once even while their menu item is inactive. Requests
 are disposed on completion, replacement, or teardown; generated image objects

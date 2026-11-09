@@ -32,6 +32,7 @@ public class ImageLoader : MonoBehaviour
   // scripts from being able to control when URLs are fetched (which they could
   // in theory do by spamming the cache to cause predictable evictions).
   private Dictionary<string, Texture2D> loadedTextures = new Dictionary<string, Texture2D>();
+  private Dictionary<string, Sprite> loadedSprites = new Dictionary<string, Sprite>();
 
   private void Awake()
   {
@@ -50,7 +51,7 @@ public class ImageLoader : MonoBehaviour
       // We already have that image. Yay.
       if (targetImage != null)
       {
-        targetImage.sprite = TextureToSprite(tex);
+        targetImage.sprite = GetOrCreateSprite(url, tex);
       }
       callback?.Invoke(url, true);
       return;
@@ -147,17 +148,17 @@ public class ImageLoader : MonoBehaviour
     }
 
     loadedTextures[url] = tex;
-    SetColorsAndTexture(request.targetImages, Color.white, tex);
-    CallCallbacks(request.callbacks, url, true);
+    Sprite sprite = GetOrCreateSprite(url, tex);
+    SetColorsAndTexture(request.targetImages, Color.white, sprite);
   }
 
-  private static void SetColorsAndTexture(IEnumerable<Image> images, Color color, Texture2D tex = null)
+  private static void SetColorsAndTexture(IEnumerable<Image> images, Color color, Sprite sprite = null)
   {
     foreach (Image image in images)
     {
       if (image != null)
       {
-        image.sprite = TextureToSprite(tex);
+        image.sprite = sprite;
         image.color = color;
       }
     }
@@ -169,6 +170,17 @@ public class ImageLoader : MonoBehaviour
     {
       callback.Invoke(url, success);
     }
+  }
+
+  private Sprite GetOrCreateSprite(string url, Texture2D texture)
+  {
+    Sprite sprite;
+    if (!loadedSprites.TryGetValue(url, out sprite))
+    {
+      sprite = TextureToSprite(texture);
+      loadedSprites.Add(url, sprite);
+    }
+    return sprite;
   }
 
   private static Sprite TextureToSprite(Texture2D tex)
