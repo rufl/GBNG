@@ -97,7 +97,7 @@ public partial class BehaviorCards : MonoBehaviour
           yield return new AssignedPanel(assignment, this);
         }
       }
-      var customPanel = new MiscPanel(this.actorEditor, this);
+      var customPanel = new MiscPanel(this.actorEditor);
       yield return customPanel;
     }
 

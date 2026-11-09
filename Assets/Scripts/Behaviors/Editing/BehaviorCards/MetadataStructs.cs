@@ -26,6 +26,7 @@ public partial class BehaviorCards
     public PanelManager.ViewState panelViewState;
     public PanelNote.Data[] panelNotes;
     public CardPanel.PanelUse miscPanelUseMetadata;
+    public string[] miscPanelCardUseIds;
   }
 
   // The metadata JSON in the behavior entry for panels should match this.

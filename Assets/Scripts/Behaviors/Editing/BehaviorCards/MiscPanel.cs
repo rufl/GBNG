@@ -28,12 +28,68 @@ public partial class BehaviorCards
   class MiscPanel : CardPanel.IAssignedPanel, IDeckModel, Unassigner
   {
     ActorBehaviorsEditor actorEditor;
-    BehaviorCards.ManagerImpl parent;
 
-    public MiscPanel(ActorBehaviorsEditor actorEditor, BehaviorCards.ManagerImpl parent)
+    public MiscPanel(ActorBehaviorsEditor actorEditor)
     {
       this.actorEditor = actorEditor;
-      this.parent = parent;
+    }
+
+    List<AssignedBehavior> GetCustomCardUses()
+    {
+      List<AssignedBehavior> cards = new List<AssignedBehavior>();
+      foreach (var useEditor in actorEditor.GetAssignedBehaviors())
+      {
+        var behaviorData = useEditor.GetBehaviorData();
+        if (!CardMetadata.IsCardOfCategory(behaviorData, CUSTOM_CATEGORY) ||
+            useEditor.GetBehaviorUri() == "builtin:Default Behavior")
+        {
+          continue;
+        }
+        cards.Add(useEditor);
+      }
+      return cards;
+    }
+
+    List<AssignedBehavior> GetOrderedCustomCardUses()
+    {
+      List<AssignedBehavior> assignedCards = GetCustomCardUses();
+      Dictionary<string, AssignedBehavior> usesById = new Dictionary<string, AssignedBehavior>();
+      foreach (AssignedBehavior assigned in assignedCards)
+      {
+        usesById[assigned.useId] = assigned;
+      }
+
+      BrainMetadata metadata = Util.FromJsonSafe<BrainMetadata>(actorEditor.GetMetadataJson());
+      List<AssignedBehavior> orderedCards = new List<AssignedBehavior>(assignedCards.Count);
+      HashSet<string> addedUseIds = new HashSet<string>();
+      if (metadata.miscPanelCardUseIds != null)
+      {
+        foreach (string useId in metadata.miscPanelCardUseIds)
+        {
+          AssignedBehavior assigned;
+          if (usesById.TryGetValue(useId, out assigned) && addedUseIds.Add(useId))
+          {
+            orderedCards.Add(assigned);
+          }
+        }
+      }
+
+      // Older saves have no explicit order; preserve their behavior-use order.
+      foreach (AssignedBehavior assigned in assignedCards)
+      {
+        if (addedUseIds.Add(assigned.useId))
+        {
+          orderedCards.Add(assigned);
+        }
+      }
+      return orderedCards;
+    }
+
+    void SaveCustomCardOrder(List<string> orderedUseIds)
+    {
+      BrainMetadata metadata = Util.FromJsonSafe<BrainMetadata>(actorEditor.GetMetadataJson());
+      metadata.miscPanelCardUseIds = orderedUseIds.ToArray();
+      actorEditor.SetMetadataJson(JsonUtility.ToJson(metadata));
     }
 
     public string GetDescription() { return ""; }
@@ -53,19 +109,9 @@ public partial class BehaviorCards
 
     public IEnumerable<ICardAssignmentModel> GetAssignedCards()
     {
-      var bs = actorEditor.GetBehaviorSystem();
-      foreach (var useEditor in actorEditor.GetAssignedBehaviors())
+      foreach (AssignedBehavior useEditor in GetOrderedCustomCardUses())
       {
-        var behaviorData = useEditor.GetBehaviorData();
-        if (CardMetadata.IsCardOfCategory(behaviorData, CUSTOM_CATEGORY))
-        {
-          // TEMP HACK - it's really important to not show the default card
-          if (useEditor.GetBehaviorUri() == "builtin:Default Behavior")
-          {
-            continue;
-          }
-          yield return new CardAssignment(useEditor, this);
-        }
+        yield return new CardAssignment(useEditor, this);
       }
     }
 
@@ -78,6 +124,11 @@ public partial class BehaviorCards
       using (this.actorEditor.StartUndo($"Add Custom card {card.GetTitle()}"))
       {
         var assigned = actorEditor.AddBehavior(((UnassignedCard)card).GetUnassignedBehaviorItem());
+        List<string> order = GetOrderedCustomCardUses().Select(use => use.useId).ToList();
+        order.Remove(assigned.useId);
+        int insertIndex = index < 0 ? order.Count : Mathf.Clamp(index, 0, order.Count);
+        order.Insert(insertIndex, assigned.useId);
+        SaveCustomCardOrder(order);
         return new CardAssignment(assigned, this);
       }
     }
@@ -91,8 +142,10 @@ public partial class BehaviorCards
     {
       using (this.actorEditor.StartUndo($"Remove card {card.GetCard().GetTitle()}"))
       {
-        AssignedBehavior editor = card.GetAssignedBehavior();
-        editor.RemoveSelfFromActor();
+        List<string> order = GetOrderedCustomCardUses().Select(use => use.useId).ToList();
+        order.Remove(card.GetId());
+        card.GetAssignedBehavior().RemoveSelfFromActor();
+        SaveCustomCardOrder(order);
       }
     }
 
@@ -114,12 +167,12 @@ public partial class BehaviorCards
 
     public int GetNumAssignedCards()
     {
-      throw new NotImplementedException();
+      return GetOrderedCustomCardUses().Count;
     }
 
     public IEnumerable<ICardModel> GetDefaultCards()
     {
-      throw new NotImplementedException();
+      yield break;
     }
 
     public AssignedBehavior GetBehavior()
@@ -129,7 +182,14 @@ public partial class BehaviorCards
 
     public int GetIndexOf(ICardAssignmentModel assignedModel)
     {
-      return 0;
+      if (assignedModel == null) return -1;
+      string useId = assignedModel.GetId();
+      List<AssignedBehavior> cards = GetOrderedCustomCardUses();
+      for (int index = 0; index < cards.Count; index++)
+      {
+        if (cards[index].useId == useId) return index;
+      }
+      return -1;
     }
     public string GetId()
     {
@@ -160,7 +220,7 @@ public partial class BehaviorCards
 
     public CardPanel.IAssignedPanel Duplicate()
     {
-      throw new NotImplementedException();
+      throw new NotSupportedException("The built-in Custom panel cannot be duplicated.");
     }
   }
 

@@ -125,7 +125,7 @@ public class CardPanel : MonoBehaviour
     parentRect = transform.parent.GetComponent<RectTransform>();
 
     // I don't like this.
-    if (GetModel().GetId() == BehaviorCards.GetMiscPanelId())
+    if (model.IsFake())
     {
       cardPanelUI.closeButton.gameObject.SetActive(false);
     }
@@ -255,7 +255,7 @@ public class CardPanel : MonoBehaviour
 
   public void OnRequestCopy()
   {
-    if (model.GetId() == BehaviorCards.GetMiscPanelId()) return;
+    if (model.IsFake()) return;
     panelManager.OnRequestCopyPanel(this);
   }
 
