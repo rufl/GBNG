@@ -225,6 +225,10 @@ clears cell/edge render state when its component is destroyed.
 `TerrainManager` owns downloaded custom-style textures, releases replaced and
 retired textures after thumbnail listeners refresh, and ignores stale workshop
 downloads for styles that are no longer active.
+`TerrainSystem` owns its generated chunk render/collider meshes, texture arrays,
+and cloned terrain material. Reconfiguring dimensions or rebuilding arrays
+releases replaced resources; teardown clears shader globals only when they
+still point at that terrain instance's arrays.
 The `test terrain styles` diagnostic builds retained per-style pixel buffers
 directly, without allocating temporary `Texture2D` objects.
 

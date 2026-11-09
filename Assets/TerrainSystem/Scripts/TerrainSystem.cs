@@ -36,6 +36,7 @@ public class TerrainSystem : MonoBehaviour
   // Uses its enabled status as a "dirty" flag
 
   public Material material;
+  Material ownedMaterial;
   public GameObject[] blocks;
 
   // Derived from block object measurements
@@ -322,9 +323,11 @@ public class TerrainSystem : MonoBehaviour
       tile_colors[i] = 1f;
     }
 
+    ReleaseChunkMeshes();
+
     if (chunk_holder != null)
     {
-      Destroy(chunk_holder);
+      RuntimeModelResourceSet.DestroyResource(chunk_holder);
     }
     chunk_holder = new GameObject("Terrain Chunks");
     chunk_holder.transform.parent = transform;
@@ -1435,17 +1438,21 @@ public class TerrainSystem : MonoBehaviour
     // Create texture arrays
     if (tex_array == null || num_array_textures != tex_array.depth || force)
     {
+      Texture2DArray oldTexArray = tex_array;
       tex_array = new Texture2DArray(size, size, Mathf.Max(1, num_array_textures), TextureFormat.RGBA32, UseMips);
       tex_array.filterMode = FilterMode.Point;
       Shader.SetGlobalTexture("_tex_array", tex_array);
+      RuntimeModelResourceSet.DestroyResource(oldTexArray);
     }
 
     if (border_tex_array == null || num_border_textures != border_tex_array.depth)
     {
+      Texture2DArray oldBorderTexArray = border_tex_array;
       border_tex_array = new Texture2DArray(border_tex_w, border_tex_h, Mathf.Max(1, num_border_textures), TextureFormat.RGBA32, UseMips);
       border_tex_array.filterMode = FilterMode.Point;
       border_tex_array.wrapModeV = TextureWrapMode.Clamp;
       Shader.SetGlobalTexture("_border_tex_array", border_tex_array);
+      RuntimeModelResourceSet.DestroyResource(oldBorderTexArray);
     }
     // Fill pixels
 
@@ -2422,7 +2429,8 @@ public class TerrainSystem : MonoBehaviour
 
   void Awake()
   {
-    material = new Material(material); // Make material instance in case something else uses this material also
+    ownedMaterial = new Material(material);
+    material = ownedMaterial; // Keep terrain edits isolated from the shared source material.
     Shader.SetGlobalFloat("_terrain_min_ambient", min_ambient);
     AnalyzeBlocks();
     CreateTextureArrays();
@@ -2626,8 +2634,71 @@ public class TerrainSystem : MonoBehaviour
     sky_job.write_bounds.Dispose();
   }
 
+  void ReleaseChunkMeshes()
+  {
+    if (chunks == null) return;
+
+    foreach (Chunk chunk in chunks)
+    {
+      if (chunk == null) continue;
+
+      if (chunk.obj != null)
+      {
+        MeshFilter filter = chunk.obj.GetComponent<MeshFilter>();
+        if (filter != null && filter.sharedMesh == chunk.mesh) filter.sharedMesh = null;
+
+        MeshCollider collider = chunk.obj.GetComponent<MeshCollider>();
+        if (collider != null && collider.sharedMesh == chunk.phys_mesh) collider.sharedMesh = null;
+      }
+
+      RuntimeModelResourceSet.DestroyResource(chunk.mesh);
+      RuntimeModelResourceSet.DestroyResource(chunk.phys_mesh);
+      chunk.mesh = null;
+      chunk.phys_mesh = null;
+    }
+
+    chunks = null;
+  }
+
+  void ReleaseOwnedUnityResources()
+  {
+    CompleteTileDataJobs();
+    ReleaseChunkMeshes();
+
+    Texture2DArray ownedTexArray = tex_array;
+    tex_array = null;
+    if (ownedTexArray != null)
+    {
+      if (Shader.GetGlobalTexture("_tex_array") == ownedTexArray)
+      {
+        Shader.SetGlobalTexture("_tex_array", null);
+      }
+      RuntimeModelResourceSet.DestroyResource(ownedTexArray);
+    }
+
+    Texture2DArray ownedBorderTexArray = border_tex_array;
+    border_tex_array = null;
+    if (ownedBorderTexArray != null)
+    {
+      if (Shader.GetGlobalTexture("_border_tex_array") == ownedBorderTexArray)
+      {
+        Shader.SetGlobalTexture("_border_tex_array", null);
+      }
+      RuntimeModelResourceSet.DestroyResource(ownedBorderTexArray);
+    }
+
+    Material owned = ownedMaterial;
+    ownedMaterial = null;
+    if (owned != null)
+    {
+      if (material == owned) material = null;
+      RuntimeModelResourceSet.DestroyResource(owned);
+    }
+  }
+
   void OnDestroy()
   {
+    ReleaseOwnedUnityResources();
     DisposeNativeArrays();
   }
 
