@@ -2038,5 +2038,146 @@ public class GameDetailThumbnailLifecycleTests
     }
   }
 
+  [Test]
+  public void TerrainRenderingReleasesGeneratedColorAssetsOnTeardown()
+  {
+    Shader shader = Shader.Find("Standard");
+    Assert.IsNotNull(shader);
+    Material sourceMaterial = null;
+    GameObject sourcePrefab = null;
+    GameObject owner = null;
+    GameObject gridParentObject = null;
+    GameObject cellInstance = null;
+    GameObject edgeInstance = null;
+    TerrainRendering terrainRendering = null;
+    MethodInfo onDestroy = null;
+    GameObject[] generatedPrefabs = null;
+    Material[] ownedMaterials = null;
+    Color sourceColor = new Color(0.2f, 0.35f, 0.5f, 1f);
+    try
+    {
+      sourceMaterial = new Material(shader);
+      sourceMaterial.color = sourceColor;
+      sourcePrefab = new GameObject("Terrain color source prefab");
+      sourcePrefab.SetActive(false);
+      sourcePrefab.AddComponent<MeshFilter>();
+      sourcePrefab.AddComponent<MeshRenderer>().sharedMaterial = sourceMaterial;
+
+      owner = new GameObject("Terrain rendering owner");
+      owner.SetActive(false);
+      terrainRendering = owner.AddComponent<TerrainRendering>();
+      FieldInfo stylePrefabsField = typeof(TerrainRendering).GetField(
+        "solidColorStylePrefabs", PrivateInstance);
+      FieldInfo perColorPrefabsField = typeof(TerrainRendering).GetField(
+        "perColorPrefabs", PrivateInstance);
+      MethodInfo initialize = typeof(TerrainRendering).GetMethod(
+        "InitializePerColorPrefabs", PrivateInstance);
+      onDestroy = typeof(TerrainRendering).GetMethod("OnDestroy", PrivateInstance);
+      FieldInfo gridParentField = typeof(TerrainRendering).GetField(
+        "gridParent", PrivateInstance);
+      FieldInfo cellInstancesField = typeof(TerrainRendering).GetField(
+        "cellInstances", PrivateInstance);
+      FieldInfo edgeInstancesField = typeof(TerrainRendering).GetField(
+        "edgeInstances", PrivateInstance);
+      Assert.IsNotNull(stylePrefabsField);
+      Assert.IsNotNull(perColorPrefabsField);
+      Assert.IsNotNull(initialize);
+      Assert.IsNotNull(onDestroy);
+      Assert.IsNotNull(gridParentField);
+      Assert.IsNotNull(cellInstancesField);
+      Assert.IsNotNull(edgeInstancesField);
+
+      stylePrefabsField.SetValue(terrainRendering, new TerrainRendering.StylePrefabs
+      {
+        fullPrefab = sourcePrefab,
+        halfPrefab = sourcePrefab,
+        rampPrefab = sourcePrefab,
+        cornerPrefab = sourcePrefab,
+        wallPrefab = sourcePrefab
+      });
+      gridParentObject = new GameObject("Terrain rendering grid parent");
+      gridParentObject.transform.SetParent(owner.transform, false);
+      gridParentField.SetValue(terrainRendering, gridParentObject.transform);
+      cellInstance = new GameObject("Terrain cell render instance");
+      cellInstance.transform.SetParent(gridParentObject.transform, false);
+      edgeInstance = new GameObject("Terrain edge render instance");
+      edgeInstance.transform.SetParent(gridParentObject.transform, false);
+      ((System.Collections.IDictionary)cellInstancesField.GetValue(terrainRendering))
+        .Add(new TerrainManager.Cell(1, 2, 3), cellInstance);
+      ((System.Collections.IDictionary)edgeInstancesField.GetValue(terrainRendering))
+        .Add(new TerrainManager.Side(4, 5, 6, TerrainManager.CellSide.West), edgeInstance);
+      terrainRendering.blockColors = new Color[TerrainManager.NumSolidColorStyles];
+      for (int i = 0; i < terrainRendering.blockColors.Length; i++)
+      {
+        terrainRendering.blockColors[i] =
+          new Color((i + 1f) / (terrainRendering.blockColors.Length + 1f), 0.25f, 0.75f, 1f);
+      }
+      initialize.Invoke(terrainRendering, null);
+
+      TerrainRendering.StylePrefabs[] colorPrefabs =
+        (TerrainRendering.StylePrefabs[])perColorPrefabsField.GetValue(terrainRendering);
+      generatedPrefabs = new GameObject[colorPrefabs.Length * 5];
+      ownedMaterials = new Material[colorPrefabs.Length];
+      for (int i = 0; i < colorPrefabs.Length; i++)
+      {
+        TerrainRendering.StylePrefabs prefabs = colorPrefabs[i];
+        generatedPrefabs[i * 5] = prefabs.fullPrefab;
+        generatedPrefabs[i * 5 + 1] = prefabs.halfPrefab;
+        generatedPrefabs[i * 5 + 2] = prefabs.rampPrefab;
+        generatedPrefabs[i * 5 + 3] = prefabs.cornerPrefab;
+        generatedPrefabs[i * 5 + 4] = prefabs.wallPrefab;
+        ownedMaterials[i] = prefabs.cornerPrefab.GetComponent<Renderer>().sharedMaterial;
+
+        Assert.AreNotSame(sourceMaterial, ownedMaterials[i]);
+        Color assignedColor = ownedMaterials[i].color;
+        Color expectedColor = terrainRendering.blockColors[i];
+        Assert.That(assignedColor.r, Is.EqualTo(expectedColor.r).Within(0.0001f));
+        Assert.That(assignedColor.g, Is.EqualTo(expectedColor.g).Within(0.0001f));
+        Assert.That(assignedColor.b, Is.EqualTo(expectedColor.b).Within(0.0001f));
+        Assert.That(assignedColor.a, Is.EqualTo(expectedColor.a).Within(0.0001f));
+        Assert.AreSame(ownedMaterials[i], prefabs.fullPrefab.GetComponent<Renderer>().sharedMaterial);
+        Assert.AreSame(ownedMaterials[i], prefabs.halfPrefab.GetComponent<Renderer>().sharedMaterial);
+        Assert.AreSame(ownedMaterials[i], prefabs.rampPrefab.GetComponent<Renderer>().sharedMaterial);
+        Assert.AreSame(ownedMaterials[i], prefabs.wallPrefab.GetComponent<Renderer>().sharedMaterial);
+        if (i > 0) Assert.AreNotSame(ownedMaterials[i - 1], ownedMaterials[i]);
+      }
+
+      onDestroy.Invoke(terrainRendering, null);
+      Assert.IsTrue(gridParentObject == null);
+      Assert.IsTrue(cellInstance == null);
+      Assert.IsTrue(edgeInstance == null);
+      Assert.IsNull(gridParentField.GetValue(terrainRendering));
+      Assert.AreEqual(0,
+        ((System.Collections.IDictionary)cellInstancesField.GetValue(terrainRendering)).Count);
+      Assert.AreEqual(0,
+        ((System.Collections.IDictionary)edgeInstancesField.GetValue(terrainRendering)).Count);
+      for (int i = 0; i < generatedPrefabs.Length; i++)
+      {
+        Assert.IsTrue(generatedPrefabs[i] == null,
+          "TerrainRendering teardown must destroy each generated color prefab.");
+      }
+      for (int i = 0; i < ownedMaterials.Length; i++)
+      {
+        Assert.IsTrue(ownedMaterials[i] == null,
+          "TerrainRendering teardown must destroy every generated color material.");
+      }
+      Assert.IsTrue(sourceMaterial != null);
+      Color actualSourceColor = sourceMaterial.color;
+      Assert.That(actualSourceColor.r, Is.EqualTo(sourceColor.r).Within(0.0001f));
+      Assert.That(actualSourceColor.g, Is.EqualTo(sourceColor.g).Within(0.0001f));
+      Assert.That(actualSourceColor.b, Is.EqualTo(sourceColor.b).Within(0.0001f));
+      Assert.That(actualSourceColor.a, Is.EqualTo(sourceColor.a).Within(0.0001f),
+        "Generated color variants must not mutate or destroy the shared source material.");
+    }
+    finally
+    {
+      if (terrainRendering != null && onDestroy != null)
+        onDestroy.Invoke(terrainRendering, null);
+      if (owner != null) Object.DestroyImmediate(owner);
+      if (sourcePrefab != null) Object.DestroyImmediate(sourcePrefab);
+      if (sourceMaterial != null) Object.DestroyImmediate(sourceMaterial);
+    }
+  }
+
 }
 #endif

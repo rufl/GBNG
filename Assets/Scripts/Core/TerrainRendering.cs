@@ -80,6 +80,8 @@ public class TerrainRendering : MonoBehaviour
   // This is auto-generated from solidColorStylePrefabs.
   // The prefabs for each color share a single material, for perf.
   StylePrefabs[] perColorPrefabs;
+  List<GameObject> ownedColorPrefabs;
+  List<Material> ownedColorMaterials;
 
   // we should probably move this into TerrainSystem.
   public Color[] blockColors;
@@ -146,20 +148,28 @@ public class TerrainRendering : MonoBehaviour
     Material solidColorMaterial = solidColorStylePrefabs.cornerPrefab.GetComponentInChildren<Renderer>().sharedMaterial;
 
     perColorPrefabs = new StylePrefabs[NumSolidColorStyles];
+    ownedColorPrefabs = new List<GameObject>(NumSolidColorStyles * 5);
+    ownedColorMaterials = new List<Material>(NumSolidColorStyles);
 
     // Create prefabs for each color so we can just instantiate them, and they'll share the same materials.
     for (int style = 0; style < NumSolidColorStyles; style++)
     {
       Material sharedColorMaterial = Material.Instantiate(solidColorMaterial);
+      ownedColorMaterials.Add(sharedColorMaterial);
       sharedColorMaterial.SetColor(MATERIAL_COLOR_FIELD, blockColors[style]);
 
       StylePrefabs prefabs = new StylePrefabs();
 
       prefabs.fullPrefab = GameObject.Instantiate(solidColorStylePrefabs.fullPrefab);
+      ownedColorPrefabs.Add(prefabs.fullPrefab);
       prefabs.halfPrefab = GameObject.Instantiate(solidColorStylePrefabs.halfPrefab);
+      ownedColorPrefabs.Add(prefabs.halfPrefab);
       prefabs.rampPrefab = GameObject.Instantiate(solidColorStylePrefabs.rampPrefab);
+      ownedColorPrefabs.Add(prefabs.rampPrefab);
       prefabs.cornerPrefab = GameObject.Instantiate(solidColorStylePrefabs.cornerPrefab);
+      ownedColorPrefabs.Add(prefabs.cornerPrefab);
       prefabs.wallPrefab = GameObject.Instantiate(solidColorStylePrefabs.wallPrefab);
+      ownedColorPrefabs.Add(prefabs.wallPrefab);
 
       prefabs.ForEachPrefab(prefab =>
       {
@@ -350,15 +360,51 @@ public class TerrainRendering : MonoBehaviour
 
   public void Clear()
   {
-    foreach (Transform child in gridParent)
+    if (gridParent != null)
     {
-      Destroy(child);
+      for (int childIndex = gridParent.childCount - 1; childIndex >= 0; childIndex--)
+      {
+        RuntimeModelResourceSet.DestroyResource(gridParent.GetChild(childIndex).gameObject);
+      }
     }
 
+    cellInstances.Clear();
+    edgeInstances.Clear();
     foreach (var blockManager in groupBlockManagers.Values)
     {
       blockManager.ClearAll();
     }
+  }
+
+  void OnDestroy()
+  {
+    Clear();
+    groupBlockManagers.Clear();
+
+    if (gridParent != null)
+    {
+      RuntimeModelResourceSet.DestroyResource(gridParent.gameObject);
+      gridParent = null;
+    }
+
+    if (ownedColorPrefabs != null)
+    {
+      foreach (GameObject prefab in ownedColorPrefabs)
+      {
+        RuntimeModelResourceSet.DestroyResource(prefab);
+      }
+      ownedColorPrefabs.Clear();
+    }
+
+    if (ownedColorMaterials != null)
+    {
+      foreach (Material material in ownedColorMaterials)
+      {
+        RuntimeModelResourceSet.DestroyResource(material);
+      }
+      ownedColorMaterials.Clear();
+    }
+    perColorPrefabs = null;
   }
 
   void DrawInstancedCells()

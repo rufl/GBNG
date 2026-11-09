@@ -202,6 +202,8 @@ Terrain placement tint uses per-renderer property blocks for remote, delete, and
 edit ghosts. The create tool shares one component-owned material across local
 ghosts. Create, delete, and edit preview components release their tracked ghosts
 on teardown without modifying shared source materials.
+`TerrainRendering` releases generated per-color prefab/material variants and
+clears cell/edge render state when its component is destroyed.
 
 Actor renderable tint and `_Running` shader state use per-renderer property
 blocks, preserving actor-specific appearance while sharing source materials.
