@@ -97,6 +97,8 @@ are released when replaced or torn down.
 
 Feedback submissions continue after the form closes; network failures are logged.
 
+Failed HTTP sound downloads are reported and are not cached as audio clips.
+
 The synthetic Custom behavior-card panel persists its display order per actor in
 brain metadata, separate from the behavior-use order that controls runtime execution.
 
