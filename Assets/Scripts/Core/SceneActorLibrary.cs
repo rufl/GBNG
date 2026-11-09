@@ -48,12 +48,26 @@ public class SceneActorLibrary : MonoBehaviour
   // Argument is the ID of the deleted prefab.
   public event System.Action<string> onActorDelete;
   Dictionary<ulong, SavedActorPack> actorPacks = new Dictionary<ulong, SavedActorPack>();
+  // Search results can keep old prefabs alive after a SOJO update. Retire replaced textures
+  // until this library is destroyed so those results never reference a destroyed thumbnail.
+  readonly Dictionary<string, Texture2D> thumbnailByActorId = new Dictionary<string, Texture2D>();
+  readonly List<Texture2D> retiredThumbnails = new List<Texture2D>();
+  readonly Dictionary<string, string> thumbnailSourceByActorId = new Dictionary<string, string>();
 
   void Awake()
   {
     Util.FindIfNotSet(this, ref sojoSystem);
     sojoSystem.onSojoPut += OnSojoPut;
     sojoSystem.onSojoDelete += OnSojoDelete;
+  }
+  void OnDestroy()
+  {
+    if (sojoSystem != null)
+    {
+      sojoSystem.onSojoPut -= OnSojoPut;
+      sojoSystem.onSojoDelete -= OnSojoDelete;
+    }
+    ReleaseThumbnailTextures();
   }
 
   void OnSojoPut(Sojo newSojo)
@@ -64,6 +78,11 @@ public class SceneActorLibrary : MonoBehaviour
     }
 
     string id = FromSojoId(newSojo.id);
+    string cachedContent;
+    if (!thumbnailSourceByActorId.TryGetValue(id, out cachedContent) || cachedContent != newSojo.content)
+    {
+      RetireThumbnail(id);
+    }
     onActorPut?.Invoke(id);
   }
 
@@ -75,6 +94,7 @@ public class SceneActorLibrary : MonoBehaviour
     }
 
     string id = FromSojoId(newSojo.id);
+    RetireThumbnail(id);
     onActorDelete?.Invoke(id);
   }
 
@@ -86,16 +106,69 @@ public class SceneActorLibrary : MonoBehaviour
     return Deserialize(sojo);
   }
 
+  Texture2D GetOrCreateThumbnail(string id, string sojoContent, string thumbnailJZB64)
+  {
+    Texture2D thumbnail;
+    if (thumbnailByActorId.TryGetValue(id, out thumbnail) && thumbnail != null)
+    {
+      string cachedContent;
+      if (thumbnailSourceByActorId.TryGetValue(id, out cachedContent) && cachedContent == sojoContent)
+      {
+        return thumbnail;
+      }
+      RetireThumbnail(id);
+    }
+    if (thumbnailJZB64.IsNullOrEmpty())
+    {
+      return null;
+    }
+
+    thumbnail = Util.ZippedJpegToTexture2D(
+      System.Convert.FromBase64String(thumbnailJZB64), false);
+    thumbnailByActorId[id] = thumbnail;
+    thumbnailSourceByActorId[id] = sojoContent;
+    return thumbnail;
+  }
+
+  void RetireThumbnail(string id)
+  {
+    Texture2D thumbnail;
+    if (thumbnailByActorId.TryGetValue(id, out thumbnail))
+    {
+      thumbnailByActorId.Remove(id);
+      if (thumbnail != null) retiredThumbnails.Add(thumbnail);
+    }
+    thumbnailSourceByActorId.Remove(id);
+  }
+
+  void ReleaseThumbnailTextures()
+  {
+    foreach (Texture2D thumbnail in thumbnailByActorId.Values)
+    {
+      DestroyThumbnail(thumbnail);
+    }
+    foreach (Texture2D thumbnail in retiredThumbnails)
+    {
+      DestroyThumbnail(thumbnail);
+    }
+    thumbnailByActorId.Clear();
+    thumbnailSourceByActorId.Clear();
+    retiredThumbnails.Clear();
+  }
+
+  static void DestroyThumbnail(Texture2D thumbnail)
+  {
+    if (thumbnail == null) return;
+    if (Application.isPlaying) UnityEngine.Object.Destroy(thumbnail);
+    else UnityEngine.Object.DestroyImmediate(thumbnail);
+  }
   ActorPrefabImpl Deserialize(Sojo sojo)
   {
     SavedActorPrefab saved = JsonUtility.FromJson<SavedActorPrefab>(sojo.content);
     saved.PerformUpgrades();
-    Texture2D thumbnail = null;
-    if (!saved.thumbnailJZB64.IsNullOrEmpty())
-    {
-      thumbnail = Util.ZippedJpegToTexture2D(System.Convert.FromBase64String(saved.thumbnailJZB64), false);
-    }
-    return new ActorPrefabImpl(saved, thumbnail, FromSojoId(sojo.id), sojoSystem);
+    string id = FromSojoId(sojo.id);
+    Texture2D thumbnail = GetOrCreateThumbnail(id, sojo.content, saved.thumbnailJZB64);
+    return new ActorPrefabImpl(saved, thumbnail, id, sojoSystem);
   }
 
   public IEnumerable<ActorPrefab> GetAll()

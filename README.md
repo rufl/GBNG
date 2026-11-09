@@ -113,6 +113,11 @@ Public-session thumbnails own their decoded textures and release them when
 their thumbnail items are destroyed or refreshed. Compressed thumbnail decode
 failures also dispose their temporary texture.
 
+Scene actor and built-in prefab libraries cache decoded thumbnails and own those
+textures until teardown. Scene actor thumbnails replaced or deleted during the
+session remain alive until teardown because existing search results may still
+reference them. Script-driven built-in prefab spawns skip thumbnail decoding.
+
 Template thumbnails load once even while their menu item is inactive. Requests
 are disposed on completion, replacement, or teardown; generated image objects
 are released when replaced or torn down.

@@ -321,6 +321,9 @@ public class PrefabLibrary : MonoBehaviour
   SojoSystem sojos;
 
   List<ActorPrefab> actorPrefabs = new List<ActorPrefab>();
+  // The library owns these shared thumbnails. ActorPrefab instances returned by Get
+  // borrow them, so the texture survives while search results or asset cache entries use it.
+  readonly Dictionary<string, Texture2D> actorThumbnailByUri = new Dictionary<string, Texture2D>();
 
   event System.Action<ActorPrefab> prefabProcessor;
 
@@ -348,27 +351,54 @@ public class PrefabLibrary : MonoBehaviour
 
     StartCoroutine(ReloadActorPrefabs(false));
   }
+  void OnDestroy()
+  {
+    ReleaseThumbnailTextures();
+  }
+
+  void ReleaseThumbnailTextures()
+  {
+    foreach (Texture2D thumbnail in actorThumbnailByUri.Values)
+    {
+      if (thumbnail == null) continue;
+      if (Application.isPlaying) Destroy(thumbnail);
+      else DestroyImmediate(thumbnail);
+    }
+    actorThumbnailByUri.Clear();
+  }
+
+  Texture2D LoadThumbnail(string uri, SavedActorPrefab actorPrefab)
+  {
+    Texture2D thumbnail;
+    if (actorThumbnailByUri.TryGetValue(uri, out thumbnail))
+    {
+      return thumbnail;
+    }
+
+    thumbnail = Util.ReadPngToTexture(GetActorThumbnailPath(uri));
+    if (thumbnail == null && !actorPrefab.thumbnailJZB64.IsNullOrEmpty())
+    {
+      thumbnail = Util.ZippedJpegToTexture2D(
+        System.Convert.FromBase64String(actorPrefab.thumbnailJZB64));
+    }
+    actorThumbnailByUri[uri] = thumbnail;
+    return thumbnail;
+  }
+
 
   string GetActorThumbnailPath(string uri)
   {
     return Path.Combine(GetActorPrefabsRoot(), $"{uri}-thumbnail.png");
   }
 
-  ActorPrefab LoadActorPrefab(string uri)
+  ActorPrefab LoadActorPrefab(string uri, bool loadThumbnail)
   {
     string voosFilePath = GetPathForUri(uri);
     string json = File.ReadAllText(voosFilePath);
     SavedActorPrefab actorPrefab = JsonUtility.FromJson<SavedActorPrefab>(json);
     actorPrefab.PerformUpgrades();
 
-    // Load thumbnail
-    string thumbnailPng = GetActorThumbnailPath(uri);
-    Texture2D thumbnail = Util.ReadPngToTexture(thumbnailPng);
-    if (thumbnail == null && !actorPrefab.thumbnailJZB64.IsNullOrEmpty())
-    {
-      thumbnail = Util.ZippedJpegToTexture2D(
-        System.Convert.FromBase64String(actorPrefab.thumbnailJZB64));
-    }
+    Texture2D thumbnail = loadThumbnail ? LoadThumbnail(uri, actorPrefab) : null;
     return new ActorPrefabImpl(actorPrefab, thumbnail, uri, sojos);
   }
 
@@ -396,7 +426,7 @@ public class PrefabLibrary : MonoBehaviour
           return;
         }
         alreadyReadUris.Add(uri);
-        actorPrefabs.Add(LoadActorPrefab(uri));
+        actorPrefabs.Add(LoadActorPrefab(uri, true));
         prefabProcessor?.Invoke(actorPrefabs[actorPrefabs.Count - 1]);
       }
       catch (System.Exception e)
@@ -481,7 +511,13 @@ public class PrefabLibrary : MonoBehaviour
 
   public ActorPrefab Get(string id)
   {
-    return LoadActorPrefab(id);
+    return LoadActorPrefab(id, true);
+  }
+
+  // Script-driven spawns never display the thumbnail. Avoid decoding one for every spawn.
+  internal ActorPrefab GetForInstantiation(string id)
+  {
+    return LoadActorPrefab(id, false);
   }
 
   public bool PrefabExists(string id)

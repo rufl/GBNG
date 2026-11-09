@@ -622,7 +622,7 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
       VoosActor actor = null;
       if (uri.Scheme == "builtin")
       {
-        actor = builtinPrefabLibrary.Get(uri.LocalPath).Instantiate(this, behaviorSystem, args.position, args.rotation, setupActor =>
+        actor = builtinPrefabLibrary.GetForInstantiation(uri.LocalPath).Instantiate(this, behaviorSystem, args.position, args.rotation, setupActor =>
         {
           setupActor.SetSpawnPosition(args.position);
           setupActor.SetSpawnRotation(args.rotation);
