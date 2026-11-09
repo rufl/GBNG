@@ -397,6 +397,13 @@ public class WorkshopMenuCallbackTests
     }
   }
 
+  [Test]
+  public void ActorAndCardWorkshopMenusIgnoreStaleResultsAfterCloseAndDestroy()
+  {
+    AssertWorkshopSubmenuRejectsStaleResults(typeof(ActorPrefabWorkshopMenu));
+    AssertWorkshopSubmenuRejectsStaleResults(typeof(CardPackWorkshopMenu));
+  }
+
   static void AssertWorkshopSubmenuHandlesFallback(Type menuType)
   {
     GameObject menuObject = new GameObject(menuType.Name + " Offline Test");
@@ -410,6 +417,7 @@ public class WorkshopMenuCallbackTests
     MethodInfo callback = menuType.GetMethod(
       "OnWorkshopListLoaded", BindingFlags.Instance | BindingFlags.NonPublic);
     FieldInfo pageCountField = menuType.GetField("pageCount", BindingFlags.Instance | BindingFlags.NonPublic);
+    FieldInfo requestIdField = menuType.GetField("itemListRequestId", BindingFlags.Instance | BindingFlags.NonPublic);
 
     try
     {
@@ -417,21 +425,24 @@ public class WorkshopMenuCallbackTests
       Assert.IsNotNull(createThumbnails);
       Assert.IsNotNull(callback);
       Assert.IsNotNull(pageCountField);
+      Assert.IsNotNull(requestIdField);
       loadingFeedbackField.SetValue(menu, loadingFeedback);
+      menuObject.SetActive(true);
 
       createThumbnails.Invoke(menu, new object[] { 1u });
       Assert.IsFalse(loadingFeedback.activeSelf, menuType.Name + " kept loading while Steam was unavailable.");
+      int requestId = (int)requestIdField.GetValue(menu);
 
       loadingFeedback.SetActive(true);
       WorkshopItemListEventArgs error = new WorkshopItemListEventArgs(
         new WorkshopItemList(new List<WorkshopItem>(), 0), true, "offline");
-      callback.Invoke(menu, new object[] { error });
+      callback.Invoke(menu, new object[] { error, requestId });
       Assert.IsFalse(loadingFeedback.activeSelf, menuType.Name + " kept loading after a failed request.");
 
       loadingFeedbackField.SetValue(menu, null);
       WorkshopItemListEventArgs emptyResult = new WorkshopItemListEventArgs(
         new WorkshopItemList(new List<WorkshopItem>(), 2));
-      callback.Invoke(menu, new object[] { emptyResult });
+      callback.Invoke(menu, new object[] { emptyResult, requestId });
       Assert.AreEqual(2u, pageCountField.GetValue(menu));
     }
     finally
@@ -440,6 +451,61 @@ public class WorkshopMenuCallbackTests
       UnityEngine.Object.DestroyImmediate(loadingFeedback);
     }
   }
+  static void AssertWorkshopSubmenuRejectsStaleResults(Type menuType)
+  {
+    GameObject menuObject = new GameObject(menuType.Name + " Stale Callback Test");
+    Component menu = menuObject.AddComponent(menuType);
+    GameObject loadingFeedback = new GameObject("Workshop loading feedback");
+    FieldInfo requestIdField = menuType.GetField(
+      "itemListRequestId", BindingFlags.Instance | BindingFlags.NonPublic);
+    FieldInfo pageCountField = menuType.GetField(
+      "pageCount", BindingFlags.Instance | BindingFlags.NonPublic);
+    FieldInfo loadingFeedbackField = typeof(ThumbnailMenu).GetField(
+      "workingFeedback", BindingFlags.Instance | BindingFlags.NonPublic);
+    MethodInfo callback = menuType.GetMethod(
+      "OnWorkshopListLoaded", BindingFlags.Instance | BindingFlags.NonPublic);
+    WorkshopItemListEventArgs lateResult = new WorkshopItemListEventArgs(
+      new WorkshopItemList(new List<WorkshopItem>(), 9));
+    WorkshopItemListEventArgs currentResult = new WorkshopItemListEventArgs(
+      new WorkshopItemList(new List<WorkshopItem>(), 2));
+    const int staleRequestId = 12;
+
+    try
+    {
+      Assert.IsNotNull(requestIdField);
+      Assert.IsNotNull(pageCountField);
+      Assert.IsNotNull(loadingFeedbackField);
+      Assert.IsNotNull(callback);
+      requestIdField.SetValue(menu, staleRequestId);
+      pageCountField.SetValue(menu, 1u);
+      loadingFeedbackField.SetValue(menu, loadingFeedback);
+      SetField(menu, typeof(ThumbnailMenu), "sortText", CreateTestText("Sort label", menuObject.transform));
+
+      ((IMenuPanelInterface)menu).Close();
+      ((IMenuPanelInterface)menu).Open();
+      loadingFeedback.SetActive(true);
+      callback.Invoke(menu, new object[] { lateResult, staleRequestId });
+
+      Assert.AreEqual(1u, pageCountField.GetValue(menu), menuType.Name + " applied an old page result.");
+      Assert.IsTrue(loadingFeedback.activeSelf, menuType.Name + " cleared the current loading indicator.");
+
+      int currentRequestId = (int)requestIdField.GetValue(menu);
+      Assert.AreEqual(staleRequestId + 1, currentRequestId, menuType.Name + " did not invalidate on close.");
+      callback.Invoke(menu, new object[] { currentResult, currentRequestId });
+
+      Assert.AreEqual(2u, pageCountField.GetValue(menu));
+      Assert.IsFalse(loadingFeedback.activeSelf);
+
+      UnityEngine.Object.DestroyImmediate(menuObject);
+      callback.Invoke(menu, new object[] { currentResult, currentRequestId });
+    }
+    finally
+    {
+      if (menuObject != null) UnityEngine.Object.DestroyImmediate(menuObject);
+      UnityEngine.Object.DestroyImmediate(loadingFeedback);
+    }
+  }
+
   static GameObject CreateInactiveObject(string name, Transform parent)
   {
     GameObject created = new GameObject(name, typeof(RectTransform));

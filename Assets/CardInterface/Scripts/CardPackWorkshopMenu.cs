@@ -47,6 +47,7 @@ public class CardPackWorkshopMenu : ThumbnailMenu
 
   protected uint curPage = 1;
   protected uint pageCount = 1;
+  int itemListRequestId;
 
   public override void Setup()
   {
@@ -70,6 +71,12 @@ public class CardPackWorkshopMenu : ThumbnailMenu
     sortText.text = workshopSort.ToString();
     base.Open();
   }
+  public override void Close()
+  {
+    itemListRequestId++;
+    base.Close();
+  }
+
 
   void OnSearch(string searchString)
   {
@@ -116,6 +123,7 @@ public class CardPackWorkshopMenu : ThumbnailMenu
 
   void CreateSteamThumbnails(uint page = 1)
   {
+    int requestId = ++itemListRequestId;
     if (!SteamRuntime.Initialized)
     {
       if (workingFeedback != null) workingFeedback.SetActive(false);
@@ -130,7 +138,8 @@ public class CardPackWorkshopMenu : ThumbnailMenu
     SteamWorkshopService.Instance.ExcludedTags.Clear();
     SteamWorkshopService.Instance.SearchTags.Add(SteamUtil.GameBuilderTags.CardPack.ToString());
     SteamWorkshopService.Instance.Sorting = new WorkshopSortMode(GetSortMode());
-    SteamWorkshopService.Instance.GetItemList(curPage, OnWorkshopListLoaded);
+    SteamWorkshopService.Instance.GetItemList(
+      curPage, args => OnWorkshopListLoaded(args, requestId));
   }
 
   protected override void Update()
@@ -139,8 +148,13 @@ public class CardPackWorkshopMenu : ThumbnailMenu
     pageText.text = $"Page {curPage} of {pageCount}";
   }
 
-  void OnWorkshopListLoaded(WorkshopItemListEventArgs args)
+  void OnWorkshopListLoaded(WorkshopItemListEventArgs args, int requestId)
   {
+    if (this == null || requestId != itemListRequestId || !IsOpen())
+    {
+      return;
+    }
+
     if (args.IsError)
     {
       if (workingFeedback != null) workingFeedback.SetActive(false);
