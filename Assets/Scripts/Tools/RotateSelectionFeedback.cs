@@ -36,10 +36,9 @@ public class RotateSelectionFeedback : SelectionFeedback
 
   public void Setup()
   {
-    yawMaterial = yawRenderer.material;
-    pitchMaterial = pitchRenderer.material;
-    rollMaterial = rollRenderer.material;
-
+    yawMaterial = GetOrCreateOwnedMaterial(yawRenderer);
+    pitchMaterial = GetOrCreateOwnedMaterial(pitchRenderer);
+    rollMaterial = GetOrCreateOwnedMaterial(rollRenderer);
 
     yawMaterial.SetColor("_MainTint", yawColor);
     rollMaterial.SetColor("_MainTint", rollColor);

@@ -189,6 +189,10 @@ JointControl and JointFeedback tint their line/child renderers with component-ow
 material instances and destroy those instances on teardown, leaving shared source
 materials unchanged.
 
+SelectionFeedback and the move/rotate gizmos clone tint materials per tool
+instance, preserve selection and axis highlighting, and release those instances
+when the tool is destroyed.
+
 GameBuilderStage destroys its per-scene skybox and ground material instances on
 teardown. It restores the previous global skybox only when RenderSettings still
 references an instance owned by that stage; caller-owned temporary skyboxes

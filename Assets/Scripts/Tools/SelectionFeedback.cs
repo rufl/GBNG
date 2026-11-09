@@ -31,25 +31,54 @@ public class SelectionFeedback : MonoBehaviour
   Vector3 offset = Vector3.zero;
 
   protected VoosActor currentActor;
+  readonly Dictionary<Renderer, Material> ownedMaterialInstances =
+    new Dictionary<Renderer, Material>();
+  Material feedbackMaterialInstance;
 
   public void SetVisiblity(bool on)
   {
     gameObject.SetActive(on);
   }
 
-  void Awake()
+  protected virtual void Awake()
   {
-    if (feedbackRenderer != null) feedbackRenderer.material.color = defaultColor;
+    if (feedbackRenderer == null) return;
+    feedbackMaterialInstance = GetOrCreateOwnedMaterial(feedbackRenderer);
+    if (feedbackMaterialInstance != null) feedbackMaterialInstance.color = defaultColor;
+  }
+
+  protected Material GetOrCreateOwnedMaterial(Renderer renderer)
+  {
+    if (renderer == null) return null;
+    Material instance;
+    if (ownedMaterialInstances.TryGetValue(renderer, out instance)) return instance;
+
+    Material source = renderer.sharedMaterial;
+    if (source == null) return null;
+    instance = new Material(source);
+    renderer.sharedMaterial = instance;
+    ownedMaterialInstances.Add(renderer, instance);
+    return instance;
+  }
+
+  protected virtual void OnDestroy()
+  {
+    foreach (Material material in ownedMaterialInstances.Values)
+    {
+      RuntimeModelResourceSet.DestroyResource(material);
+    }
+    ownedMaterialInstances.Clear();
   }
 
   public virtual void SetSelected(bool on)
   {
-    if (feedbackRenderer != null) feedbackRenderer.material.color = on ? selectColor : defaultColor;
+    if (feedbackMaterialInstance != null)
+      feedbackMaterialInstance.color = on ? selectColor : defaultColor;
   }
 
   public void SetColor(Color color)
   {
-    if (feedbackRenderer != null) feedbackRenderer.material.color = color;
+    if (feedbackMaterialInstance != null) feedbackMaterialInstance.color = color;
   }
 
   public VoosActor GetActor()

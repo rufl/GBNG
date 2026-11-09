@@ -1,8 +1,10 @@
 #if UNITY_EDITOR
+using System.Collections;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.TestTools;
 
 public class GameDetailThumbnailLifecycleTests
 {
@@ -973,6 +975,273 @@ public class GameDetailThumbnailLifecycleTests
       if (lineMaterialInstance != null) Object.DestroyImmediate(lineMaterialInstance);
       if (childMaterialInstance != null) Object.DestroyImmediate(childMaterialInstance);
     }
+  }
+
+  [Test]
+  public void SelectionFeedbackOwnsAndReleasesBaseTintMaterial()
+  {
+    Shader shader = Shader.Find("Standard");
+    Assert.IsNotNull(shader);
+
+    GameObject owner = new GameObject("Selection feedback material owner");
+    owner.SetActive(false);
+    Material sourceMaterial = new Material(shader);
+    sourceMaterial.color = Color.white;
+    Material materialInstance = null;
+    try
+    {
+      MeshRenderer renderer = owner.AddComponent<MeshRenderer>();
+      renderer.sharedMaterial = sourceMaterial;
+      SelectionFeedback feedback = owner.AddComponent<SelectionFeedback>();
+
+      FieldInfo rendererField = typeof(SelectionFeedback).GetField("feedbackRenderer", PrivateInstance);
+      FieldInfo defaultColorField = typeof(SelectionFeedback).GetField("defaultColor", PrivateInstance);
+      FieldInfo selectColorField = typeof(SelectionFeedback).GetField("selectColor", PrivateInstance);
+      Assert.IsNotNull(rendererField);
+      Assert.IsNotNull(defaultColorField);
+      Assert.IsNotNull(selectColorField);
+      rendererField.SetValue(feedback, renderer);
+      defaultColorField.SetValue(feedback, Color.blue);
+      selectColorField.SetValue(feedback, Color.yellow);
+
+      MethodInfo awake = typeof(SelectionFeedback).GetMethod("Awake", PrivateInstance);
+      MethodInfo onDestroy = typeof(SelectionFeedback).GetMethod("OnDestroy", PrivateInstance);
+      Assert.IsNotNull(awake);
+      Assert.IsNotNull(onDestroy);
+      awake.Invoke(feedback, null);
+      owner.SetActive(true);
+      materialInstance = renderer.sharedMaterial;
+      Assert.AreNotSame(sourceMaterial, materialInstance,
+        "Selection feedback must not tint its shared prefab material.");
+      Assert.AreEqual(Color.blue, materialInstance.color);
+      feedback.SetSelected(true);
+      Assert.AreEqual(Color.yellow, materialInstance.color,
+        "Selecting the feedback must apply its selection color.");
+      feedback.SetSelected(false);
+      Assert.AreEqual(Color.blue, materialInstance.color,
+        "Deselecting the feedback must restore its default color.");
+      feedback.SetColor(Color.magenta);
+      Assert.AreEqual(Color.magenta, materialInstance.color);
+      Assert.AreEqual(Color.white, sourceMaterial.color);
+
+      onDestroy.Invoke(feedback, null);
+      Assert.IsTrue(materialInstance == null,
+        "Selection feedback teardown must release its owned material.");
+    }
+    finally
+    {
+      if (owner != null) Object.DestroyImmediate(owner);
+      if (sourceMaterial != null) Object.DestroyImmediate(sourceMaterial);
+      if (materialInstance != null) Object.DestroyImmediate(materialInstance);
+    }
+  }
+
+  [Test]
+  public void AxisGizmosOwnTheirMaterialsAndPreserveTintTransitions()
+  {
+    Shader shader = Shader.Find("Sully/Manipulator DS Unlit");
+    Assert.IsNotNull(shader);
+
+    AssertAxisGizmoMaterialsAreOwnedAndReleased(
+      typeof(PositionSelectionFeedback),
+      new[] { "xRenderer", "yRenderer", "zRenderer" },
+      new[] { "xColor", "yColor", "zColor" },
+      new[] { Color.red, Color.green, Color.blue },
+      new object[] { MoveTool.GizmoAxis.X, false },
+      new[] { Color.magenta, Color.green, Color.blue },
+      shader);
+    AssertAxisGizmoMaterialsAreOwnedAndReleased(
+      typeof(RotateSelectionFeedback),
+      new[] { "yawRenderer", "pitchRenderer", "rollRenderer" },
+      new[] { "yawColor", "pitchColor", "rollColor" },
+      new[] { Color.green, Color.red, Color.cyan },
+      new object[] { RotateTool.RotationAxis.Pitch },
+      new[] { Color.green, Color.magenta, Color.cyan },
+      shader);
+  }
+
+  void AssertAxisGizmoMaterialsAreOwnedAndReleased(
+    System.Type componentType,
+    string[] rendererFieldNames,
+    string[] colorFieldNames,
+    Color[] axisColors,
+    object[] updateAxisArguments,
+    Color[] expectedColors,
+    Shader shader)
+  {
+    GameObject owner = new GameObject(componentType.Name + " material owner");
+    owner.SetActive(false);
+    GameObject[] axisObjects = new GameObject[3];
+    Material[] sourceMaterials = new Material[3];
+    Material[] materialInstances = new Material[3];
+    try
+    {
+      Renderer[] renderers = new Renderer[3];
+      for (int i = 0; i < renderers.Length; i++)
+      {
+        axisObjects[i] = new GameObject("Gizmo axis " + i);
+        axisObjects[i].transform.SetParent(owner.transform, false);
+        renderers[i] = axisObjects[i].AddComponent<MeshRenderer>();
+        sourceMaterials[i] = new Material(shader);
+        Assert.IsTrue(sourceMaterials[i].HasProperty("_MainTint"),
+          "The test shader must expose the gizmo tint property.");
+        sourceMaterials[i].SetColor("_MainTint", Color.white);
+        renderers[i].sharedMaterial = sourceMaterials[i];
+      }
+
+      Component feedback = owner.AddComponent(componentType);
+      for (int i = 0; i < renderers.Length; i++)
+      {
+        FieldInfo rendererField = componentType.GetField(rendererFieldNames[i], PrivateInstance);
+        FieldInfo colorField = componentType.GetField(colorFieldNames[i], PrivateInstance);
+        Assert.IsNotNull(rendererField);
+        Assert.IsNotNull(colorField);
+        rendererField.SetValue(feedback, renderers[i]);
+        colorField.SetValue(feedback, axisColors[i]);
+      }
+      FieldInfo selectColorField = componentType.GetField("selectColor", PrivateInstance);
+      Assert.IsNotNull(selectColorField);
+      selectColorField.SetValue(feedback, Color.magenta);
+      owner.SetActive(true);
+
+      MethodInfo setup = componentType.GetMethod("Setup", BindingFlags.Instance | BindingFlags.Public);
+      MethodInfo updateAxis = componentType.GetMethod("UpdateAxis", PrivateInstance);
+      MethodInfo onDestroy = typeof(SelectionFeedback).GetMethod("OnDestroy", PrivateInstance);
+      Assert.IsNotNull(setup);
+      Assert.IsNotNull(updateAxis);
+      Assert.IsNotNull(onDestroy);
+      setup.Invoke(feedback, null);
+
+      for (int i = 0; i < renderers.Length; i++)
+      {
+        materialInstances[i] = renderers[i].sharedMaterial;
+        Assert.AreNotSame(sourceMaterials[i], materialInstances[i],
+          "Each gizmo axis must use a component-owned material instance.");
+      }
+      Assert.AreNotSame(materialInstances[0], materialInstances[1]);
+      Assert.AreNotSame(materialInstances[1], materialInstances[2]);
+
+      updateAxis.Invoke(feedback, updateAxisArguments);
+      for (int i = 0; i < materialInstances.Length; i++)
+      {
+        Assert.AreEqual(expectedColors[i], materialInstances[i].GetColor("_MainTint"),
+          "Axis selection must tint only the active gizmo axis.");
+        Assert.AreEqual(Color.white, sourceMaterials[i].GetColor("_MainTint"),
+          "Axis tint changes must not modify the source material.");
+      }
+
+      onDestroy.Invoke(feedback, null);
+      for (int i = 0; i < materialInstances.Length; i++)
+      {
+        Assert.IsTrue(materialInstances[i] == null,
+          "Gizmo teardown must release every axis material instance.");
+      }
+    }
+    finally
+    {
+      if (owner != null) Object.DestroyImmediate(owner);
+      for (int i = 0; i < sourceMaterials.Length; i++)
+      {
+        if (sourceMaterials[i] != null) Object.DestroyImmediate(sourceMaterials[i]);
+        if (materialInstances[i] != null) Object.DestroyImmediate(materialInstances[i]);
+      }
+    }
+  }
+
+  [UnityTest]
+  public IEnumerator SelectionFeedbackReleasesMaterialsDuringRuntimeTeardown()
+  {
+    yield return new EnterPlayMode();
+
+    GameObject selectionOwner = null;
+    GameObject gizmoOwner = null;
+    Material selectionSource = null;
+    Material selectionInstance = null;
+    Material[] axisSources = new Material[3];
+    Material[] axisInstances = new Material[3];
+    bool selectionMaterialReleased = false;
+    bool allAxisMaterialsReleased = false;
+    bool sharedSourcesPreserved = false;
+    try
+    {
+      Shader shader = Shader.Find("Standard");
+      Assert.IsNotNull(shader);
+
+      selectionOwner = new GameObject("Runtime selection feedback material owner");
+      MeshRenderer selectionRenderer = selectionOwner.AddComponent<MeshRenderer>();
+      selectionSource = new Material(shader);
+      selectionRenderer.sharedMaterial = selectionSource;
+      SelectionFeedback selection = selectionOwner.AddComponent<SelectionFeedback>();
+
+      FieldInfo feedbackRendererField =
+        typeof(SelectionFeedback).GetField("feedbackRenderer", PrivateInstance);
+      Assert.IsNotNull(feedbackRendererField);
+      feedbackRendererField.SetValue(selection, selectionRenderer);
+      MethodInfo awake = typeof(SelectionFeedback).GetMethod("Awake", PrivateInstance);
+      Assert.IsNotNull(awake);
+      awake.Invoke(selection, null);
+      selectionInstance = selectionRenderer.sharedMaterial;
+
+      gizmoOwner = new GameObject("Runtime axis gizmo material owner");
+      Renderer[] axisRenderers = new Renderer[3];
+      for (int i = 0; i < axisRenderers.Length; i++)
+      {
+        GameObject axisObject = new GameObject("Runtime gizmo axis " + i);
+        axisObject.transform.SetParent(gizmoOwner.transform, false);
+        axisRenderers[i] = axisObject.AddComponent<MeshRenderer>();
+        axisSources[i] = new Material(shader);
+        axisRenderers[i].sharedMaterial = axisSources[i];
+      }
+
+      PositionSelectionFeedback gizmo = gizmoOwner.AddComponent<PositionSelectionFeedback>();
+      string[] rendererFields = { "xRenderer", "yRenderer", "zRenderer" };
+      for (int i = 0; i < axisRenderers.Length; i++)
+      {
+        FieldInfo rendererField = typeof(PositionSelectionFeedback).GetField(
+          rendererFields[i],
+          PrivateInstance);
+        Assert.IsNotNull(rendererField);
+        rendererField.SetValue(gizmo, axisRenderers[i]);
+      }
+      gizmo.Setup();
+      for (int i = 0; i < axisRenderers.Length; i++)
+      {
+        axisInstances[i] = axisRenderers[i].sharedMaterial;
+      }
+
+      Object.Destroy(selectionOwner);
+      Object.Destroy(gizmoOwner);
+      yield return null;
+
+      selectionMaterialReleased = selectionInstance == null;
+      allAxisMaterialsReleased = true;
+      sharedSourcesPreserved = selectionSource != null;
+      for (int i = 0; i < axisInstances.Length; i++)
+      {
+        allAxisMaterialsReleased &= axisInstances[i] == null;
+        sharedSourcesPreserved &= axisSources[i] != null;
+      }
+    }
+    finally
+    {
+      if (selectionOwner != null) Object.DestroyImmediate(selectionOwner);
+      if (gizmoOwner != null) Object.DestroyImmediate(gizmoOwner);
+      if (selectionSource != null) Object.DestroyImmediate(selectionSource);
+      if (selectionInstance != null) Object.DestroyImmediate(selectionInstance);
+      for (int i = 0; i < axisSources.Length; i++)
+      {
+        if (axisSources[i] != null) Object.DestroyImmediate(axisSources[i]);
+        if (axisInstances[i] != null) Object.DestroyImmediate(axisInstances[i]);
+      }
+    }
+
+    yield return new ExitPlayMode();
+    Assert.IsTrue(selectionMaterialReleased,
+      "Runtime destruction must release the base feedback material instance.");
+    Assert.IsTrue(allAxisMaterialsReleased,
+      "Runtime destruction must release every inherited gizmo material instance.");
+    Assert.IsTrue(sharedSourcesPreserved,
+      "Runtime teardown must not destroy shared source materials.");
   }
 }
 #endif

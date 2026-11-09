@@ -38,9 +38,9 @@ public class PositionSelectionFeedback : SelectionFeedback
 
   public void Setup()
   {
-    xMaterial = xRenderer.material;
-    yMaterial = yRenderer.material;
-    zMaterial = zRenderer.material;
+    xMaterial = GetOrCreateOwnedMaterial(xRenderer);
+    yMaterial = GetOrCreateOwnedMaterial(yRenderer);
+    zMaterial = GetOrCreateOwnedMaterial(zRenderer);
   }
 
   public override void SetActor(VoosActor _actor)
