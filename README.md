@@ -95,6 +95,8 @@ Template thumbnails load once even while their menu item is inactive. Requests
 are disposed on completion, replacement, or teardown; generated image objects
 are released when replaced or torn down.
 
+Feedback submissions continue after the form closes; network failures are logged.
+
 The synthetic Custom behavior-card panel persists its display order per actor in
 brain metadata, separate from the behavior-use order that controls runtime execution.
 

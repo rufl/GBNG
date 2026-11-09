@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-using System.Collections;
+using System;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -42,26 +42,46 @@ public class FeedbackForm : MonoBehaviour
     }
   }
 
-  public IEnumerator PostToForm(string input)
+  static void PostToForm(string url, string input, Action<string> onComplete)
   {
     WWWForm form = new WWWForm();
     form.AddField(FormEntryId, input);
 
-    using (UnityWebRequest request = UnityWebRequest.Post(FormUrl, form))
+    UnityWebRequest request = UnityWebRequest.Post(url, form);
+    try
     {
-      yield return request.SendWebRequest();
-      if (request.result != UnityWebRequest.Result.Success)
+      UnityWebRequestAsyncOperation operation = request.SendWebRequest();
+      operation.completed += _ =>
       {
-        Debug.LogWarning("Could not submit feedback: " + request.error);
-      }
+        string error = request.result == UnityWebRequest.Result.Success ? null : request.error;
+        try
+        {
+          onComplete?.Invoke(error);
+        }
+        finally
+        {
+          request.Dispose();
+        }
+      };
     }
+    catch (Exception exception)
+    {
+      request.Dispose();
+      onComplete?.Invoke(exception.Message);
+    }
+  }
+
+  static void OnPostToFormCompleted(string error)
+  {
+    if (!string.IsNullOrEmpty(error))
+      Debug.LogWarning("Could not submit feedback: " + error);
   }
 
   void SendInput(string inputstring)
   {
     if (inputstring == "") return;
 
-    StartCoroutine(PostToForm(inputstring));
+    PostToForm(FormUrl, inputstring, OnPostToFormCompleted);
     Close();
   }
 
