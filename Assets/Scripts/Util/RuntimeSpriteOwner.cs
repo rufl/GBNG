@@ -21,3 +21,30 @@ internal sealed class RuntimeSpriteOwner
     else Object.DestroyImmediate(sprite);
   }
 }
+
+internal sealed class RuntimeTextureOwner
+{
+  Texture2D ownedTexture;
+
+  public Texture2D Current
+  {
+    get { return ownedTexture; }
+  }
+
+  public Texture2D Replace(Texture2D texture)
+  {
+    if (ownedTexture == texture) return ownedTexture;
+    Release();
+    ownedTexture = texture;
+    return ownedTexture;
+  }
+
+  public void Release()
+  {
+    if (ownedTexture == null) return;
+    Texture2D texture = ownedTexture;
+    ownedTexture = null;
+    if (Application.isPlaying) Object.Destroy(texture);
+    else Object.DestroyImmediate(texture);
+  }
+}

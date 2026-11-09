@@ -28,6 +28,7 @@ public class SnapshotCamera : MonoBehaviour
   UserMain userMain;
   URP.PostProcessVolume post;
 
+  // Returns a fresh Texture2D owned by the caller; destroy it when no longer needed.
   public Texture2D SnapshotActor(VoosActor actor)
   {
     Util.FindIfNotSet(this, ref userMain);
@@ -62,6 +63,7 @@ public class SnapshotCamera : MonoBehaviour
     targetCamera.transform.LookAt(targetBounds.center);
   }
 
+  // Returns a fresh Texture2D owned by the caller; destroy it when no longer needed.
   public Texture2D SnapshotGameView()
   {
     Util.FindIfNotSet(this, ref userMain);

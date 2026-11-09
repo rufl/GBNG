@@ -95,11 +95,13 @@ The shared Game Library detail panel releases its generated thumbnail Sprite whe
 Featured and Workshop detail panels share that ownership rule, releasing their
 generated thumbnail Sprites on replacement or teardown while preserving the
 downloaded textures.
-SaveMenu also releases replaced and final screenshot Sprite wrappers without
-destroying the textures provided by the save flow.
-Snapshot popups release generated Sprites when they close. Library category and
-custom terrain preview Sprites are released on refresh or teardown; the icon
-picker disposes its cached Sprites and owned textures when its loader is destroyed.
+SaveMenu releases screenshot Sprite wrappers and its own captured textures on
+replacement or teardown, while preserving caller-owned textures. Snapshot
+popups release both their generated Sprite and captured Texture2D when they
+close. The Steam actor-upload dialog releases its captured thumbnail on
+replacement or close. Library category and custom terrain preview Sprites are
+released on refresh or teardown; the icon picker disposes its cached Sprites
+and owned textures when its loader is destroyed.
 ImageLoader releases per-URL Sprite and Texture caches and clears in-flight
 requests when the service is destroyed; late Workshop callbacks are ignored.
 

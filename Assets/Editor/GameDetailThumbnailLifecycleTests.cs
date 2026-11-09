@@ -102,6 +102,68 @@ public class GameDetailThumbnailLifecycleTests
     }
   }
   [Test]
+  public void SaveMenuReleasesOwnedCaptureTexturesButPreservesCallerOwnedTextures()
+  {
+    GameObject menuObject = new GameObject("Save menu capture texture lifecycle test");
+    menuObject.SetActive(false);
+    SaveMenu menu = menuObject.AddComponent<SaveMenu>();
+    GameObject saveUiObject = new GameObject("Save UI");
+    GameObject imageObject = new GameObject("Screenshot image", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+    Texture2D firstCapture = new Texture2D(2, 2);
+    Texture2D callerTexture = new Texture2D(2, 2);
+    Texture2D finalCapture = new Texture2D(2, 2);
+    Sprite firstSprite = null;
+    Sprite callerSprite = null;
+    Sprite finalSprite = null;
+    try
+    {
+      SaveUI saveUI = saveUiObject.AddComponent<SaveUI>();
+      saveUI.screenshotImage = imageObject.GetComponent<Image>();
+      FieldInfo saveUIField = typeof(SaveMenu).GetField("saveUI", PrivateInstance);
+      Assert.IsNotNull(saveUIField);
+      saveUIField.SetValue(menu, saveUI);
+
+      MethodInfo setCurrentImage = typeof(SaveMenu).GetMethod("SetCurrentSaveImage", PrivateInstance);
+      MethodInfo setScreenshotSprite = typeof(SaveMenu).GetMethod("SetScreenshotSprite", PrivateInstance);
+      Assert.IsNotNull(setCurrentImage);
+      Assert.IsNotNull(setScreenshotSprite);
+      setCurrentImage.Invoke(menu, new object[] { firstCapture, true });
+      setScreenshotSprite.Invoke(menu, new object[] { firstCapture });
+      firstSprite = saveUI.screenshotImage.sprite;
+
+      setCurrentImage.Invoke(menu, new object[] { callerTexture, false });
+      Assert.IsTrue(firstCapture == null, "Replacing an owned capture must destroy its Texture2D.");
+      Assert.IsTrue(firstSprite == null, "Replacing a capture must release its generated Sprite.");
+      Assert.IsNotNull(callerTexture, "Replacing a capture must preserve the caller-owned texture.");
+
+      setScreenshotSprite.Invoke(menu, new object[] { callerTexture });
+      callerSprite = saveUI.screenshotImage.sprite;
+      setCurrentImage.Invoke(menu, new object[] { finalCapture, true });
+      setScreenshotSprite.Invoke(menu, new object[] { finalCapture });
+      finalSprite = saveUI.screenshotImage.sprite;
+
+      MethodInfo onDestroy = typeof(SaveMenu).GetMethod("OnDestroy", PrivateInstance);
+      Assert.IsNotNull(onDestroy);
+      onDestroy.Invoke(menu, null);
+      Assert.IsTrue(finalCapture == null, "Destroying SaveMenu must release its owned capture texture.");
+      Assert.IsTrue(finalSprite == null, "Destroying SaveMenu must release its generated Sprite.");
+      Assert.IsNotNull(callerTexture, "Destroying SaveMenu must preserve caller-owned textures.");
+      Assert.IsTrue(callerSprite == null, "Replacing a screenshot must release the prior generated Sprite.");
+    }
+    finally
+    {
+      if (firstSprite != null) Object.DestroyImmediate(firstSprite);
+      if (callerSprite != null) Object.DestroyImmediate(callerSprite);
+      if (finalSprite != null) Object.DestroyImmediate(finalSprite);
+      Object.DestroyImmediate(menuObject);
+      Object.DestroyImmediate(saveUiObject);
+      Object.DestroyImmediate(imageObject);
+      if (firstCapture != null) Object.DestroyImmediate(firstCapture);
+      if (callerTexture != null) Object.DestroyImmediate(callerTexture);
+      if (finalCapture != null) Object.DestroyImmediate(finalCapture);
+    }
+  }
+  [Test]
   public void RuntimeSpriteCollectionReleasesEverySpriteAndPreservesTextures()
   {
     System.Type collectionType = typeof(GameDetail).Assembly.GetType("RuntimeSpriteCollection");
@@ -146,7 +208,95 @@ public class GameDetailThumbnailLifecycleTests
   }
 
   [Test]
-  public void PopupReleasesItsGeneratedSpriteButKeepsTheSnapshotTexture()
+  public void RuntimeTextureOwnerReleasesReplacedAndFinalOwnedTextures()
+  {
+    System.Type ownerType = typeof(GameDetail).Assembly.GetType("RuntimeTextureOwner");
+    Assert.IsNotNull(ownerType);
+    object owner = System.Activator.CreateInstance(ownerType, true);
+    MethodInfo replace = ownerType.GetMethod("Replace");
+    MethodInfo release = ownerType.GetMethod("Release");
+    System.Reflection.PropertyInfo current = ownerType.GetProperty("Current");
+    Assert.IsNotNull(replace);
+    Assert.IsNotNull(release);
+    Assert.IsNotNull(current);
+    Texture2D first = new Texture2D(2, 2);
+    Texture2D second = new Texture2D(2, 2);
+    try
+    {
+      replace.Invoke(owner, new object[] { first });
+      Assert.AreSame(first, current.GetValue(owner));
+      replace.Invoke(owner, new object[] { second });
+      Assert.IsTrue(first == null, "Replacing an owned texture must destroy the previous texture.");
+      Assert.AreSame(second, current.GetValue(owner));
+
+      release.Invoke(owner, null);
+      Assert.IsTrue(second == null, "Releasing the owner must destroy its final texture.");
+      Assert.IsNull(current.GetValue(owner));
+    }
+    finally
+    {
+      release.Invoke(owner, null);
+      if (first != null) Object.DestroyImmediate(first);
+      if (second != null) Object.DestroyImmediate(second);
+    }
+  }
+  [Test]
+  public void ActorUploadDialogReleasesCapturedThumbnailAndKeepsOtherTextures()
+  {
+    GameObject dialogObject = new GameObject("Actor upload dialog texture lifecycle test");
+    dialogObject.SetActive(false);
+    ActorPrefabUploadDialog dialog = dialogObject.AddComponent<ActorPrefabUploadDialog>();
+    GameObject imageObject = new GameObject("Upload thumbnail", typeof(RectTransform), typeof(CanvasRenderer),
+      typeof(UnityEngine.UI.RawImage));
+    Texture2D capturedTexture = new Texture2D(2, 2);
+    Texture2D replacementTexture = new Texture2D(2, 2);
+    Texture2D secondCapture = new Texture2D(2, 2);
+    System.Type ownerType = typeof(GameDetail).Assembly.GetType("RuntimeTextureOwner");
+    Assert.IsNotNull(ownerType);
+    object owner = System.Activator.CreateInstance(ownerType, true);
+    MethodInfo replace = ownerType.GetMethod("Replace");
+    MethodInfo release = ownerType.GetMethod("Release");
+    try
+    {
+      UnityEngine.UI.RawImage image = imageObject.GetComponent<UnityEngine.UI.RawImage>();
+      FieldInfo thumbnailImageField = typeof(WorkshopUploadDialog).GetField("thumbnailImage", PrivateInstance);
+      FieldInfo ownedSnapshotTextureField = typeof(ActorPrefabUploadDialog).GetField(
+        "ownedSnapshotTexture",
+        PrivateInstance);
+      Assert.IsNotNull(thumbnailImageField);
+      Assert.IsNotNull(ownedSnapshotTextureField);
+      Assert.IsNotNull(replace);
+      Assert.IsNotNull(release);
+      thumbnailImageField.SetValue(dialog, image);
+      ownedSnapshotTextureField.SetValue(dialog, owner);
+
+      MethodInfo onDisable = typeof(ActorPrefabUploadDialog).GetMethod("OnDisable", PrivateInstance);
+      Assert.IsNotNull(onDisable);
+      replace.Invoke(owner, new object[] { capturedTexture });
+      image.texture = capturedTexture;
+      onDisable.Invoke(dialog, null);
+      Assert.IsTrue(capturedTexture == null, "Closing the dialog must release its captured thumbnail.");
+      Assert.IsNull(image.texture, "Closing the dialog must clear its released thumbnail reference.");
+
+      image.texture = replacementTexture;
+      replace.Invoke(owner, new object[] { secondCapture });
+      onDisable.Invoke(dialog, null);
+      Assert.IsTrue(secondCapture == null, "Dialog teardown must release its current capture.");
+      Assert.AreSame(replacementTexture, image.texture, "Dialog teardown must preserve a different texture.");
+      Assert.IsNotNull(replacementTexture);
+    }
+    finally
+    {
+      if (release != null) release.Invoke(owner, null);
+      Object.DestroyImmediate(dialogObject);
+      Object.DestroyImmediate(imageObject);
+      if (capturedTexture != null) Object.DestroyImmediate(capturedTexture);
+      if (replacementTexture != null) Object.DestroyImmediate(replacementTexture);
+      if (secondCapture != null) Object.DestroyImmediate(secondCapture);
+    }
+  }
+  [Test]
+  public void PopupReleasesItsGeneratedSpriteAndOwnedSnapshotTexture()
   {
     GameObject popupObject = new GameObject("Snapshot popup", typeof(RectTransform));
     popupObject.SetActive(false);
@@ -167,7 +317,7 @@ public class GameDetailThumbnailLifecycleTests
       onDestroy.Invoke(popup, null);
 
       Assert.IsTrue(sprite == null, "Destroying the popup must release its generated Sprite.");
-      Assert.IsNotNull(texture, "The snapshot texture remains owned by the save flow.");
+      Assert.IsTrue(texture == null, "The popup owns and releases its snapshot texture.");
     }
     finally
     {
@@ -177,6 +327,7 @@ public class GameDetailThumbnailLifecycleTests
       Object.DestroyImmediate(texture);
     }
   }
+
 
   [Test]
   public void IconLoaderDestroysCachedSpritesAndTheirOwnedTextures()

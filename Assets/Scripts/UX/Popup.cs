@@ -22,6 +22,7 @@ public class Popup : MonoBehaviour
 {
   public UnityEngine.UI.Image image;
   readonly RuntimeSpriteOwner ownedSprite = new RuntimeSpriteOwner();
+  readonly RuntimeTextureOwner ownedTexture = new RuntimeTextureOwner();
 
   void Start()
   {
@@ -37,7 +38,11 @@ public class Popup : MonoBehaviour
   void SetSprite(Texture2D texture)
   {
     Sprite sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(.5f, .5f), 100);
-    if (sprite != null) image.sprite = ownedSprite.Replace(sprite);
+    if (sprite != null)
+    {
+      image.sprite = ownedSprite.Replace(sprite);
+      ownedTexture.Replace(texture);
+    }
   }
 
   IEnumerator PopupRoutine(float duration)
@@ -58,5 +63,6 @@ public class Popup : MonoBehaviour
   {
     StopAllCoroutines();
     ownedSprite.Release();
+    ownedTexture.Release();
   }
 }

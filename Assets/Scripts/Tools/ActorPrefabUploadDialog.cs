@@ -27,9 +27,10 @@ public class ActorPrefabUploadDialog : WorkshopUploadDialog
 {
   [SerializeField] UnityEngine.UI.Button snapshotButton;
 
+  private RuntimeTextureOwner ownedSnapshotTexture;
 #if USE_STEAMWORKS
-  private ActorPrefab actorPrefab;
   private SceneActorLibrary sceneActorLibrary;
+  private ActorPrefab actorPrefab;
   private SnapshotCamera snapshotCamera;
 
   public override void Setup()
@@ -39,12 +40,15 @@ public class ActorPrefabUploadDialog : WorkshopUploadDialog
     Util.FindIfNotSet(this, ref snapshotCamera);
     snapshotButton.onClick.AddListener(() =>
     {
-      thumbnailImage.texture = snapshotCamera.SnapshotGameView();
+      Texture2D snapshot = snapshotCamera.SnapshotGameView();
+      if (ownedSnapshotTexture == null) ownedSnapshotTexture = new RuntimeTextureOwner();
+      thumbnailImage.texture = ownedSnapshotTexture.Replace(snapshot);
     });
   }
 
   public void Open(ActorPrefab actorPrefab, Util.Maybe<ulong> workshopId)
   {
+    ReleaseOwnedSnapshotTexture();
     Open(workshopId);
 
     SceneActorLibrary.SavedActorPacks actorPacks = sceneActorLibrary.GetActorPacks();
@@ -63,6 +67,7 @@ public class ActorPrefabUploadDialog : WorkshopUploadDialog
       descField.text = actorPrefab.GetDescription();
     }
   }
+
 
   protected override void DoUpload(
     System.Action<Util.Maybe<ulong>> onComplete, System.Action<WorkshopAssetSource.GetUploadProgress> onStatus)
@@ -91,4 +96,18 @@ public class ActorPrefabUploadDialog : WorkshopUploadDialog
     sceneActorLibrary.PutActors(result, nameField.text, descField.text, new List<string> { actorPrefab.GetId() });
   }
 #endif
+  void OnDisable()
+  {
+    ReleaseOwnedSnapshotTexture();
+  }
+
+  void ReleaseOwnedSnapshotTexture()
+  {
+    if (ownedSnapshotTexture == null) return;
+    Texture2D snapshot = ownedSnapshotTexture.Current;
+    if (snapshot == null) return;
+    if (thumbnailImage != null && thumbnailImage.texture == snapshot)
+      thumbnailImage.texture = null;
+    ownedSnapshotTexture.Release();
+  }
 }

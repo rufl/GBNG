@@ -42,6 +42,7 @@ public class SaveMenu : MonoBehaviour
   URP.PostProcessVolume post;
 
   Texture2D currentSaveImage;
+  readonly RuntimeTextureOwner ownedCapturedSaveImage = new RuntimeTextureOwner();
   readonly RuntimeSpriteOwner ownedScreenshotSprite = new RuntimeSpriteOwner();
   ItemWithTooltipWithEventSystem workshopTooltip;
 
@@ -72,6 +73,7 @@ public class SaveMenu : MonoBehaviour
     saveUI.screenshotButton.onClick.AddListener(() =>
     {
       Texture2D res = snapshotCamera.SnapshotGameView();
+      SetCurrentSaveImage(res, true);
       SetAllInfo(res, saveUI.nameInput.text, saveUI.descriptionInput.text);
     });
     saveUI.closeButton.onClick.AddListener(Close);
@@ -113,13 +115,30 @@ public class SaveMenu : MonoBehaviour
   void OnDestroy()
   {
     ownedScreenshotSprite.Release();
+    ownedCapturedSaveImage.Release();
   }
 
+  void SetCurrentSaveImage(Texture2D texture, bool takeOwnership = false)
+  {
+    Texture2D previousOwnedTexture = ownedCapturedSaveImage.Current;
+    if (previousOwnedTexture != null && previousOwnedTexture != texture)
+    {
+      bool imageUsesPreviousTexture = saveUI != null && saveUI.screenshotImage != null &&
+        saveUI.screenshotImage.sprite != null &&
+        saveUI.screenshotImage.sprite.texture == previousOwnedTexture;
+      ownedScreenshotSprite.Release();
+      if (imageUsesPreviousTexture) saveUI.screenshotImage.sprite = null;
+      ownedCapturedSaveImage.Release();
+    }
+
+    currentSaveImage = texture;
+    if (takeOwnership) ownedCapturedSaveImage.Replace(texture);
+  }
   public void SetAllInfo(Texture2D texture, string nameText, string descriptionText)
   {
     if (texture != null)
     {
-      currentSaveImage = texture;
+      SetCurrentSaveImage(texture);
       saveUI.screenshotImage.gameObject.SetActive(true);
       SetScreenshotSprite(texture);
     }
@@ -420,7 +439,7 @@ public class SaveMenu : MonoBehaviour
           GameBundle bundle = gameBundleLibrary.GetBundle(existingBundleId);
           saveUI.nameInput.text = bundle.GetMetadata().name;
           saveUI.descriptionInput.text = bundle.GetMetadata().description;
-          currentSaveImage = bundle.GetThumbnail();
+          SetCurrentSaveImage(bundle.GetThumbnail());
         }
       }
       SaveOverwrite();
@@ -444,7 +463,7 @@ public class SaveMenu : MonoBehaviour
           GameBundle bundle = gameBundleLibrary.GetBundle(existingBundleId);
           saveUI.nameInput.text = bundle.GetMetadata().name;
           saveUI.descriptionInput.text = bundle.GetMetadata().description;
-          currentSaveImage = bundle.GetThumbnail();
+          SetCurrentSaveImage(bundle.GetThumbnail());
         }
       }
       SaveOverwrite();
@@ -472,7 +491,7 @@ public class SaveMenu : MonoBehaviour
       GameBundle bundle = gameBundleLibrary.GetBundle(existingBundleId);
       saveUI.nameInput.text = bundle.GetMetadata().name;
       saveUI.descriptionInput.text = bundle.GetMetadata().description;
-      currentSaveImage = bundle.GetThumbnail();
+      SetCurrentSaveImage(bundle.GetThumbnail());
 
 #if USE_STEAMWORKS
       WorkshopItemUpdate uploadItem = null;
@@ -509,7 +528,7 @@ public class SaveMenu : MonoBehaviour
       GameBundle bundle = gameBundleLibrary.GetBundle(autosaveBundleId);
       saveUI.nameInput.text = bundle.GetMetadata().name;
       saveUI.descriptionInput.text = bundle.GetMetadata().description;
-      currentSaveImage = bundle.GetThumbnail();
+      SetCurrentSaveImage(bundle.GetThumbnail());
     }
 
     if (currentSaveImage != null)
