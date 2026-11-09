@@ -1,10 +1,7 @@
 #if UNITY_EDITOR
-using System.Collections;
-using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
-using UnityEngine.TestTools;
 using UnityEngine.UI;
 
 public class IconLoaderLifecycleTests
@@ -12,47 +9,34 @@ public class IconLoaderLifecycleTests
   static readonly BindingFlags PrivateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
   static readonly BindingFlags PrivateStatic = BindingFlags.Static | BindingFlags.NonPublic;
 
-  [UnityTest]
-  public IEnumerator RepeatedLoadsReuseCachedSprite()
+  [Test]
+  public void RepeatedLoadsReuseCachedSprite()
   {
     GameObject loaderObject = new GameObject("Icon loader lifecycle test");
+    loaderObject.SetActive(false);
     IconLoader loader = loaderObject.AddComponent<IconLoader>();
-    Sprite firstSprite = null;
-    bool firstCompleted = false;
-    string error = null;
+    Texture2D firstTexture = new Texture2D(2, 2);
+    Texture2D duplicateTexture = new Texture2D(2, 2);
+    Sprite cachedSprite = null;
     try
     {
-      loader.LoadIconSprite("bug_report", (name, sprite) =>
-      {
-        firstSprite = sprite;
-        firstCompleted = true;
-      }, name => error = name);
+      MethodInfo getOrCreateSprite = typeof(IconLoader).GetMethod("GetOrCreateSprite", PrivateInstance);
+      Assert.IsNotNull(getOrCreateSprite);
+      cachedSprite = (Sprite)getOrCreateSprite.Invoke(loader, new object[] { "bug_report", firstTexture });
+      Sprite duplicateResult = (Sprite)getOrCreateSprite.Invoke(loader, new object[] { "bug_report", duplicateTexture });
 
-      for (int frame = 0; frame < 120 && !firstCompleted && error == null; frame++)
-      {
-        yield return null;
-      }
-
-      Assert.IsTrue(firstCompleted, "The built-in icon did not finish loading.");
-      Assert.IsNotNull(firstSprite);
-      Sprite secondSprite = null;
-      loader.LoadIconSprite("bug_report", (name, sprite) => secondSprite = sprite);
-      Assert.AreSame(firstSprite, secondSprite);
+      Assert.AreSame(cachedSprite, duplicateResult);
+      Assert.AreSame(firstTexture, cachedSprite.texture);
+      Assert.IsTrue(duplicateTexture == null, "A duplicate icon load must release its unused texture.");
+      Sprite deliveredSprite = null;
+      loader.LoadIconSprite("bug_report", (name, sprite) => deliveredSprite = sprite);
+      Assert.AreSame(cachedSprite, deliveredSprite);
     }
     finally
     {
-      FieldInfo cacheField = typeof(IconLoader).GetField("loadedSprites", PrivateInstance);
-      if (cacheField != null)
-      {
-        Dictionary<string, Sprite> sprites = (Dictionary<string, Sprite>)cacheField.GetValue(loader);
-        foreach (Sprite sprite in sprites.Values)
-        {
-          if (sprite == null) continue;
-          Texture2D texture = sprite.texture;
-          Object.DestroyImmediate(sprite);
-          if (texture != null) Object.DestroyImmediate(texture);
-        }
-      }
+      if (cachedSprite != null) Object.DestroyImmediate(cachedSprite);
+      if (firstTexture != null) Object.DestroyImmediate(firstTexture);
+      if (duplicateTexture != null) Object.DestroyImmediate(duplicateTexture);
       Object.DestroyImmediate(loaderObject);
     }
   }

@@ -175,8 +175,8 @@ public class Card : MonoBehaviour, IPointerDownHandler, IPointerUpHandler, IPoin
     {
       Util.FindIfNotSet(this, ref iconLoader);
       iconLoader.LoadIconSprite(imagePath.Substring("icon:".Length),
-        (iconName, sprite) => targetImage.sprite = sprite,
-        (iconName) => targetImage.sprite = defaultSprite);
+        (iconName, sprite) => { if (targetImage != null) targetImage.sprite = sprite; },
+        (iconName) => { if (targetImage != null) targetImage.sprite = defaultSprite; });
     }
     else
     {

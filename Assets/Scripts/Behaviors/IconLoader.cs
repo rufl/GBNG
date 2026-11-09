@@ -75,17 +75,24 @@ public class IconLoader : MonoBehaviour
 
     LoadIconTexture(iconName, (name, tex) =>
     {
-      if (!loadedSprites.TryGetValue(name, out sprite))
-      {
-        sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), Vector2.zero);
-        loadedSprites[name] = sprite;
-      }
-      else if (tex != sprite.texture)
-      {
-        Destroy(tex);
-      }
-      onLoaded.Invoke(name, sprite);
+      onLoaded.Invoke(name, GetOrCreateSprite(name, tex));
     }, onError);
+  }
+
+  private Sprite GetOrCreateSprite(string iconName, Texture2D texture)
+  {
+    Sprite sprite;
+    if (!loadedSprites.TryGetValue(iconName, out sprite))
+    {
+      sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), Vector2.zero);
+      loadedSprites[iconName] = sprite;
+    }
+    else if (texture != sprite.texture)
+    {
+      if (Application.isPlaying) Destroy(texture);
+      else DestroyImmediate(texture);
+    }
+    return sprite;
   }
 
   public IEnumerable<string> EnumerateCategories()

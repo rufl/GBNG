@@ -228,7 +228,7 @@ The virtual-device regression suites in `Assets/Editor/GamepadInputControlTests.
 
 Assigned behavior labels use `getDescription()` when it returns a non-empty
 value; otherwise, the first-line `//` comment is the fallback label.
-Behavior icon sprites are cached by name and shared between cards and the picker; late results for destroyed picker rows are ignored.
+Behavior icon sprites are cached by name and shared between cards and the picker; late results for destroyed UI targets are ignored.
 
 The bundled CEF runtime increases desktop build size and requires the Mono
 scripting backend; UnityWebBrowser does not support IL2CPP. Linux x64 now has a
