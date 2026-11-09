@@ -183,7 +183,7 @@ public class GameBuilderSceneController : MonoBehaviour
 
   public void RestartAndLoadBundleDirectory(string directory, GameBuilderApplication.GameOptions gameOptions)
   {
-    this.RestartAndLoad((new GameBundle(directory)).GetVoosPath(), gameOptions);
+    this.RestartAndLoad(System.IO.Path.Combine(directory, "scene.voos"), gameOptions);
   }
 
   public void JoinMultiplayerGameByCode(string code)

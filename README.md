@@ -118,6 +118,11 @@ textures until teardown. Scene actor thumbnails replaced or deleted during the
 session remain alive until teardown because existing search results may still
 reference them. Script-driven built-in prefab spawns skip thumbnail decoding.
 
+Terrain import progress items own and release their generated thumbnail Sprite
+and decoded image. Game bundle thumbnails are shared by `GameBundleLibrary`;
+replaced and deleted images remain valid for existing UI references and are
+released when the library is destroyed.
+
 Template thumbnails load once even while their menu item is inactive. Requests
 are disposed on completion, replacement, or teardown; generated image objects
 are released when replaced or torn down.

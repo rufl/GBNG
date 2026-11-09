@@ -523,7 +523,7 @@ public class TerrainToolSettings : Sidebar
     ProgressBlockStyleUI listItem = Instantiate(progressItemPrefab, settingsUI.textureParent);
     listItem.transform.SetAsFirstSibling();
     listItem.name = id;
-    listItem.SetThumbnail(Util.ReadPngToTexture(fullPath));
+    listItem.SetOwnedThumbnail(Util.ReadPngToTexture(fullPath));
     listItem.gameObject.SetActive(true);
     importingListItems[id] = new Util.Tuple<ProgressBlockStyleUI, WorkshopAssetSource.GetUploadProgress>(
       listItem,

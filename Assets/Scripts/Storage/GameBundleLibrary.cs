@@ -34,8 +34,7 @@ namespace GameBuilder
     string directory;
 
     Metadata metadata = null;
-
-    Texture2D thumbnail = null;
+    GameBundleLibrary thumbnailOwner;
 
     public Metadata GetMetadata()
     {
@@ -58,17 +57,13 @@ namespace GameBuilder
 
     public Texture2D GetThumbnail()
     {
-      if (thumbnail == null)
-      {
-        thumbnail = Util.ReadPngToTexture(GetThumbnailPath());
-      }
-
-      return thumbnail;
+      return thumbnailOwner.GetThumbnailForPath(GetThumbnailPath());
     }
 
-    public GameBundle(string directory)
+    internal GameBundle(string directory, GameBundleLibrary thumbnailOwner)
     {
       this.directory = directory;
+      this.thumbnailOwner = thumbnailOwner;
     }
 
     public string GetThumbnailPath()
@@ -110,6 +105,9 @@ namespace GameBuilder
     [SerializeField] Util.AbstractPath location;
 
     WorkshopAssetSource workshop;
+    readonly Dictionary<string, Texture2D> thumbnailsByPath = new Dictionary<string, Texture2D>();
+    readonly List<Texture2D> retiredThumbnails = new List<Texture2D>();
+
 
     public string GetLibraryAbsolutePath()
     {
@@ -123,6 +121,54 @@ namespace GameBuilder
       Directory.CreateDirectory(location.GetAbsolute());
 
       Util.FindIfNotSet(this, ref workshop);
+    }
+
+    void OnDestroy()
+    {
+      ReleaseThumbnailTextures();
+    }
+
+    internal Texture2D GetThumbnailForPath(string thumbnailPath)
+    {
+      Texture2D thumbnail;
+      if (thumbnailsByPath.TryGetValue(thumbnailPath, out thumbnail))
+      {
+        return thumbnail;
+      }
+
+      thumbnail = Util.ReadPngToTexture(thumbnailPath);
+      if (thumbnail != null) thumbnailsByPath[thumbnailPath] = thumbnail;
+      return thumbnail;
+    }
+
+    void InvalidateBundleThumbnail(string bundleId)
+    {
+      string thumbnailPath = Path.Combine(GetBundleDirectory(bundleId), "thumbnail.png");
+      Texture2D thumbnail;
+      if (!thumbnailsByPath.TryGetValue(thumbnailPath, out thumbnail)) return;
+      thumbnailsByPath.Remove(thumbnailPath);
+      if (thumbnail != null) retiredThumbnails.Add(thumbnail);
+    }
+
+    void ReleaseThumbnailTextures()
+    {
+      foreach (Texture2D thumbnail in thumbnailsByPath.Values)
+      {
+        DestroyThumbnail(thumbnail);
+      }
+      foreach (Texture2D thumbnail in retiredThumbnails)
+      {
+        DestroyThumbnail(thumbnail);
+      }
+      thumbnailsByPath.Clear();
+      retiredThumbnails.Clear();
+    }
+
+    static void DestroyThumbnail(Texture2D thumbnail)
+    {
+      if (thumbnail == null) return;
+      if (Application.isPlaying) UnityEngine.Object.Destroy(thumbnail);
+      else UnityEngine.Object.DestroyImmediate(thumbnail);
     }
 
     public string GetBundleDirectory(string bundleId)
@@ -148,21 +194,24 @@ namespace GameBuilder
       Util.SetNormalFileAttributes(dir);
       Directory.CreateDirectory(dir);
 
-      GameBundle bundle = new GameBundle(dir);
       if (thumbnail != null)
       {
-        Util.SetNormalFileAttributes(bundle.GetThumbnailPath());
-        Util.SaveTextureToPng(thumbnail, bundle.GetThumbnailPath());
+        string thumbnailPath = Path.Combine(dir, "thumbnail.png");
+        Util.SetNormalFileAttributes(thumbnailPath);
+        InvalidateBundleThumbnail(id);
+        Util.SaveTextureToPng(thumbnail, thumbnailPath);
       }
 
-      Util.SetNormalFileAttributes(bundle.GetMetadataPath());
-      File.WriteAllText(bundle.GetMetadataPath(), JsonUtility.ToJson(metadata));
+      string metadataPath = Path.Combine(dir, "metadata.json");
+      Util.SetNormalFileAttributes(metadataPath);
+      File.WriteAllText(metadataPath, JsonUtility.ToJson(metadata));
 
-      Util.SetNormalFileAttributes(bundle.GetVoosPath());
-      saveLoad.RequestSave(bundle.GetVoosPath(), onSaveComplete);
+      string voosPath = Path.Combine(dir, "scene.voos");
+      Util.SetNormalFileAttributes(voosPath);
+      saveLoad.RequestSave(voosPath, onSaveComplete);
 
 #if !USE_STEAMWORKS
-      workshop.Save(bundle.GetAssetsPath());
+      workshop.Save(Path.Combine(dir, "assets"));
 #endif
     }
 
@@ -172,7 +221,7 @@ namespace GameBuilder
       {
         return null;
       }
-      return new GameBundle(GetBundleDirectory(bundleId));
+      return new GameBundle(GetBundleDirectory(bundleId), this);
     }
 
     public Entry GetBundleEntry(string bundleId)
@@ -189,7 +238,7 @@ namespace GameBuilder
       foreach (string absolutePath in Directory.EnumerateDirectories(location.GetAbsolute()))
       {
         string id = Path.GetFileName(absolutePath);
-        GameBundle bundle = new GameBundle(GetBundleDirectory(id));
+        GameBundle bundle = GetBundle(id);
         // Assume that if a scene is there, that's all we really care about.
         // That's the most important data, after all.
         if (!File.Exists(bundle.GetVoosPath()))
@@ -228,6 +277,7 @@ namespace GameBuilder
 
       if (!Directory.Exists(dir))
       {
+        InvalidateBundleThumbnail(bundleId);
         return;
       }
 
@@ -237,7 +287,7 @@ namespace GameBuilder
       {
         Util.SetNormalFileAttributes(file);
       }
-
+      InvalidateBundleThumbnail(bundleId);
       Directory.Delete(dir, true);
     }
 
@@ -256,6 +306,7 @@ namespace GameBuilder
         Directory.CreateDirectory(destDir);
       }
 
+      InvalidateBundleThumbnail(destId);
       foreach (string srcFilePath in Directory.EnumerateFiles(srcDir))
       {
         string filename = Path.GetFileName(srcFilePath);

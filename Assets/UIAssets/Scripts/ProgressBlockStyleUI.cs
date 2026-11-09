@@ -23,10 +23,49 @@ public class ProgressBlockStyleUI : MonoBehaviour
   [SerializeField] RectTransform progressBarContainer;
   [SerializeField] RectTransform progressBar;
   [SerializeField] UnityEngine.UI.Image image;
+  Texture2D ownedThumbnail;
+  Sprite ownedThumbnailSprite;
 
-  public void SetThumbnail(Texture2D texture)
+  public void SetOwnedThumbnail(Texture2D texture)
   {
-    image.sprite = Util.TextureToSprite(texture);
+    if (ownedThumbnail == texture) return;
+
+    Sprite sprite = null;
+    try
+    {
+      if (texture != null) sprite = Util.TextureToSprite(texture);
+    }
+    catch
+    {
+      DestroyOwnedObject(texture);
+      throw;
+    }
+
+    ReleaseOwnedThumbnail();
+    ownedThumbnail = texture;
+    ownedThumbnailSprite = sprite;
+    if (image != null) image.sprite = sprite;
+  }
+
+  void OnDestroy()
+  {
+    ReleaseOwnedThumbnail();
+  }
+
+  void ReleaseOwnedThumbnail()
+  {
+    if (image != null && image.sprite == ownedThumbnailSprite) image.sprite = null;
+    DestroyOwnedObject(ownedThumbnailSprite);
+    DestroyOwnedObject(ownedThumbnail);
+    ownedThumbnailSprite = null;
+    ownedThumbnail = null;
+  }
+
+  static void DestroyOwnedObject(UnityEngine.Object ownedObject)
+  {
+    if (ownedObject == null) return;
+    if (Application.isPlaying) Destroy(ownedObject);
+    else DestroyImmediate(ownedObject);
   }
 
   public void SetProgress(float progress)
