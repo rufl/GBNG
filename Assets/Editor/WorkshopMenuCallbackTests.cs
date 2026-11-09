@@ -3,8 +3,10 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using GameBuilder.Workshop;
+using GameBuilder;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 public class WorkshopMenuCallbackTests
 {
@@ -28,7 +30,7 @@ public class WorkshopMenuCallbackTests
     WorkshopItemListEventArgs args = new WorkshopItemListEventArgs(
       new WorkshopItemList(new List<WorkshopItem>(), 9));
 
-    callback.Invoke(menu, new[] { args, itemListData });
+    callback.Invoke(menu, new object[] { args, itemListData, 0 });
     Assert.AreEqual(pageCountBeforeDestroy, pageCountField.GetValue(menu));
   }
 
@@ -51,7 +53,7 @@ public class WorkshopMenuCallbackTests
       Assert.IsNotNull(callback);
       Assert.IsNotNull(itemListDataType);
       Assert.IsNotNull(pageCountField);
-      callback.Invoke(menu, new[] { args, Activator.CreateInstance(itemListDataType) });
+      callback.Invoke(menu, new object[] { args, Activator.CreateInstance(itemListDataType), 0 });
       Assert.AreEqual(7u, pageCountField.GetValue(menu));
     }
     finally
@@ -81,7 +83,7 @@ public class WorkshopMenuCallbackTests
       Assert.IsNotNull(callback);
       Assert.IsNotNull(itemListDataType);
       loadingFeedbackField.SetValue(menu, loadingFeedback);
-      callback.Invoke(menu, new[] { args, Activator.CreateInstance(itemListDataType) });
+      callback.Invoke(menu, new object[] { args, Activator.CreateInstance(itemListDataType), 0 });
       Assert.IsFalse(loadingFeedback.activeSelf);
     }
     finally
@@ -123,6 +125,167 @@ public class WorkshopMenuCallbackTests
       initializedSetter.Invoke(null, new object[] { wasInitialized });
       UnityEngine.Object.DestroyImmediate(menuObject);
       UnityEngine.Object.DestroyImmediate(loadingFeedback);
+    }
+  }
+
+  [Test]
+  public void ClosingWorkshopMenuInvalidatesInFlightResults()
+  {
+    GameObject menuObject = new GameObject("WorkshopMenuCallbackTests Closed Menu");
+    WorkshopMenu menu = menuObject.AddComponent<WorkshopMenu>();
+    FieldInfo requestIdField = typeof(WorkshopMenu).GetField(
+      "itemListRequestId", BindingFlags.Instance | BindingFlags.NonPublic);
+    FieldInfo pageCountField = typeof(WorkshopMenu).GetField(
+      "pageCount", BindingFlags.Instance | BindingFlags.NonPublic);
+    FieldInfo gettingItemListField = typeof(WorkshopMenu).GetField(
+      "gettingItemList", BindingFlags.Instance | BindingFlags.NonPublic);
+    MethodInfo callback = typeof(WorkshopMenu).GetMethod(
+      "OnWorkshopListLoaded", BindingFlags.Instance | BindingFlags.NonPublic);
+    Type itemListDataType = typeof(WorkshopMenu).GetNestedType("ItemListData", BindingFlags.NonPublic);
+    WorkshopItemListEventArgs args = new WorkshopItemListEventArgs(
+      new WorkshopItemList(new List<WorkshopItem>(), 9));
+
+    try
+    {
+      Assert.IsNotNull(requestIdField);
+      Assert.IsNotNull(pageCountField);
+      Assert.IsNotNull(gettingItemListField);
+      Assert.IsNotNull(callback);
+      Assert.IsNotNull(itemListDataType);
+      requestIdField.SetValue(menu, 12);
+      gettingItemListField.SetValue(menu, true);
+
+      menu.Close();
+      callback.Invoke(menu, new object[] { args, Activator.CreateInstance(itemListDataType), 12 });
+
+      Assert.AreEqual(1u, pageCountField.GetValue(menu));
+      Assert.IsFalse((bool)gettingItemListField.GetValue(menu));
+    }
+    finally
+    {
+      UnityEngine.Object.DestroyImmediate(menuObject);
+    }
+  }
+
+  [Test]
+  public void ChangingSearchOrSortResetsWorkshopPagination()
+  {
+    GameObject menuObject = new GameObject("WorkshopMenuCallbackTests Pagination");
+    menuObject.SetActive(false);
+    WorkshopMenu menu = menuObject.AddComponent<WorkshopMenu>();
+    GameObject sortLabelObject = new GameObject(
+      "Workshop sort label", typeof(RectTransform), typeof(CanvasRenderer), typeof(TMPro.TextMeshProUGUI));
+    TMPro.TextMeshProUGUI sortLabel = sortLabelObject.GetComponent<TMPro.TextMeshProUGUI>();
+    FieldInfo sortTextField = typeof(ThumbnailMenu).GetField(
+      "sortText", BindingFlags.Instance | BindingFlags.NonPublic);
+    FieldInfo currentSearchField = typeof(ThumbnailMenu).GetField(
+      "currentSearchString", BindingFlags.Instance | BindingFlags.NonPublic);
+    FieldInfo curPageField = typeof(WorkshopMenu).GetField(
+      "curPage", BindingFlags.Instance | BindingFlags.NonPublic);
+    FieldInfo pageCountField = typeof(WorkshopMenu).GetField(
+      "pageCount", BindingFlags.Instance | BindingFlags.NonPublic);
+    MethodInfo onSearch = typeof(WorkshopMenu).GetMethod(
+      "OnSearch", BindingFlags.Instance | BindingFlags.NonPublic);
+    PropertyInfo initializedProperty = typeof(SteamRuntime).GetProperty(
+      "Initialized", BindingFlags.Static | BindingFlags.Public);
+    Assert.IsNotNull(initializedProperty);
+    MethodInfo initializedSetter = initializedProperty.GetSetMethod(true);
+    bool wasInitialized = SteamRuntime.Initialized;
+
+    try
+    {
+      Assert.IsNotNull(sortTextField);
+      Assert.IsNotNull(currentSearchField);
+      Assert.IsNotNull(curPageField);
+      Assert.IsNotNull(pageCountField);
+      Assert.IsNotNull(onSearch);
+      Assert.IsNotNull(initializedSetter);
+      sortTextField.SetValue(menu, sortLabel);
+      currentSearchField.SetValue(menu, "old");
+      initializedSetter.Invoke(null, new object[] { false });
+
+      curPageField.SetValue(menu, 4u);
+      pageCountField.SetValue(menu, 8u);
+      LogAssert.Expect(LogType.Log, "Steam Workshop is not available right now. Did you launch from Steam?");
+      onSearch.Invoke(menu, new object[] { "new" });
+      Assert.AreEqual(1u, curPageField.GetValue(menu));
+      Assert.AreEqual(1u, pageCountField.GetValue(menu));
+
+      curPageField.SetValue(menu, 3u);
+      pageCountField.SetValue(menu, 6u);
+      LogAssert.Expect(LogType.Log, "Steam Workshop is not available right now. Did you launch from Steam?");
+      menu.SetSort(WorkshopMenu.WorkshopSort.Newest);
+      Assert.AreEqual(1u, curPageField.GetValue(menu));
+      Assert.AreEqual(1u, pageCountField.GetValue(menu));
+    }
+    finally
+    {
+      initializedSetter.Invoke(null, new object[] { wasInitialized });
+      UnityEngine.Object.DestroyImmediate(menuObject);
+      UnityEngine.Object.DestroyImmediate(sortLabelObject);
+    }
+  }
+
+  [Test]
+  public void WorkshopMenuRefreshesBrowseOnEveryOpen()
+  {
+    GameObject root = new GameObject("WorkshopMenuCallbackTests Refresh");
+    root.SetActive(false);
+    GameObject menuObject = CreateInactiveObject("Workshop menu", root.transform);
+    WorkshopMenu menu = menuObject.AddComponent<WorkshopMenu>();
+    GameObject dependencies = CreateInactiveObject("Dependencies", root.transform);
+    GameBundleLibrary gameBundleLibrary = dependencies.AddComponent<GameBundleLibrary>();
+    GameBuilderSceneController sceneController = dependencies.AddComponent<GameBuilderSceneController>();
+    GameObject categoryContainer = CreateInactiveObject("Category container", root.transform);
+    GameObject categoryPrefab = CreateInactiveObject("Category prefab", root.transform);
+    ThumbnailCategory category = categoryPrefab.AddComponent<ThumbnailCategory>();
+    TMPro.TextMeshProUGUI categoryName = CreateTestText("Category name", categoryPrefab.transform);
+    TMPro.TextMeshProUGUI categoryPlaceholder = CreateTestText("Category placeholder", categoryPrefab.transform);
+    SetField(category, typeof(ThumbnailCategory), "nameText", categoryName);
+    SetField(category, typeof(ThumbnailCategory), "placeholderText", categoryPlaceholder);
+    GameObject gameDetailPrefabObject = CreateInactiveObject("Game detail prefab", root.transform);
+    GameDetail gameDetailPrefab = gameDetailPrefabObject.AddComponent<GameDetail>();
+    SetField(menu, typeof(ThumbnailMenu), "gameBundleLibrary", gameBundleLibrary);
+    SetField(menu, typeof(ThumbnailMenu), "sceneController", sceneController);
+    SetField(menu, typeof(ThumbnailMenu), "sortLeft", CreateTestButton("Sort left", root.transform));
+    SetField(menu, typeof(ThumbnailMenu), "sortRight", CreateTestButton("Sort right", root.transform));
+    SetField(menu, typeof(ThumbnailMenu), "closeButton", CreateTestButton("Close", root.transform));
+    SetField(menu, typeof(ThumbnailMenu), "sortText", CreateTestText("Sort label", root.transform));
+    SetField(menu, typeof(ThumbnailMenu), "searchField", CreateTestInputField("Search", root.transform));
+    SetField(menu, typeof(ThumbnailMenu), "searchClear", CreateTestButton("Clear search", root.transform));
+    SetField(menu, typeof(ThumbnailMenu), "thumbnailCategoryPrefab", categoryPrefab);
+    SetField(menu, typeof(ThumbnailMenu), "thumbnailCategoryContainer", categoryContainer);
+    SetField(menu, typeof(WorkshopMenu), "firstPage", CreateTestButton("First page", root.transform));
+    SetField(menu, typeof(WorkshopMenu), "lastPage", CreateTestButton("Last page", root.transform));
+    SetField(menu, typeof(WorkshopMenu), "nextPage", CreateTestButton("Next page", root.transform));
+    SetField(menu, typeof(WorkshopMenu), "prevPage", CreateTestButton("Previous page", root.transform));
+    SetField(menu, typeof(WorkshopMenu), "gameDetailPrefab", gameDetailPrefab);
+    PropertyInfo initializedProperty = typeof(SteamRuntime).GetProperty(
+      "Initialized", BindingFlags.Static | BindingFlags.Public);
+    Assert.IsNotNull(initializedProperty);
+    MethodInfo initializedSetter = initializedProperty.GetSetMethod(true);
+    bool wasInitialized = SteamRuntime.Initialized;
+
+    try
+    {
+      Assert.IsNotNull(initializedSetter);
+      initializedSetter.Invoke(null, new object[] { false });
+      menu.Setup();
+
+      LogAssert.Expect(LogType.Log, "Steam Workshop is not available right now. Did you launch from Steam?");
+      menu.Open();
+      Assert.IsTrue(menu.IsOpen());
+      menu.Close();
+      Assert.IsFalse(menu.IsOpen());
+
+      LogAssert.Expect(LogType.Log, "Steam Workshop is not available right now. Did you launch from Steam?");
+      menu.Open();
+      Assert.IsTrue(menu.IsOpen());
+    }
+    finally
+    {
+      initializedSetter.Invoke(null, new object[] { wasInitialized });
+      UnityEngine.Object.DestroyImmediate(root);
     }
   }
 
@@ -191,6 +354,44 @@ public class WorkshopMenuCallbackTests
       UnityEngine.Object.DestroyImmediate(loadingFeedback);
     }
   }
+  static GameObject CreateInactiveObject(string name, Transform parent)
+  {
+    GameObject created = new GameObject(name, typeof(RectTransform));
+    created.SetActive(false);
+    created.transform.SetParent(parent, false);
+    return created;
+  }
+
+  static UnityEngine.UI.Button CreateTestButton(string name, Transform parent)
+  {
+    GameObject buttonObject = CreateInactiveObject(name, parent);
+    buttonObject.AddComponent<CanvasRenderer>();
+    buttonObject.AddComponent<UnityEngine.UI.Image>();
+    return buttonObject.AddComponent<UnityEngine.UI.Button>();
+  }
+
+  static TMPro.TextMeshProUGUI CreateTestText(string name, Transform parent)
+  {
+    GameObject textObject = CreateInactiveObject(name, parent);
+    textObject.AddComponent<CanvasRenderer>();
+    return textObject.AddComponent<TMPro.TextMeshProUGUI>();
+  }
+
+  static TMPro.TMP_InputField CreateTestInputField(string name, Transform parent)
+  {
+    GameObject inputObject = CreateInactiveObject(name, parent);
+    inputObject.AddComponent<CanvasRenderer>();
+    inputObject.AddComponent<UnityEngine.UI.Image>();
+    return inputObject.AddComponent<TMPro.TMP_InputField>();
+  }
+
+  static void SetField(object target, Type declaringType, string name, object value)
+  {
+    FieldInfo field = declaringType.GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
+    Assert.IsNotNull(field, "Missing field " + declaringType.Name + "." + name);
+    field.SetValue(target, value);
+  }
+
 }
 #endif
 #if UNITY_EDITOR && !USE_STEAMWORKS

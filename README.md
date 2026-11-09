@@ -86,6 +86,9 @@ The catalog lists license evidence and marks files without a located notice as u
 # Optional integrations
 
 The core Unity editor runs without paid Unity Asset Store plugins. Built-in 2D drawing, local OBJ/FBX model loading, actor libraries, project saving, and direct-host multiplayer are part of the baseline. Steam Workshop uses the included Steamworks.NET package but requires the Steam client, a logged-in account, and a valid App ID. Optional online services may require an account, API key, or internet access.
+Workshop browsing refreshes when the menu is reopened; changing search or sort
+returns to the first page.
+
 The synthetic Custom behavior-card panel persists its display order per actor in
 brain metadata, separate from the behavior-use order that controls runtime execution.
 

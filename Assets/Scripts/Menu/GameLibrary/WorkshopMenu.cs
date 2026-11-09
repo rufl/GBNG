@@ -51,6 +51,7 @@ public class WorkshopMenu : ThumbnailMenu
 
   protected uint curPage = 1;
   protected uint pageCount = 1;
+  int itemListRequestId;
 
   public override void Setup()
   {
@@ -63,9 +64,9 @@ public class WorkshopMenu : ThumbnailMenu
     nextPage.onClick.AddListener(NextPage);
     prevPage.onClick.AddListener(PreviousPage);
 
-    SetSort(WorkshopSort.Trending);
-
-    // SetOpenEvent(CreateThumbnails);
+    workshopSort = WorkshopSort.Trending;
+    sortText.text = workshopSort.ToString();
+    SetOpenEvent(CreateThumbnails);
     AddCategory(/* name */ null, /* placeholderText */ "");
 
     gameDetail = Instantiate(gameDetailPrefab).GetComponent<GameDetail>();
@@ -74,8 +75,14 @@ public class WorkshopMenu : ThumbnailMenu
   public override void Open()
   {
     sortText.text = workshopSort.ToString();
-    gettingItemList = false;
     base.Open();
+  }
+
+  public override void Close()
+  {
+    itemListRequestId++;
+    gettingItemList = false;
+    base.Close();
   }
 
   void OnSearch(string searchString)
@@ -83,6 +90,8 @@ public class WorkshopMenu : ThumbnailMenu
     if (searchString != GetSearchString())
     {
       SetSearchString(searchString);
+      curPage = 1;
+      pageCount = 1;
       ClearThumbnails();
       CreateSteamThumbnails();
     }
@@ -157,8 +166,8 @@ public class WorkshopMenu : ThumbnailMenu
 
     ItemListData data = itemListData;
 
-    gettingItemList = true;
-    SteamWorkshopService.Instance.GetItemList(curPage, (args) => OnWorkshopListLoaded(args, data));
+    int requestId = ++itemListRequestId;
+    SteamWorkshopService.Instance.GetItemList(curPage, (args) => OnWorkshopListLoaded(args, data, requestId));
   }
   bool gettingItemList = false;
   struct ItemListData
@@ -186,9 +195,9 @@ public class WorkshopMenu : ThumbnailMenu
     pageText.text = $"Page {curPage} of {pageCount}";
   }
 
-  void OnWorkshopListLoaded(WorkshopItemListEventArgs args, ItemListData data)
+  void OnWorkshopListLoaded(WorkshopItemListEventArgs args, ItemListData data, int requestId)
   {
-    if (this == null) return;
+    if (this == null || requestId != itemListRequestId) return;
     gettingItemList = false;
     if (args.IsError)
     {
@@ -243,16 +252,15 @@ public class WorkshopMenu : ThumbnailMenu
 
   protected override void ChangeSort(Direction direction)
   {
-    workshopSort = (WorkshopSort)(((int)workshopSort + 1) % 3);
-    sortText.text = workshopSort.ToString();
-    ClearThumbnails();
-    CreateSteamThumbnails();
+    SetSort((WorkshopSort)(((int)workshopSort + 1) % 3));
   }
 
   public void SetSort(WorkshopSort sort)
   {
     workshopSort = sort;
     sortText.text = workshopSort.ToString();
+    curPage = 1;
+    pageCount = 1;
     ClearThumbnails();
     CreateSteamThumbnails();
   }
