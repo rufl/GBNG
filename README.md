@@ -175,9 +175,11 @@ disabled so it cannot overwrite the processed scene.
 Imported OBJ/FBX mesh, collider, material, and texture objects are shared with
 clones and released when the cache entry and its last clone are disposed.
 Transient create/spawn previews and avatar tinting keep their own material
-instances and release them with the owning component. Preview renderers share
-their assigned instance instead of creating implicit per-renderer material
-copies.
+instances and release them with the owning component. UserBody tracks and
+destroys every per-renderer tint copy it replaces, including copies detached
+when AvatarMaterialControl switches between standard and hologram materials.
+Preview renderers share their assigned instance instead of creating implicit
+per-renderer material copies.
 
 GrassSpawn unregisters its material set from GrassBend and destroys its owned
 material instances when the component is torn down.

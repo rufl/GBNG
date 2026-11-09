@@ -1616,5 +1616,165 @@ public class GameDetailThumbnailLifecycleTests
     }
   }
 
+  [Test]
+  public void UserBodyTintMaterialsAreIsolatedAndReleasedAcrossAvatarModes()
+  {
+    Shader shader = Shader.Find("Sully/Snake");
+    Assert.IsNotNull(shader);
+    Material sourceMaterial = null;
+    Color sourceTint = Color.clear;
+
+    GameObject[] owners = new GameObject[2];
+    UserBody[] bodies = new UserBody[2];
+    AvatarMaterialControl[] avatarControls = new AvatarMaterialControl[2];
+    MeshRenderer[] avatarRenderers = new MeshRenderer[2];
+    MeshRenderer[] permanentRenderers = new MeshRenderer[2];
+    Material[][] avatarMaterials = { new Material[4], new Material[4] };
+    Material[][] tintMaterialsToVerify = new Material[2][];
+    bool tintMaterialsReleased = true;
+    string[] avatarMaterialFields = {
+      "avatarMaterialInstance",
+      "avatarEyesMaterialInstance",
+      "avatarHoloMaterialInstance",
+      "avatarEyesHoloMaterialInstance"
+    };
+    string[] serializedRendererFields = {
+      "avatarRenderers",
+      "avatarPermanentRenderers",
+      "hologramEffects",
+      "avatarEyeRenderer",
+      "avatarPermanentEyeRenderer"
+    };
+    FieldInfo tintRenderersField = typeof(UserBody).GetField("renderersForTint", PrivateInstance);
+    FieldInfo avatarControlField = typeof(UserBody).GetField("avatarMaterialControl", PrivateInstance);
+    FieldInfo[] avatarMaterialInstanceFields = new FieldInfo[avatarMaterialFields.Length];
+    FieldInfo[] avatarRendererFields = new FieldInfo[serializedRendererFields.Length];
+    MethodInfo userBodyOnDestroy = typeof(UserBody).GetMethod("OnDestroy", PrivateInstance);
+    MethodInfo avatarOnDestroy = typeof(AvatarMaterialControl).GetMethod("OnDestroy", PrivateInstance);
+    Assert.IsNotNull(tintRenderersField);
+    Assert.IsNotNull(avatarControlField);
+    Assert.IsNotNull(userBodyOnDestroy);
+    Assert.IsNotNull(avatarOnDestroy);
+    for (int i = 0; i < avatarMaterialFields.Length; i++)
+    {
+      avatarMaterialInstanceFields[i] =
+        typeof(AvatarMaterialControl).GetField(avatarMaterialFields[i], PrivateInstance);
+      Assert.IsNotNull(avatarMaterialInstanceFields[i]);
+    }
+    for (int i = 0; i < serializedRendererFields.Length; i++)
+    {
+      avatarRendererFields[i] =
+        typeof(AvatarMaterialControl).GetField(serializedRendererFields[i], PrivateInstance);
+      Assert.IsNotNull(avatarRendererFields[i]);
+    }
+    FieldInfo effectMaterialsField = typeof(AvatarMaterialControl).GetField(
+      "hologramEffectMaterialInstances", PrivateInstance);
+    Assert.IsNotNull(effectMaterialsField);
+
+    Color[] tints = { Color.red, Color.blue };
+    sourceMaterial = new Material(shader);
+    sourceMaterial.SetColor("_MainTint", Color.gray);
+    sourceTint = sourceMaterial.GetColor("_MainTint");
+    try
+    {
+      for (int i = 0; i < owners.Length; i++)
+      {
+        owners[i] = new GameObject("UserBody tint material owner " + i);
+        owners[i].SetActive(false);
+        avatarControls[i] = owners[i].AddComponent<AvatarMaterialControl>();
+        bodies[i] = owners[i].AddComponent<UserBody>();
+
+        GameObject avatarObject = new GameObject("Tinted avatar renderer " + i);
+        avatarObject.transform.SetParent(owners[i].transform, false);
+        avatarRenderers[i] = avatarObject.AddComponent<MeshRenderer>();
+        avatarRenderers[i].sharedMaterial = sourceMaterial;
+        GameObject permanentObject = new GameObject("Permanent avatar renderer " + i);
+        permanentObject.transform.SetParent(owners[i].transform, false);
+        permanentRenderers[i] = permanentObject.AddComponent<MeshRenderer>();
+        permanentRenderers[i].sharedMaterial = sourceMaterial;
+        GameObject eyesObject = new GameObject("Avatar eyes renderer " + i);
+        eyesObject.transform.SetParent(owners[i].transform, false);
+        MeshRenderer eyesRenderer = eyesObject.AddComponent<MeshRenderer>();
+        eyesRenderer.sharedMaterial = sourceMaterial;
+
+        tintRenderersField.SetValue(bodies[i],
+          new[] { avatarRenderers[i], permanentRenderers[i] });
+        avatarControlField.SetValue(bodies[i], avatarControls[i]);
+        avatarRendererFields[0].SetValue(avatarControls[i], new[] { avatarRenderers[i] });
+        avatarRendererFields[1].SetValue(avatarControls[i], new[] { permanentRenderers[i] });
+        avatarRendererFields[2].SetValue(avatarControls[i], new MeshRenderer[0]);
+        avatarRendererFields[3].SetValue(avatarControls[i], eyesRenderer);
+        avatarRendererFields[4].SetValue(avatarControls[i], eyesRenderer);
+        effectMaterialsField.SetValue(avatarControls[i], new Material[0]);
+        for (int j = 0; j < avatarMaterialFields.Length; j++)
+        {
+          avatarMaterials[i][j] = new Material(shader);
+          avatarMaterialInstanceFields[j].SetValue(avatarControls[i], avatarMaterials[i][j]);
+        }
+
+        bodies[i].SetTint(tints[i]);
+        Assert.AreSame(avatarMaterials[i][0], avatarRenderers[i].sharedMaterial,
+          "AvatarMaterialControl must retain its standard material assignment.");
+        Assert.AreEqual(tints[i], avatarRenderers[i].sharedMaterial.GetColor("_MainTint"));
+        Assert.AreNotSame(sourceMaterial, permanentRenderers[i].sharedMaterial);
+        Assert.AreEqual(tints[i], permanentRenderers[i].sharedMaterial.GetColor("_MainTint"));
+      }
+
+      avatarControls[0].SetToHologramMaterial();
+      Color hologramTint = ArtUtil.GetHologramColor(tints[0]);
+      Assert.AreSame(avatarMaterials[0][2], avatarRenderers[0].sharedMaterial);
+      Assert.AreSame(avatarMaterials[0][2], permanentRenderers[0].sharedMaterial);
+      Color assignedHologramTint = avatarRenderers[0].sharedMaterial.GetColor("_MainTint");
+      Assert.That(assignedHologramTint.r, Is.EqualTo(hologramTint.r).Within(0.0001f));
+      Assert.That(assignedHologramTint.g, Is.EqualTo(hologramTint.g).Within(0.0001f));
+      Assert.That(assignedHologramTint.b, Is.EqualTo(hologramTint.b).Within(0.0001f));
+      Assert.That(assignedHologramTint.a, Is.EqualTo(hologramTint.a).Within(0.0001f));
+
+      avatarControls[0].SetToStandardMaterial();
+      Assert.AreSame(avatarMaterials[0][0], avatarRenderers[0].sharedMaterial);
+      bodies[0].SetTint(Color.green);
+      Assert.AreSame(avatarMaterials[0][0], avatarRenderers[0].sharedMaterial);
+      Assert.AreEqual(Color.green, avatarRenderers[0].sharedMaterial.GetColor("_MainTint"));
+      Assert.AreEqual(Color.green, permanentRenderers[0].sharedMaterial.GetColor("_MainTint"));
+      Assert.AreEqual(sourceTint, sourceMaterial.GetColor("_MainTint"));
+      Assert.AreNotSame(permanentRenderers[0].sharedMaterial, permanentRenderers[1].sharedMaterial);
+
+      FieldInfo ownedTintMaterialsField = typeof(UserBody).GetField(
+        "ownedTintMaterials", PrivateInstance);
+      Assert.IsNotNull(ownedTintMaterialsField);
+      for (int i = 0; i < bodies.Length; i++)
+      {
+        System.Collections.IList ownedMaterials =
+          (System.Collections.IList)ownedTintMaterialsField.GetValue(bodies[i]);
+        tintMaterialsToVerify[i] = new Material[ownedMaterials.Count];
+        ownedMaterials.CopyTo(tintMaterialsToVerify[i], 0);
+      }
+    }
+    finally
+    {
+      for (int i = 0; i < owners.Length; i++)
+      {
+        if (bodies[i] != null) userBodyOnDestroy.Invoke(bodies[i], null);
+        if (avatarControls[i] != null) avatarOnDestroy.Invoke(avatarControls[i], null);
+        if (owners[i] != null) Object.DestroyImmediate(owners[i]);
+        foreach (Material material in avatarMaterials[i])
+        {
+          if (material != null) Object.DestroyImmediate(material);
+        }
+      }
+      foreach (Material[] materials in tintMaterialsToVerify)
+      {
+        if (materials == null) continue;
+        foreach (Material material in materials)
+        {
+          if (material != null) tintMaterialsReleased = false;
+        }
+      }
+      if (sourceMaterial != null) Object.DestroyImmediate(sourceMaterial);
+    }
+    Assert.IsTrue(tintMaterialsReleased,
+      "UserBody must destroy every per-renderer tint material when its owner is torn down.");
+  }
+
 }
 #endif

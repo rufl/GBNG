@@ -62,6 +62,8 @@ public class UserBody : Photon.MonoBehaviour, PlayerBody.EventHandler, IPunObser
 
   [SerializeField] MeshRenderer[] renderersForTint;
   [SerializeField] MeshRenderer[] variableTransparencyRenderers;
+  Dictionary<MeshRenderer, Material> tintMaterialByRenderer;
+  List<Material> ownedTintMaterials;
 
   bool variableTransparencyRenderersVisible = true;
   bool playAvatarRendererEnabled = true;
@@ -392,9 +394,24 @@ public class UserBody : Photon.MonoBehaviour, PlayerBody.EventHandler, IPunObser
 
   public void OnTintChanged()
   {
-    foreach (MeshRenderer _renderer in renderersForTint)
+    foreach (MeshRenderer tintRenderer in renderersForTint)
     {
-      _renderer.material.SetColor("_MainTint", currentTint);
+      if (tintMaterialByRenderer == null)
+      {
+        tintMaterialByRenderer = new Dictionary<MeshRenderer, Material>();
+      }
+
+      if (!tintMaterialByRenderer.TryGetValue(tintRenderer, out Material tintMaterial) ||
+        tintRenderer.sharedMaterial != tintMaterial)
+      {
+        tintMaterial = new Material(tintRenderer.sharedMaterial);
+        tintRenderer.sharedMaterial = tintMaterial;
+        tintMaterialByRenderer[tintRenderer] = tintMaterial;
+        if (ownedTintMaterials == null) ownedTintMaterials = new List<Material>();
+        ownedTintMaterials.Add(tintMaterial);
+      }
+
+      tintMaterial.SetColor("_MainTint", currentTint);
     }
     avatarMaterialControl.SetTint(currentTint);
 
@@ -653,5 +670,14 @@ public class UserBody : Photon.MonoBehaviour, PlayerBody.EventHandler, IPunObser
     {
       GameObject.Destroy(toolEffectReplicant.GetGameObject());
     }
+    if (ownedTintMaterials != null)
+    {
+      foreach (Material material in ownedTintMaterials)
+      {
+        RuntimeModelResourceSet.DestroyResource(material);
+      }
+      ownedTintMaterials.Clear();
+    }
+    if (tintMaterialByRenderer != null) tintMaterialByRenderer.Clear();
   }
 }
