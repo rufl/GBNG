@@ -42,6 +42,7 @@ public class SaveMenu : MonoBehaviour
   URP.PostProcessVolume post;
 
   Texture2D currentSaveImage;
+  readonly RuntimeSpriteOwner ownedScreenshotSprite = new RuntimeSpriteOwner();
   ItemWithTooltipWithEventSystem workshopTooltip;
 
   bool quitAfterSave = false;
@@ -100,13 +101,27 @@ public class SaveMenu : MonoBehaviour
   }
 
 
+  void SetScreenshotSprite(Texture2D texture)
+  {
+    Sprite sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(.5f, .5f), 100);
+    if (sprite != null)
+    {
+      saveUI.screenshotImage.sprite = ownedScreenshotSprite.Replace(sprite);
+    }
+  }
+
+  void OnDestroy()
+  {
+    ownedScreenshotSprite.Release();
+  }
+
   public void SetAllInfo(Texture2D texture, string nameText, string descriptionText)
   {
     if (texture != null)
     {
       currentSaveImage = texture;
       saveUI.screenshotImage.gameObject.SetActive(true);
-      saveUI.screenshotImage.sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(.5f, .5f), 100);
+      SetScreenshotSprite(texture);
     }
 
     saveUI.nameInput.text = nameText;
@@ -500,7 +515,7 @@ public class SaveMenu : MonoBehaviour
     if (currentSaveImage != null)
     {
       saveUI.screenshotImage.gameObject.SetActive(true);
-      saveUI.screenshotImage.sprite = Sprite.Create(currentSaveImage, new Rect(0, 0, currentSaveImage.width, currentSaveImage.height), new Vector2(.5f, .5f), 100);
+      SetScreenshotSprite(currentSaveImage);
     }
   }
 

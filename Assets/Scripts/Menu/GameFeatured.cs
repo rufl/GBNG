@@ -36,6 +36,7 @@ public class GameFeatured : MonoBehaviour
   [SerializeField] GameObject downloadTextObject;
 
 #if USE_STEAMWORKS
+  readonly RuntimeSpriteOwner ownedThumbnailSprite = new RuntimeSpriteOwner();
   DynamicPopup popups;
   LoadingScreen loadingScreen;
 
@@ -178,10 +179,14 @@ public class GameFeatured : MonoBehaviour
     Sprite newSprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0, 0));
     if (newSprite != null)
     {
-      thumbnailImage.sprite = newSprite;
+      thumbnailImage.sprite = ownedThumbnailSprite.Replace(newSprite);
     }
     thumbnailImage.color = Color.white;
     //thumbnailLoadingObject.SetActive(false);
+  }
+  void OnDestroy()
+  {
+    ownedThumbnailSprite.Release();
   }
 
 #endif

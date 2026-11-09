@@ -36,7 +36,7 @@ public class GameDetail : MonoBehaviour
   [SerializeField] GameObject downloadTextObject;
   [SerializeField] GameObject openButtonsParentObject;
   [SerializeField] Texture2D placeholderThumbnailTexture;
-  Sprite ownedThumbnailSprite;
+  readonly RuntimeSpriteOwner ownedThumbnailSprite = new RuntimeSpriteOwner();
 
   DynamicPopup popups;
   LoadingScreen loadingScreen;
@@ -161,24 +161,12 @@ public class GameDetail : MonoBehaviour
 
   void SetOwnedThumbnailSprite(Sprite sprite)
   {
-    if (ownedThumbnailSprite == sprite) return;
-    Sprite previousSprite = ownedThumbnailSprite;
-    ownedThumbnailSprite = sprite;
-    thumbnailImage.sprite = sprite;
-    DestroyThumbnailSprite(previousSprite);
+    thumbnailImage.sprite = ownedThumbnailSprite.Replace(sprite);
   }
 
   void OnDestroy()
   {
-    DestroyThumbnailSprite(ownedThumbnailSprite);
-    ownedThumbnailSprite = null;
-  }
-
-  static void DestroyThumbnailSprite(Sprite sprite)
-  {
-    if (sprite == null) return;
-    if (Application.isPlaying) Destroy(sprite);
-    else DestroyImmediate(sprite);
+    ownedThumbnailSprite.Release();
   }
 
   void Update()

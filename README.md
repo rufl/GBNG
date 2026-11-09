@@ -92,6 +92,11 @@ previous opens or refreshes; actor and card Workshop menus also reject stale
 results after close, search, sort, or page changes.
 Workshop image previews reuse one cached Sprite per URL across displays, avoiding a new Unity Sprite allocation on every request.
 The shared Game Library detail panel releases its generated thumbnail Sprite when replaced or destroyed, without destroying the caller-owned texture.
+Featured and Workshop detail panels share that ownership rule, releasing their
+generated thumbnail Sprites on replacement or teardown while preserving the
+downloaded textures.
+SaveMenu also releases replaced and final screenshot Sprite wrappers without
+destroying the textures provided by the save flow.
 
 Template thumbnails load once even while their menu item is inactive. Requests
 are disposed on completion, replacement, or teardown; generated image objects

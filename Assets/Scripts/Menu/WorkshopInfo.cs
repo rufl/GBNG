@@ -28,6 +28,7 @@ public class WorkshopInfo : MonoBehaviour
 
 #if USE_STEAMWORKS
 
+  readonly RuntimeSpriteOwner ownedThumbnailSprite = new RuntimeSpriteOwner();
   WWW thumbnailDownloading = null;
   WorkshopItem workshopItem;
 
@@ -112,10 +113,14 @@ public class WorkshopInfo : MonoBehaviour
     Sprite newSprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0, 0));
     if (newSprite != null)
     {
-      infoUI.image.sprite = newSprite;
+      infoUI.image.sprite = ownedThumbnailSprite.Replace(newSprite);
     }
     infoUI.image.color = Color.white;
     //thumbnailLoadingObject.SetActive(false);
+  }
+  void OnDestroy()
+  {
+    ownedThumbnailSprite.Release();
   }
 #endif
 
