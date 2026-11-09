@@ -1243,5 +1243,186 @@ public class GameDetailThumbnailLifecycleTests
     Assert.IsTrue(sharedSourcesPreserved,
       "Runtime teardown must not destroy shared source materials.");
   }
+  [UnityTest]
+  public IEnumerator TerrainPreviewTintOverridesStayPerRendererAndReleaseOnTeardown()
+  {
+    yield return new EnterPlayMode();
+
+    GameObject previewOwner = null;
+    GameObject terrainOwner = null;
+    GameObject blockPrefab = null;
+    GameObject messagingOwner = null;
+    GameObject engineOwner = null;
+    GameObject localPreview = null;
+    GameObject redRemotePreview = null;
+    GameObject blueRemotePreview = null;
+    Material sourceMaterial = null;
+    Material previewMaterialInstance = null;
+    bool localTintUsesOwnedMaterial = false;
+    bool remoteTintsStayIndependent = false;
+    bool clearOnlyRemovesSenderPreviews = false;
+    bool handlerAndMaterialReleased = false;
+    bool previewsReleased = false;
+    bool sharedMaterialPreserved = false;
+
+    try
+    {
+      Shader shader = Shader.Find("Sully/PreviewMaterial");
+      Assert.IsNotNull(shader);
+      sourceMaterial = new Material(shader);
+      sourceMaterial.SetColor("_MainTint", Color.white);
+
+      blockPrefab = new GameObject("Terrain preview test block");
+      blockPrefab.SetActive(false);
+      blockPrefab.AddComponent<MeshFilter>();
+      blockPrefab.AddComponent<MeshRenderer>().sharedMaterial = sourceMaterial;
+
+      terrainOwner = new GameObject("Terrain preview test renderer");
+      terrainOwner.SetActive(false);
+      TerrainRendering terrainRendering = terrainOwner.AddComponent<TerrainRendering>();
+      FieldInfo perColorPrefabsField =
+        typeof(TerrainRendering).GetField("perColorPrefabs", PrivateInstance);
+      Assert.IsNotNull(perColorPrefabsField);
+      perColorPrefabsField.SetValue(terrainRendering, new TerrainRendering.StylePrefabs[]
+      {
+        new TerrainRendering.StylePrefabs { fullPrefab = blockPrefab }
+      });
+
+      messagingOwner = new GameObject("Terrain preview test messaging");
+      messagingOwner.SetActive(false);
+      UnreliableMessageSystem messaging = messagingOwner.AddComponent<UnreliableMessageSystem>();
+
+      engineOwner = new GameObject("Terrain preview test engine");
+      engineOwner.SetActive(false);
+      VoosEngine engine = engineOwner.AddComponent<VoosEngine>();
+
+      previewOwner = new GameObject("Terrain preview test owner");
+      previewOwner.SetActive(false);
+      CreateTerrainPreview preview = previewOwner.AddComponent<CreateTerrainPreview>();
+      typeof(CreateTerrainPreview).GetField("previewMaterial", PrivateInstance)
+        .SetValue(preview, sourceMaterial);
+      typeof(CreateTerrainPreview).GetField("terrainRendering", PrivateInstance)
+        .SetValue(preview, terrainRendering);
+      typeof(CreateTerrainPreview).GetField("unreliableMessaging", PrivateInstance)
+        .SetValue(preview, messaging);
+      typeof(CreateTerrainPreview).GetField("engine", PrivateInstance)
+        .SetValue(preview, engine);
+      previewOwner.SetActive(true);
+
+      Color localTint = new Color(0.1f, 0.8f, 0.9f, 1f);
+      preview.SetTint(localTint);
+      MethodInfo instantiatePreview =
+        typeof(CreateTerrainPreview).GetMethod("InstantiatePreview", PrivateInstance);
+      Assert.IsNotNull(instantiatePreview);
+      localPreview = (GameObject)instantiatePreview.Invoke(
+        preview,
+        new object[] { TerrainManager.BlockShape.Full });
+      previewMaterialInstance = (Material)typeof(CreateTerrainPreview)
+        .GetField("previewMaterialInstance", PrivateInstance)
+        .GetValue(preview);
+      Renderer localRenderer = localPreview.GetComponentInChildren<Renderer>();
+      localTintUsesOwnedMaterial =
+        localRenderer.sharedMaterial == previewMaterialInstance &&
+        previewMaterialInstance.GetColor("_MainTint") == ArtUtil.GetHologramColor(localTint) &&
+        sourceMaterial.GetColor("_MainTint") == Color.white;
+
+      MethodInfo dispatchMessage =
+        typeof(UnreliableMessageSystem).GetMethod("OnEvent", PrivateInstance);
+      Assert.IsNotNull(dispatchMessage);
+      dispatchMessage.Invoke(messaging, new object[]
+      {
+        NetworkingEventCodes.TERRAIN_PREVIEW,
+        "{\"cell\":{\"x\":1,\"y\":0,\"z\":0},\"shape\":1,\"direction\":0,\"tint\":{\"r\":1,\"g\":0,\"b\":0,\"a\":1},\"isHoverPreview\":false}",
+        101
+      });
+      dispatchMessage.Invoke(messaging, new object[]
+      {
+        NetworkingEventCodes.TERRAIN_PREVIEW,
+        "{\"cell\":{\"x\":2,\"y\":0,\"z\":0},\"shape\":1,\"direction\":0,\"tint\":{\"r\":0,\"g\":0,\"b\":1,\"a\":1},\"isHoverPreview\":false}",
+        202
+      });
+
+      var networkedPreviews =
+        (System.Collections.Generic.Dictionary<int, System.Collections.Generic.HashSet<GameObject>>)
+        typeof(CreateTerrainPreview).GetField("networkedPreviews", PrivateInstance)
+          .GetValue(preview);
+      foreach (GameObject remotePreview in networkedPreviews[101])
+      {
+        redRemotePreview = remotePreview;
+        break;
+      }
+      foreach (GameObject remotePreview in networkedPreviews[202])
+      {
+        blueRemotePreview = remotePreview;
+        break;
+      }
+      Renderer redRenderer = redRemotePreview.GetComponentInChildren<Renderer>();
+      Renderer blueRenderer = blueRemotePreview.GetComponentInChildren<Renderer>();
+      MaterialPropertyBlock redProperties = new MaterialPropertyBlock();
+      MaterialPropertyBlock blueProperties = new MaterialPropertyBlock();
+      redRenderer.GetPropertyBlock(redProperties);
+      blueRenderer.GetPropertyBlock(blueProperties);
+      remoteTintsStayIndependent =
+        redRenderer.sharedMaterial == previewMaterialInstance &&
+        blueRenderer.sharedMaterial == previewMaterialInstance &&
+        redProperties.GetColor(Shader.PropertyToID("_MainTint")) == Color.red &&
+        blueProperties.GetColor(Shader.PropertyToID("_MainTint")) == Color.blue &&
+        sourceMaterial.GetColor("_MainTint") == Color.white;
+
+      dispatchMessage.Invoke(messaging, new object[]
+      {
+        NetworkingEventCodes.TERRAIN_PREVIEW,
+        "CLEAR",
+        101
+      });
+      clearOnlyRemovesSenderPreviews =
+        networkedPreviews[101].Count == 0 &&
+        networkedPreviews[202].Count == 1;
+
+      Object.Destroy(previewOwner);
+      yield return null;
+
+      var registeredHandlers =
+        (System.Collections.Generic.Dictionary<byte, System.Action<object, int>>)
+        typeof(UnreliableMessageSystem).GetField("messageHandlers", PrivateInstance)
+          .GetValue(messaging);
+      handlerAndMaterialReleased =
+        !registeredHandlers.ContainsKey(NetworkingEventCodes.TERRAIN_PREVIEW) &&
+        previewMaterialInstance == null;
+      previewsReleased =
+        localPreview == null &&
+        redRemotePreview == null &&
+        blueRemotePreview == null;
+      sharedMaterialPreserved = sourceMaterial != null;
+    }
+    finally
+    {
+      if (previewOwner != null) Object.DestroyImmediate(previewOwner);
+      if (terrainOwner != null) Object.DestroyImmediate(terrainOwner);
+      if (messagingOwner != null) Object.DestroyImmediate(messagingOwner);
+      if (engineOwner != null) Object.DestroyImmediate(engineOwner);
+      if (blockPrefab != null) Object.DestroyImmediate(blockPrefab);
+      if (sourceMaterial != null) Object.DestroyImmediate(sourceMaterial);
+      if (previewMaterialInstance != null) Object.DestroyImmediate(previewMaterialInstance);
+      if (localPreview != null) Object.DestroyImmediate(localPreview);
+      if (redRemotePreview != null) Object.DestroyImmediate(redRemotePreview);
+      if (blueRemotePreview != null) Object.DestroyImmediate(blueRemotePreview);
+    }
+
+    yield return new ExitPlayMode();
+    Assert.IsTrue(localTintUsesOwnedMaterial,
+      "Local preview tint must modify only the component-owned material instance.");
+    Assert.IsTrue(remoteTintsStayIndependent,
+      "Remote previews must use independent property-block tint overrides without material clones.");
+    Assert.IsTrue(clearOnlyRemovesSenderPreviews,
+      "A remote CLEAR message must remove that sender's previews only.");
+    Assert.IsTrue(handlerAndMaterialReleased,
+      "Destroying the component must unregister its handler and release its preview material.");
+    Assert.IsTrue(previewsReleased,
+      "Destroying the component must release its local and remote preview objects.");
+    Assert.IsTrue(sharedMaterialPreserved,
+      "Preview teardown must leave the shared source material intact.");
+  }
+
 }
 #endif

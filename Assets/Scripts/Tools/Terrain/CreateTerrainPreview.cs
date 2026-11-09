@@ -26,6 +26,9 @@ public class CreateTerrainPreview : MonoBehaviour
   [SerializeField] Material previewMaterial;
 
   Material previewMaterialInstance;
+  static readonly int MAIN_TINT_PROPERTY_ID = Shader.PropertyToID("_MainTint");
+  MaterialPropertyBlock remoteTintProperties;
+  bool hasRegisteredPreviewHandler;
 
   static string CLEAR_MESSAGE = "CLEAR";
 
@@ -57,10 +60,34 @@ public class CreateTerrainPreview : MonoBehaviour
     Util.FindIfNotSet(this, ref terrainRendering);
     Util.FindIfNotSet(this, ref unreliableMessaging);
     Util.FindIfNotSet(this, ref engine);
+    remoteTintProperties = new MaterialPropertyBlock();
+
     previewMaterialInstance = Instantiate(previewMaterial);
 
     unreliableMessaging.AddRawHandler(NetworkingEventCodes.TERRAIN_PREVIEW, HandlePreviewMessage);
+    hasRegisteredPreviewHandler = true;
+
   }
+
+  void OnDestroy()
+  {
+    if (hasRegisteredPreviewHandler && unreliableMessaging != null)
+    {
+      unreliableMessaging.RemoveHandler(NetworkingEventCodes.TERRAIN_PREVIEW);
+      hasRegisteredPreviewHandler = false;
+    }
+
+    creationPreview.DestroyAllAndClear();
+    foreach (HashSet<GameObject> previews in networkedPreviews.Values)
+    {
+      previews.DestroyAllAndClear();
+    }
+    networkedPreviews.Clear();
+
+    RuntimeModelResourceSet.DestroyResource(previewMaterialInstance);
+    previewMaterialInstance = null;
+  }
+
 
   List<VoosActor> controlledActorsWork = new List<VoosActor>();
 
@@ -96,7 +123,10 @@ public class CreateTerrainPreview : MonoBehaviour
     preview.transform.parent = null;
     preview.transform.position = GetCellCenter(new Cell(data.cell));
     preview.transform.rotation = GetBlockDirectionAsQuaternion(dir);
-    preview.GetComponentInChildren<Renderer>().material.SetColor("_MainTint", data.tint);
+    Renderer renderer = preview.GetComponentInChildren<Renderer>();
+    renderer.GetPropertyBlock(remoteTintProperties);
+    remoteTintProperties.SetColor(MAIN_TINT_PROPERTY_ID, data.tint);
+    renderer.SetPropertyBlock(remoteTintProperties);
     networkedPreviews[senderId].Add(preview);
   }
 
@@ -147,7 +177,7 @@ public class CreateTerrainPreview : MonoBehaviour
     rv.SetActive(true);
     rv.transform.localPosition = Vector3.zero;
     rv.transform.localRotation = Quaternion.identity;
-    rv.GetComponentInChildren<Renderer>().material = previewMaterialInstance;
+    rv.GetComponentInChildren<Renderer>().sharedMaterial = previewMaterialInstance;
     foreach (Collider col in rv.GetComponentsInChildren<Collider>())
     {
       GameObject.Destroy(col);

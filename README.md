@@ -193,6 +193,10 @@ SelectionFeedback and the move/rotate gizmos clone tint materials per tool
 instance, preserve selection and axis highlighting, and release those instances
 when the tool is destroyed.
 
+Terrain placement previews share one component-owned material for local ghosts;
+remote ghosts use per-renderer property-block tint overrides. The message handler,
+all owned ghosts, and the shared preview material are released with the component.
+
 GameBuilderStage destroys its per-scene skybox and ground material instances on
 teardown. It restores the previous global skybox only when RenderSettings still
 references an instance owned by that stage; caller-owned temporary skyboxes
