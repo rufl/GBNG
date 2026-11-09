@@ -54,6 +54,7 @@ public class RenderableLibrary : MonoBehaviour
   private ActorableSearchResult emptyActorTemplate;
   private Dictionary<SquareImageButtonUI, float> timers = new Dictionary<SquareImageButtonUI, float>();
   private int searchGeneration = 0;
+  private System.IDisposable webImageSearch;
 
   public bool IsSearchActive()
   {
@@ -243,7 +244,10 @@ public class RenderableLibrary : MonoBehaviour
 
   void DefaultWebSearch()
   {
-    assetSearch.DefaultSearch((searchResult) => OnResult(searchResult, false));
+    ClearAssets();
+    int currentSearchGeneration = searchGeneration;
+    webImageSearch = assetSearch.DefaultSearch((searchResult) =>
+      OnWebSearchResult(currentSearchGeneration, searchResult));
   }
 
   public void AddResultClickedListener(System.Action<ActorableSearchResult> pickerCallback)
@@ -254,6 +258,13 @@ public class RenderableLibrary : MonoBehaviour
   void ResultClicked(SquareImageButtonUI _result)
   {
     pickerCallback?.Invoke(_result.GetSearchResult());
+  }
+
+  void CancelWebImageSearch()
+  {
+    if (webImageSearch == null) return;
+    webImageSearch.Dispose();
+    webImageSearch = null;
   }
 
   void ClearSearch()
@@ -267,6 +278,7 @@ public class RenderableLibrary : MonoBehaviour
   void ClearAssets()
   {
     searchGeneration++;
+    CancelWebImageSearch();
     for (int i = 0; i < webResults.Count; i++)
     {
       webResults[i].RequestDestroy();
@@ -277,6 +289,7 @@ public class RenderableLibrary : MonoBehaviour
   void OnDestroy()
   {
     searchGeneration++;
+    CancelWebImageSearch();
   }
 
   void RemoveInternalResultAtIndex(int index)
@@ -354,7 +367,7 @@ public class RenderableLibrary : MonoBehaviour
   {
     ClearAssets();
     int currentSearchGeneration = searchGeneration;
-    assetSearch.Search(searchString, (searchResult) =>
+    webImageSearch = assetSearch.Search(searchString, (searchResult) =>
     {
       OnWebSearchResult(currentSearchGeneration, searchResult);
     });

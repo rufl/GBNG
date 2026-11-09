@@ -40,9 +40,9 @@ public class AssetSearch : MonoBehaviour
     Util.FindIfNotSet(this, ref particleEffectSystem);
   }
 
-  public void DefaultSearch(OnActorableSearchResult resultCallback)
+  public IDisposable DefaultSearch(OnActorableSearchResult resultCallback)
   {
-    commonsImageSearchManager.Search("dog", resultCallback, null);
+    return commonsImageSearchManager.Search("dog", resultCallback, null);
   }
 
   public void AddPrefabsProcessor(OnActorableSearchResult resultCallback)
@@ -50,12 +50,11 @@ public class AssetSearch : MonoBehaviour
     prefabSearchManager.AddPrefabsProcessor(resultCallback);
   }
 
-  public void Search(
+  public IDisposable Search(
     string _searchString,
     OnActorableSearchResult resultCallback)
   {
-    //TODO: Cancel current search if still going?
-    commonsImageSearchManager.Search(_searchString, resultCallback, (found) => { });
+    return commonsImageSearchManager.Search(_searchString, resultCallback, (found) => { });
   }
 
   public void PrefabSearch(

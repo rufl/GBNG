@@ -69,6 +69,7 @@ public class CreationLibrarySidebar : Sidebar
   private ActorableSearchResult pfxActorTemplate;
   private Dictionary<SquareImageButtonUI, float> timers = new Dictionary<SquareImageButtonUI, float>();
   private int searchGeneration = 0;
+  private System.IDisposable webImageSearch;
   ActorableSearchResult lastResult;
   public System.Action<ActorableSearchResult> updateAsset;
   private ActorPrefabUploadDialog actorPrefabUploadDialog;
@@ -524,7 +525,10 @@ public class CreationLibrarySidebar : Sidebar
 
   void DefaultWebSearch()
   {
-    assetSearch.DefaultSearch((searchResult) => OnResult(searchResult, false));
+    ClearAssets();
+    int currentSearchGeneration = searchGeneration;
+    webImageSearch = assetSearch.DefaultSearch((searchResult) =>
+      OnWebSearchResult(currentSearchGeneration, searchResult));
   }
 
   public enum LibraryMode
@@ -604,6 +608,13 @@ public class CreationLibrarySidebar : Sidebar
     updateAsset?.Invoke(newResult);
   }
 
+  void CancelWebImageSearch()
+  {
+    if (webImageSearch == null) return;
+    webImageSearch.Dispose();
+    webImageSearch = null;
+  }
+
   void ClearSearch()
   {
     searchString = "";
@@ -616,6 +627,7 @@ public class CreationLibrarySidebar : Sidebar
   void ClearAssets()
   {
     searchGeneration++;
+    CancelWebImageSearch();
     for (int i = 0; i < webResults.Count; i++)
     {
       if (webResults[i] == selectedResult) SetSelectedResult(null);
@@ -627,6 +639,7 @@ public class CreationLibrarySidebar : Sidebar
   void OnDestroy()
   {
     searchGeneration++;
+    CancelWebImageSearch();
   }
 
   void RemoveInternalResultAtIndex(int index)
@@ -743,7 +756,7 @@ public class CreationLibrarySidebar : Sidebar
   {
     ClearAssets();
     int currentSearchGeneration = searchGeneration;
-    assetSearch.Search(searchString, (searchResult) =>
+    webImageSearch = assetSearch.Search(searchString, (searchResult) =>
     {
       OnWebSearchResult(currentSearchGeneration, searchResult);
     });

@@ -15,6 +15,43 @@ public class CommonsImageSearchManager : MonoBehaviour
   const string ATTRIBUTION_LICENSE_PREFIX = "CC BY ";
   AssetCache assetCache;
 
+  sealed class SearchOperation : IDisposable
+  {
+    readonly List<UnityWebRequest> activeRequests = new List<UnityWebRequest>();
+    bool cancelled;
+
+    public bool IsCancelled { get { return cancelled; } }
+
+    public bool RegisterRequest(UnityWebRequest request)
+    {
+      if (cancelled)
+      {
+        request.Abort();
+        return false;
+      }
+
+      activeRequests.Add(request);
+      return true;
+    }
+
+    public void UnregisterRequest(UnityWebRequest request)
+    {
+      activeRequests.Remove(request);
+    }
+
+    public void Dispose()
+    {
+      if (cancelled) return;
+      cancelled = true;
+
+      for (int i = 0; i < activeRequests.Count; i++)
+      {
+        UnityWebRequest request = activeRequests[i];
+        if (request != null && !request.isDone) request.Abort();
+      }
+    }
+  }
+
   void Awake()
   {
     Util.FindIfNotSet(this, ref assetCache);
@@ -25,19 +62,26 @@ public class CommonsImageSearchManager : MonoBehaviour
     assetCache.Get(uri, (entry) => requestCallback(entry.GetAssetClone()));
   }
 
-  public void Search(string searchString, OnActorableSearchResult resultCallback, Action<bool> onComplete)
+  public IDisposable Search(string searchString, OnActorableSearchResult resultCallback, Action<bool> onComplete)
   {
+    SearchOperation operation = new SearchOperation();
     if (string.IsNullOrWhiteSpace(searchString))
     {
       onComplete?.Invoke(false);
-      return;
+      return operation;
     }
 
-    StartCoroutine(SearchRoutine(searchString, resultCallback, onComplete));
+    StartCoroutine(SearchRoutine(searchString, resultCallback, onComplete, operation));
+    return operation;
   }
 
-  IEnumerator SearchRoutine(string searchString, OnActorableSearchResult resultCallback, Action<bool> onComplete)
+  IEnumerator SearchRoutine(
+    string searchString,
+    OnActorableSearchResult resultCallback,
+    Action<bool> onComplete,
+    SearchOperation operation)
   {
+
     string query = API_ENDPOINT
       + "?action=query&generator=search&gsrnamespace=6"
       + "&gsrlimit=" + MAX_SEARCH_RESULTS
@@ -50,7 +94,16 @@ public class CommonsImageSearchManager : MonoBehaviour
     {
       request.timeout = 20;
       request.SetRequestHeader("Api-User-Agent", API_USER_AGENT);
-      yield return request.SendWebRequest();
+      if (!operation.RegisterRequest(request)) yield break;
+      try
+      {
+        yield return request.SendWebRequest();
+      }
+      finally
+      {
+        operation.UnregisterRequest(request);
+      }
+      if (operation.IsCancelled) yield break;
 
       if (request.result != UnityWebRequest.Result.Success)
       {
@@ -79,6 +132,7 @@ public class CommonsImageSearchManager : MonoBehaviour
       int acceptedCount = 0;
       foreach (CommonsPage page in response.query.pages)
       {
+        if (operation.IsCancelled) yield break;
         if (page == null || page.imageinfo == null || page.imageinfo.Length == 0) continue;
         CommonsImageInfo info = page.imageinfo[0];
         if (info == null || (info.mime != "image/jpeg" && info.mime != "image/png")) continue;
@@ -98,22 +152,30 @@ public class CommonsImageSearchManager : MonoBehaviour
         string name = page.title ?? "Wikimedia Commons image";
         if (name.StartsWith("File:", StringComparison.OrdinalIgnoreCase)) name = name.Substring(5);
         ImageResult imageResult = new ImageResult(info.url, info.thumburl, name, attribution);
-        StartCoroutine(LoadThumbnail(imageResult, resultCallback));
+        StartCoroutine(LoadThumbnail(imageResult, resultCallback, operation));
         acceptedCount++;
         if (acceptedCount >= MAX_ASSETS_RETURNED) break;
       }
 
-      onComplete?.Invoke(acceptedCount > 0);
+      if (!operation.IsCancelled) onComplete?.Invoke(acceptedCount > 0);
     }
   }
 
-  IEnumerator LoadThumbnail(ImageResult imageResult, OnActorableSearchResult resultCallback)
+  IEnumerator LoadThumbnail(ImageResult imageResult, OnActorableSearchResult resultCallback, SearchOperation operation)
   {
     using (UnityWebRequest request = UnityWebRequestTexture.GetTexture(imageResult.thumbnailUrl))
     {
       request.timeout = 30;
-      yield return request.SendWebRequest();
-      if (request.result != UnityWebRequest.Result.Success) yield break;
+      if (!operation.RegisterRequest(request)) yield break;
+      try
+      {
+        yield return request.SendWebRequest();
+      }
+      finally
+      {
+        operation.UnregisterRequest(request);
+      }
+      if (operation.IsCancelled || request.result != UnityWebRequest.Result.Success) yield break;
 
       Texture2D texture = DownloadHandlerTexture.GetContent(request);
       if (texture == null) yield break;
