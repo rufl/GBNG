@@ -27,6 +27,7 @@ public class IconLoader : MonoBehaviour
 
   private Dictionary<string, List<string>> iconsPerCategory = new Dictionary<string, List<string>>();
   private Dictionary<string, string> iconPaths = new Dictionary<string, string>();
+  private Dictionary<string, Sprite> loadedSprites = new Dictionary<string, Sprite>();
 
   void Awake()
   {
@@ -65,9 +66,25 @@ public class IconLoader : MonoBehaviour
 
   public void LoadIconSprite(string iconName, System.Action<string, Sprite> onLoaded, System.Action<string> onError = null)
   {
+    Sprite sprite;
+    if (loadedSprites.TryGetValue(iconName, out sprite))
+    {
+      onLoaded.Invoke(iconName, sprite);
+      return;
+    }
+
     LoadIconTexture(iconName, (name, tex) =>
     {
-      onLoaded.Invoke(name, Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), Vector2.zero));
+      if (!loadedSprites.TryGetValue(name, out sprite))
+      {
+        sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), Vector2.zero);
+        loadedSprites[name] = sprite;
+      }
+      else if (tex != sprite.texture)
+      {
+        Destroy(tex);
+      }
+      onLoaded.Invoke(name, sprite);
     }, onError);
   }
 

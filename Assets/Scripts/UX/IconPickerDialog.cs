@@ -76,16 +76,20 @@ public class IconPickerDialog : MonoBehaviour
       Image newImage;
       Button newButton;
       thisRow.AddCell(out newImage, out newButton);
-      iconLoader.LoadIconSprite(iconName, (name, sprite) =>
-      {
-        newImage.sprite = sprite;
-        newImage.color = Color.white;
-      });
+      iconLoader.LoadIconSprite(iconName, (name, sprite) => TryAssignLoadedIcon(newImage, sprite));
       newButton.onClick.AddListener(() =>
       {
         HandleIconClicked(iconName);
       });
     }
+  }
+
+  private static bool TryAssignLoadedIcon(Image targetImage, Sprite sprite)
+  {
+    if (targetImage == null) return false;
+    targetImage.sprite = sprite;
+    targetImage.color = Color.white;
+    return true;
   }
 
   private void HandleIconClicked(string iconName)
