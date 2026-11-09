@@ -440,10 +440,11 @@ public class AssetCache : MonoBehaviour
       yield return request;
       Debug.Assert(request.isDone);
       GameObject renderable = Instantiate(cache.imageRenderablePrefab);
-      renderable.GetComponentInChildren<Renderer>().material.mainTexture = request.texture;
+      RuntimeModelResourceSet ownedResources = AssetCache.CreateImageMaterialResources(
+        renderable.GetComponentInChildren<Renderer>(), request.texture);
 
       string uri = asset.GetUri();
-      cache.CreateCacheEntry(uri, renderable, request.texture);
+      cache.CreateCacheEntry(uri, renderable, request.texture, ownedResources);
 
       cache.downloadedImageAttributions.Add(string.IsNullOrEmpty(asset.attribution) ? asset.url : asset.attribution);
     }
@@ -538,6 +539,26 @@ public class AssetCache : MonoBehaviour
   {
     yield return null;
     process(cacheByUri[asset.GetUri()]);
+  }
+  static RuntimeModelResourceSet CreateImageMaterialResources(Renderer renderer, Texture2D texture)
+  {
+    Material materialInstance = new Material(renderer.sharedMaterial);
+    RuntimeModelResourceSet ownedResources = null;
+    try
+    {
+      materialInstance.mainTexture = texture;
+      ownedResources = new RuntimeModelResourceSet();
+      ownedResources.Add(materialInstance);
+      ownedResources.Add(texture);
+      renderer.sharedMaterial = materialInstance;
+      return ownedResources;
+    }
+    catch
+    {
+      if (ownedResources != null) ownedResources.ReleaseOwner();
+      else RuntimeModelResourceSet.DestroyResource(materialInstance);
+      throw;
+    }
   }
 
   // Returns true if it is an error and it was logged.

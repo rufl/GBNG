@@ -181,6 +181,9 @@ when AvatarMaterialControl switches between standard and hologram materials.
 Preview renderers share their assigned instance instead of creating implicit
 per-renderer material copies.
 
+AssetCache owns each downloaded image's material and texture with its cache
+entry; runtime clones retain those resources until the final lease is released.
+
 GrassSpawn unregisters its material set from GrassBend and destroys its owned
 material instances when the component is torn down.
 

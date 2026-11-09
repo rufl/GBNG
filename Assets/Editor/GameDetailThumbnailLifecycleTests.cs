@@ -1776,5 +1776,90 @@ public class GameDetailThumbnailLifecycleTests
       "UserBody must destroy every per-renderer tint material when its owner is torn down.");
   }
 
+  [Test]
+  public void CachedImageMaterialsOutliveMasterUntilLastCloneIsReleased()
+  {
+    System.Type assetCacheType = typeof(GameDetail).Assembly.GetType("AssetCache");
+    Assert.IsNotNull(assetCacheType);
+    MethodInfo createImageResources = assetCacheType.GetMethod(
+      "CreateImageMaterialResources", BindingFlags.Static | BindingFlags.NonPublic);
+    MethodInfo releaseAssetClone = assetCacheType.GetMethod(
+      "ReleaseAssetClone", BindingFlags.Static | BindingFlags.Public);
+    Assert.IsNotNull(createImageResources);
+    Assert.IsNotNull(releaseAssetClone);
+
+    System.Type resourceSetType = typeof(GameDetail).Assembly.GetType("RuntimeModelResourceSet");
+    Assert.IsNotNull(resourceSetType);
+    MethodInfo cloneResourceSet = resourceSetType.GetMethod(
+      "Clone", BindingFlags.Instance | BindingFlags.Public);
+    MethodInfo releaseOwner = resourceSetType.GetMethod(
+      "ReleaseOwner", BindingFlags.Instance | BindingFlags.Public);
+    Assert.IsNotNull(cloneResourceSet);
+    Assert.IsNotNull(releaseOwner);
+
+    Shader shader = Shader.Find("Standard");
+    Assert.IsNotNull(shader);
+    GameObject master = null;
+    Material sourceMaterial = null;
+    Material cachedMaterial = null;
+    Texture2D sourceTexture = null;
+    Texture2D imageTexture = null;
+    object resources = null;
+    GameObject firstClone = null;
+    GameObject secondClone = null;
+    try
+    {
+      master = new GameObject("Cached image master");
+      master.SetActive(false);
+      sourceTexture = new Texture2D(1, 1);
+      imageTexture = new Texture2D(1, 1);
+      sourceMaterial = new Material(shader);
+      sourceMaterial.mainTexture = sourceTexture;
+      MeshRenderer renderer = master.AddComponent<MeshRenderer>();
+      renderer.sharedMaterial = sourceMaterial;
+
+      resources = createImageResources.Invoke(null, new object[] { renderer, imageTexture });
+      cachedMaterial = renderer.sharedMaterial;
+      Assert.AreNotSame(sourceMaterial, cachedMaterial,
+        "Each cached image needs its own material so its URL texture cannot mutate the prefab material.");
+      Assert.AreSame(imageTexture, cachedMaterial.mainTexture);
+      Assert.AreSame(sourceTexture, sourceMaterial.mainTexture);
+
+      firstClone = (GameObject)cloneResourceSet.Invoke(resources, new object[] { master });
+      secondClone = (GameObject)cloneResourceSet.Invoke(resources, new object[] { firstClone });
+      Assert.AreSame(cachedMaterial, secondClone.GetComponent<Renderer>().sharedMaterial);
+
+      releaseOwner.Invoke(resources, null);
+      resources = null;
+      Object.DestroyImmediate(master);
+      master = null;
+      Assert.IsTrue(cachedMaterial != null && imageTexture != null,
+        "Clones must retain the cached image material and texture after the master is disposed.");
+
+      releaseAssetClone.Invoke(null, new object[] { firstClone });
+      firstClone = null;
+      Assert.IsTrue(cachedMaterial != null && imageTexture != null,
+        "The final clone must keep image resources alive after earlier clones are released.");
+
+      releaseAssetClone.Invoke(null, new object[] { secondClone });
+      secondClone = null;
+      Assert.IsTrue(cachedMaterial == null && imageTexture == null,
+        "The cached image material and texture must be destroyed after the final clone is released.");
+      Assert.IsTrue(sourceMaterial != null && sourceTexture != null);
+      Assert.AreSame(sourceTexture, sourceMaterial.mainTexture);
+    }
+    finally
+    {
+      if (firstClone != null) releaseAssetClone.Invoke(null, new object[] { firstClone });
+      if (secondClone != null) releaseAssetClone.Invoke(null, new object[] { secondClone });
+      if (resources != null) releaseOwner.Invoke(resources, null);
+      if (master != null) Object.DestroyImmediate(master);
+      if (cachedMaterial != null) Object.DestroyImmediate(cachedMaterial);
+      if (sourceMaterial != null) Object.DestroyImmediate(sourceMaterial);
+      if (sourceTexture != null) Object.DestroyImmediate(sourceTexture);
+      if (imageTexture != null) Object.DestroyImmediate(imageTexture);
+    }
+  }
+
 }
 #endif
