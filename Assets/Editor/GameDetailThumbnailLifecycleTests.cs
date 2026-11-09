@@ -36,6 +36,89 @@ public class GameDetailThumbnailLifecycleTests
     }
     Assert.IsFalse(leakedTextureFound, "Rejected image data must not leave a live Texture2D.");
   }
+
+  [Test]
+  public void AssimpMeshBuilderDestroysPartialMeshWhenImportDataIsInvalid()
+  {
+    System.Type importerType = typeof(GameDetail).Assembly.GetType("AssimpModelLoader");
+    Assert.IsNotNull(importerType);
+    MethodInfo createMesh = importerType.GetMethod("CreateMesh", PrivateStatic);
+    Assert.IsNotNull(createMesh);
+    Mesh[] existingMeshes = Resources.FindObjectsOfTypeAll<Mesh>();
+    int leakedMeshes = 0;
+    try
+    {
+      TargetInvocationException exception = Assert.Throws<TargetInvocationException>(
+        () => createMesh.Invoke(null, new object[] { null }));
+      Assert.IsInstanceOf<System.NullReferenceException>(exception.InnerException);
+
+      foreach (Mesh mesh in Resources.FindObjectsOfTypeAll<Mesh>())
+      {
+        if (mesh == null) continue;
+        bool existedBeforeCall = false;
+        foreach (Mesh existing in existingMeshes)
+        {
+          if (object.ReferenceEquals(existing, mesh))
+          {
+            existedBeforeCall = true;
+            break;
+          }
+        }
+        if (!existedBeforeCall)
+        {
+          leakedMeshes++;
+          UnityEngine.Object.DestroyImmediate(mesh);
+        }
+      }
+
+      Assert.AreEqual(0, leakedMeshes, "A failed mesh conversion must release its partial Mesh.");
+    }
+    finally
+    {
+      foreach (Mesh mesh in Resources.FindObjectsOfTypeAll<Mesh>())
+      {
+        if (mesh == null) continue;
+        bool existedBeforeCall = false;
+        foreach (Mesh existing in existingMeshes)
+        {
+          if (object.ReferenceEquals(existing, mesh))
+          {
+            existedBeforeCall = true;
+            break;
+          }
+        }
+        if (!existedBeforeCall) UnityEngine.Object.DestroyImmediate(mesh);
+      }
+    }
+  }
+
+  [Test]
+  public void AssimpRollbackReleasesMaterialAndItsImportedTexture()
+  {
+    System.Type importerType = typeof(GameDetail).Assembly.GetType("AssimpModelLoader");
+    Assert.IsNotNull(importerType);
+    MethodInfo destroyMaterial = importerType.GetMethod("DestroyImportedMaterial", PrivateStatic);
+    Assert.IsNotNull(destroyMaterial);
+    Shader shader = Shader.Find("Standard");
+    Assert.IsNotNull(shader);
+
+    Material material = new Material(shader);
+    Texture2D texture = new Texture2D(1, 1);
+    material.SetTexture("_MainTex", texture);
+    try
+    {
+      destroyMaterial.Invoke(null, new object[] { material });
+      Assert.IsTrue(material == null, "Rollback must destroy its generated Material.");
+      Assert.IsTrue(texture == null, "Rollback must destroy the diffuse Texture2D owned by that Material.");
+    }
+    finally
+    {
+      if (material != null) UnityEngine.Object.DestroyImmediate(material);
+      if (texture != null) UnityEngine.Object.DestroyImmediate(texture);
+    }
+  }
+
+
   [Test]
   public void ReplacingAndReleasingThumbnailSpritesPreservesSourceTextures()
   {

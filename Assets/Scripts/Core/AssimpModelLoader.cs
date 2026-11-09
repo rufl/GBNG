@@ -63,27 +63,27 @@ internal static class AssimpModelLoader
   private static GameObject CreateUnityHierarchy(AssimpScene scene, string modelDirectory)
   {
     var materials = new List<Material>(scene.Materials.Count);
-    foreach (AssimpMaterial source in scene.Materials)
-    {
-      materials.Add(CreateMaterial(source, modelDirectory));
-    }
-    if (materials.Count == 0)
-    {
-      materials.Add(CreateMaterial(null, modelDirectory));
-    }
-
     var meshes = new List<Mesh>(scene.Meshes.Count);
-    foreach (AssimpMesh source in scene.Meshes)
-    {
-      meshes.Add(CreateMesh(source));
-    }
-
     var nodesByName = new Dictionary<string, Transform>(StringComparer.Ordinal);
     var pathsByName = new Dictionary<string, string>(StringComparer.Ordinal);
     var pendingSkins = new List<PendingSkin>();
     GameObject root = null;
     try
     {
+      foreach (AssimpMaterial source in scene.Materials)
+      {
+        materials.Add(CreateMaterial(source, modelDirectory));
+      }
+      if (materials.Count == 0)
+      {
+        materials.Add(CreateMaterial(null, modelDirectory));
+      }
+
+      foreach (AssimpMesh source in scene.Meshes)
+      {
+        meshes.Add(CreateMesh(source));
+      }
+
       root = CreateNode(
         scene.RootNode,
         scene,
@@ -100,10 +100,9 @@ internal static class AssimpModelLoader
     }
     catch
     {
-      if (root != null)
-      {
-        UnityEngine.Object.Destroy(root);
-      }
+      if (root != null) DestroyImportedObject(root);
+      foreach (Mesh mesh in meshes) DestroyImportedObject(mesh);
+      foreach (Material material in materials) DestroyImportedMaterial(material);
       throw;
     }
   }
@@ -166,69 +165,77 @@ internal static class AssimpModelLoader
     }
 
     var material = new Material(shader);
-    if (source == null)
+    try
     {
+      if (source == null)
+      {
+        return material;
+      }
+
+      if (source.HasColorDiffuse)
+      {
+        material.color = new Color(
+          source.ColorDiffuse.R,
+          source.ColorDiffuse.G,
+          source.ColorDiffuse.B,
+          source.ColorDiffuse.A);
+      }
+
+      if (source.HasColorEmissive)
+      {
+        var emissive = new Color(
+          source.ColorEmissive.R,
+          source.ColorEmissive.G,
+          source.ColorEmissive.B,
+          source.ColorEmissive.A);
+        material.SetColor("_EmissionColor", emissive);
+        material.EnableKeyword("_EMISSION");
+      }
+
+      if (source.HasReflectivity)
+      {
+        material.SetFloat("_Glossiness", source.Reflectivity);
+      }
+
+      if (source.HasTextureDiffuse)
+      {
+        string texturePath = ResolveDiffuseTexturePath(source.TextureDiffuse.FilePath, modelDirectory);
+        if (File.Exists(texturePath))
+        {
+          Texture2D texture = null;
+          try
+          {
+            byte[] bytes = File.ReadAllBytes(texturePath);
+            texture = DecodeDiffuseTexture(bytes, Path.GetFileName(texturePath));
+            if (texture != null)
+            {
+              material.SetTexture("_MainTex", texture);
+              texture = null;
+            }
+            else
+            {
+              Debug.LogWarning($"Could not decode diffuse texture '{texturePath}'. Using the material color.");
+            }
+          }
+          catch (Exception exception)
+          {
+            if (texture != null) DestroyImportedObject(texture);
+            Debug.LogWarning($"Could not read diffuse texture '{texturePath}': {exception.Message}. Using the material color.");
+          }
+        }
+        else
+        {
+          Debug.LogWarning($"Diffuse texture '{texturePath}' was not found. Using the material color.");
+        }
+      }
+
       return material;
     }
-
-    if (source.HasColorDiffuse)
+    catch
     {
-      material.color = new Color(
-        source.ColorDiffuse.R,
-        source.ColorDiffuse.G,
-        source.ColorDiffuse.B,
-        source.ColorDiffuse.A);
+      DestroyImportedMaterial(material);
+      throw;
     }
-
-    if (source.HasColorEmissive)
-    {
-      var emissive = new Color(
-        source.ColorEmissive.R,
-        source.ColorEmissive.G,
-        source.ColorEmissive.B,
-        source.ColorEmissive.A);
-      material.SetColor("_EmissionColor", emissive);
-      material.EnableKeyword("_EMISSION");
-    }
-
-    if (source.HasReflectivity)
-    {
-      material.SetFloat("_Glossiness", source.Reflectivity);
-    }
-
-    if (source.HasTextureDiffuse)
-    {
-      string texturePath = ResolveDiffuseTexturePath(source.TextureDiffuse.FilePath, modelDirectory);
-      if (File.Exists(texturePath))
-      {
-        Texture2D texture = null;
-        try
-        {
-          byte[] bytes = File.ReadAllBytes(texturePath);
-          texture = DecodeDiffuseTexture(bytes, Path.GetFileName(texturePath));
-          if (texture != null)
-          {
-            material.SetTexture("_MainTex", texture);
-            texture = null;
-          }
-          else
-          {
-            Debug.LogWarning($"Could not decode diffuse texture '{texturePath}'. Using the material color.");
-          }
-        }
-        catch (Exception exception)
-        {
-          if (texture != null) DestroyDiffuseTexture(texture);
-          Debug.LogWarning($"Could not read diffuse texture '{texturePath}': {exception.Message}. Using the material color.");
-        }
-      }
-      else
-      {
-        Debug.LogWarning($"Diffuse texture '{texturePath}' was not found. Using the material color.");
-      }
-    }
-
-    return material;
   }
 
   private static Texture2D DecodeDiffuseTexture(byte[] bytes, string textureName)
@@ -243,78 +250,95 @@ internal static class AssimpModelLoader
     }
     finally
     {
-      if (!loaded) DestroyDiffuseTexture(texture);
+      if (!loaded) DestroyImportedObject(texture);
     }
   }
 
-  private static void DestroyDiffuseTexture(Texture2D texture)
+  private static void DestroyImportedObject(UnityEngine.Object value)
   {
-    if (texture == null) return;
-    if (Application.isPlaying) UnityEngine.Object.Destroy(texture);
-    else UnityEngine.Object.DestroyImmediate(texture);
+    if (value == null) return;
+    if (Application.isPlaying) UnityEngine.Object.Destroy(value);
+    else UnityEngine.Object.DestroyImmediate(value);
+  }
+
+  private static void DestroyImportedMaterial(Material material)
+  {
+    if (material == null) return;
+    Texture texture = material.GetTexture("_MainTex");
+    DestroyImportedObject(material);
+    if (texture != null) DestroyImportedObject(texture);
   }
 
   private static Mesh CreateMesh(AssimpMesh source)
   {
-    var mesh = new Mesh { name = source.Name };
-    if (source.VertexCount > ushort.MaxValue)
+    var mesh = new Mesh();
+    try
     {
-      mesh.indexFormat = IndexFormat.UInt32;
-    }
-
-    var vertices = new Vector3[source.VertexCount];
-    for (int i = 0; i < source.VertexCount; i++)
-    {
-      Assimp.Vector3D vertex = source.Vertices[i];
-      vertices[i] = new Vector3(-vertex.X, vertex.Y, vertex.Z);
-    }
-    mesh.vertices = vertices;
-
-    bool hasNormals = false;
-    if (source.HasNormals && source.Normals.Count == vertices.Length)
-    {
-      var normals = new Vector3[source.Normals.Count];
-      for (int i = 0; i < normals.Length; i++)
+      mesh.name = source.Name;
+      if (source.VertexCount > ushort.MaxValue)
       {
-        Assimp.Vector3D normal = source.Normals[i];
-        normals[i] = new Vector3(-normal.X, normal.Y, normal.Z);
+        mesh.indexFormat = IndexFormat.UInt32;
       }
-      mesh.normals = normals;
-      hasNormals = true;
-    }
 
-    if (source.HasTextureCoords(0))
-    {
-      var uv = new Vector2[source.TextureCoordinateChannels[0].Count];
-      for (int i = 0; i < uv.Length; i++)
+      var vertices = new Vector3[source.VertexCount];
+      for (int i = 0; i < source.VertexCount; i++)
       {
-        Assimp.Vector3D coordinate = source.TextureCoordinateChannels[0][i];
-        uv[i] = new Vector2(coordinate.X, coordinate.Y);
+        Assimp.Vector3D vertex = source.Vertices[i];
+        vertices[i] = new Vector3(-vertex.X, vertex.Y, vertex.Z);
       }
-      mesh.uv = uv;
-    }
+      mesh.vertices = vertices;
 
-    var triangles = new List<int>();
-    foreach (Assimp.Face face in source.Faces)
-    {
-      if (face.IndexCount < 3)
+      bool hasNormals = false;
+      if (source.HasNormals && source.Normals.Count == vertices.Length)
       {
-        continue;
+        var normals = new Vector3[source.Normals.Count];
+        for (int i = 0; i < normals.Length; i++)
+        {
+          Assimp.Vector3D normal = source.Normals[i];
+          normals[i] = new Vector3(-normal.X, normal.Y, normal.Z);
+        }
+        mesh.normals = normals;
+        hasNormals = true;
       }
-      for (int i = 0; i < face.IndexCount - 2; i++)
+
+      if (source.HasTextureCoords(0))
       {
-        triangles.Add(face.Indices[i + 2]);
-        triangles.Add(face.Indices[i + 1]);
-        triangles.Add(face.Indices[0]);
+        var uv = new Vector2[source.TextureCoordinateChannels[0].Count];
+        for (int i = 0; i < uv.Length; i++)
+        {
+          Assimp.Vector3D coordinate = source.TextureCoordinateChannels[0][i];
+          uv[i] = new Vector2(coordinate.X, coordinate.Y);
+        }
+        mesh.uv = uv;
       }
+
+      var triangles = new List<int>();
+      foreach (Assimp.Face face in source.Faces)
+      {
+        if (face.IndexCount < 3)
+        {
+          continue;
+        }
+        for (int i = 0; i < face.IndexCount - 2; i++)
+        {
+          triangles.Add(face.Indices[i + 2]);
+          triangles.Add(face.Indices[i + 1]);
+          triangles.Add(face.Indices[0]);
+        }
+      }
+      mesh.SetTriangles(triangles, 0);
+      if (!hasNormals)
+      {
+        mesh.RecalculateNormals();
+      }
+      mesh.RecalculateBounds();
+      return mesh;
     }
-    mesh.SetTriangles(triangles, 0);
-    if (!hasNormals)
+    catch
     {
-      mesh.RecalculateNormals();
+      DestroyImportedObject(mesh);
+      throw;
     }
-    mesh.RecalculateBounds();
-    return mesh;
   }
 
   private static GameObject CreateNode(

@@ -167,9 +167,10 @@ disabled so it cannot overwrite the processed scene.
    Assimp is BSD). It imports static/skinned mesh hierarchies, diffuse
    materials, external diffuse textures, and legacy transform animation clips
    without TriLib; missing or undecodable diffuse textures fall back to
-   material color. Animation clips
-   loop from the first clip; mesh and sidecar files remain external and are not
-   embedded in a saved project.
+   material color. Failed imports release partially created Unity meshes,
+   materials, and decoded diffuse textures. Animation clips loop from the first
+   clip; mesh and sidecar files remain external and are not embedded in a saved
+   project.
 
 The full MIT/BSD notices ship with the application at
 `StreamingAssets/third_party/UnityMeshImporter-LICENSE.md`.
