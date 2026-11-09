@@ -896,5 +896,83 @@ public class GameDetailThumbnailLifecycleTests
       Object.DestroyImmediate(loaderObject);
     }
   }
+  [Test]
+  public void JointTintMaterialsAreOwnedAndReleasedForBothJointComponents()
+  {
+    Shader shader = Shader.Find("Standard");
+    Assert.IsNotNull(shader);
+
+    AssertJointTintMaterialsAreOwnedAndReleased(typeof(JointControl), shader);
+    AssertJointTintMaterialsAreOwnedAndReleased(typeof(JointFeedback), shader);
+  }
+
+  void AssertJointTintMaterialsAreOwnedAndReleased(System.Type componentType, Shader shader)
+  {
+    GameObject jointObject = new GameObject(componentType.Name + " material owner");
+    jointObject.SetActive(false);
+    GameObject lineRendererObject = jointObject;
+    GameObject childObject = new GameObject("Joint child renderer");
+    childObject.transform.SetParent(jointObject.transform, false);
+    GameObject externalLineObject = null;
+    if (componentType == typeof(JointControl))
+    {
+      externalLineObject = new GameObject("Joint external line renderer");
+      externalLineObject.SetActive(false);
+      lineRendererObject = externalLineObject;
+    }
+
+    Material sourceMaterial = new Material(shader);
+    sourceMaterial.color = Color.white;
+    Material lineMaterialInstance = null;
+    Material childMaterialInstance = null;
+    try
+    {
+      LineRenderer lineRenderer = lineRendererObject.AddComponent<LineRenderer>();
+      lineRenderer.sharedMaterial = sourceMaterial;
+      MeshRenderer childRenderer = childObject.AddComponent<MeshRenderer>();
+      childRenderer.sharedMaterial = sourceMaterial;
+
+      Component component = jointObject.AddComponent(componentType);
+      FieldInfo lineRendererField = componentType.GetField("lineRenderer", PrivateInstance);
+      FieldInfo colorField = componentType.GetField("color", PrivateInstance);
+      Assert.IsNotNull(lineRendererField);
+      Assert.IsNotNull(colorField);
+      lineRendererField.SetValue(component, lineRenderer);
+      colorField.SetValue(component, Color.magenta);
+
+      MethodInfo awake = componentType.GetMethod("Awake", PrivateInstance);
+      MethodInfo onDestroy = componentType.GetMethod("OnDestroy", PrivateInstance);
+      Assert.IsNotNull(awake);
+      Assert.IsNotNull(onDestroy);
+      awake.Invoke(component, null);
+
+      lineMaterialInstance = lineRenderer.sharedMaterial;
+      childMaterialInstance = childRenderer.sharedMaterial;
+      Assert.AreNotSame(sourceMaterial, lineMaterialInstance,
+        "Each joint line must use an owned material instance.");
+      Assert.AreNotSame(sourceMaterial, childMaterialInstance,
+        "Each joint child renderer must use an owned material instance.");
+      Assert.AreNotSame(lineMaterialInstance, childMaterialInstance,
+        "Tinting one joint renderer must not share an instance with another renderer.");
+      Assert.AreEqual(Color.magenta, lineMaterialInstance.color);
+      Assert.AreEqual(Color.magenta, childMaterialInstance.color);
+      Assert.AreEqual(Color.white, sourceMaterial.color,
+        "Tinting must not modify the prefab/shared source material.");
+
+      onDestroy.Invoke(component, null);
+      Assert.IsTrue(lineMaterialInstance == null,
+        "Joint teardown must release its line material instance.");
+      Assert.IsTrue(childMaterialInstance == null,
+        "Joint teardown must release each child renderer material instance.");
+    }
+    finally
+    {
+      Object.DestroyImmediate(jointObject);
+      if (externalLineObject != null) Object.DestroyImmediate(externalLineObject);
+      if (sourceMaterial != null) Object.DestroyImmediate(sourceMaterial);
+      if (lineMaterialInstance != null) Object.DestroyImmediate(lineMaterialInstance);
+      if (childMaterialInstance != null) Object.DestroyImmediate(childMaterialInstance);
+    }
+  }
 }
 #endif

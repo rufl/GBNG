@@ -27,14 +27,46 @@ public class JointControl : MonoBehaviour
 
   [SerializeField] Color color;
 
+  Material[] tintMaterialInstances;
+
   void Awake()
   {
-    lineRenderer.material.color = color;
-    // startTransform.GetComponent<Renderer>().material.color = color;
-    // endTransform.GetComponent<Renderer>().material.color = color;
-    foreach (Renderer rend in GetComponentsInChildren<Renderer>())
+    Renderer[] renderers = GetComponentsInChildren<Renderer>();
+    bool lineRendererIsChild = false;
+    for (int i = 0; i < renderers.Length; i++)
     {
-      rend.material.color = color;
+      if (renderers[i] == lineRenderer)
+      {
+        lineRendererIsChild = true;
+        break;
+      }
+    }
+    if (lineRenderer != null && !lineRendererIsChild)
+    {
+      System.Array.Resize(ref renderers, renderers.Length + 1);
+      renderers[renderers.Length - 1] = lineRenderer;
+    }
+
+    tintMaterialInstances = new Material[renderers.Length];
+    for (int i = 0; i < renderers.Length; i++)
+    {
+      Renderer rend = renderers[i];
+      Material source = rend.sharedMaterial;
+      if (source == null) continue;
+
+      Material instance = new Material(source);
+      instance.color = color;
+      rend.sharedMaterial = instance;
+      tintMaterialInstances[i] = instance;
+    }
+  }
+
+  void OnDestroy()
+  {
+    if (tintMaterialInstances == null) return;
+    foreach (Material material in tintMaterialInstances)
+    {
+      RuntimeModelResourceSet.DestroyResource(material);
     }
   }
 

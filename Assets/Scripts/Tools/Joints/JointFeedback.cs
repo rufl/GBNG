@@ -27,6 +27,7 @@ public class JointFeedback : MonoBehaviour
   [SerializeField] Color color;
 
   Vector3[] posArray = new Vector3[] { Vector3.zero, Vector3.zero };
+  Material[] tintMaterialInstances;
 
   public void SetPosition(int index, Vector3 position)
   {
@@ -35,12 +36,28 @@ public class JointFeedback : MonoBehaviour
 
   void Awake()
   {
-    foreach (Renderer rend in GetComponentsInChildren<Renderer>())
+    Renderer[] renderers = GetComponentsInChildren<Renderer>();
+    tintMaterialInstances = new Material[renderers.Length];
+    for (int i = 0; i < renderers.Length; i++)
     {
-      rend.material.color = color;
+      Renderer rend = renderers[i];
+      Material source = rend.sharedMaterial;
+      if (source == null) continue;
+
+      Material instance = new Material(source);
+      instance.color = color;
+      rend.sharedMaterial = instance;
+      tintMaterialInstances[i] = instance;
     }
+  }
 
-
+  void OnDestroy()
+  {
+    if (tintMaterialInstances == null) return;
+    foreach (Material material in tintMaterialInstances)
+    {
+      RuntimeModelResourceSet.DestroyResource(material);
+    }
   }
 
   void LateUpdate()

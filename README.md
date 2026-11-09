@@ -185,6 +185,10 @@ material instances when the component is torn down.
 Tool-effect tint materials are explicitly owned per renderer and released with
 their effect component.
 
+JointControl and JointFeedback tint their line/child renderers with component-owned
+material instances and destroy those instances on teardown, leaving shared source
+materials unchanged.
+
 GameBuilderStage destroys its per-scene skybox and ground material instances on
 teardown. It restores the previous global skybox only when RenderSettings still
 references an instance owned by that stage; caller-owned temporary skyboxes
