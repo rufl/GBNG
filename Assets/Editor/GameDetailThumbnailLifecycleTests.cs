@@ -2441,5 +2441,160 @@ public class GameDetailThumbnailLifecycleTests
     }
   }
 
+  [Test]
+  public void SnapshotGameViewRestoresRenderTargetsAfterCaptureAndFailure()
+  {
+    GameObject snapshotOwner = new GameObject("Snapshot camera state test");
+    snapshotOwner.SetActive(false);
+    GameObject userOwner = new GameObject("Snapshot source camera test");
+    userOwner.SetActive(false);
+    RenderTexture gameViewTexture = new RenderTexture(4, 4, 0);
+    RenderTexture activeTexture = new RenderTexture(4, 4, 0);
+    RenderTexture priorCameraTexture = new RenderTexture(4, 4, 0);
+    RenderTexture originalActiveTexture = RenderTexture.active;
+    Camera captureCamera = null;
+    Component postVolume = null;
+    Texture2D screenshotTexture = null;
+    ScriptableObject generatedProfile = null;
+
+    try
+    {
+      captureCamera = snapshotOwner.AddComponent<Camera>();
+      SnapshotCamera snapshotCamera = snapshotOwner.AddComponent<SnapshotCamera>();
+      Camera userCamera = userOwner.AddComponent<Camera>();
+      NavigationControls navigationControls = userOwner.AddComponent<NavigationControls>();
+      UserMain userMain = userOwner.AddComponent<UserMain>();
+      navigationControls.targetCamera = userCamera;
+
+      FieldInfo navigationControlsField = typeof(UserMain).GetField(
+        "navigationControls", PrivateInstance);
+      FieldInfo userMainField = typeof(SnapshotCamera).GetField(
+        "userMain", PrivateInstance);
+      FieldInfo postField = typeof(SnapshotCamera).GetField("post", PrivateInstance);
+      FieldInfo cameraField = typeof(SnapshotCamera).GetField(
+        "targetCamera", PrivateInstance);
+      FieldInfo gameViewTextureField = typeof(SnapshotCamera).GetField(
+        "gameViewTexture", PrivateInstance);
+      Assert.IsNotNull(navigationControlsField);
+      Assert.IsNotNull(userMainField);
+      Assert.IsNotNull(postField);
+      Assert.IsNotNull(cameraField);
+      Assert.IsNotNull(gameViewTextureField);
+
+      navigationControlsField.SetValue(userMain, navigationControls);
+      userMainField.SetValue(snapshotCamera, userMain);
+      postVolume = snapshotOwner.AddComponent(postField.FieldType);
+      postField.SetValue(snapshotCamera, postVolume);
+      cameraField.SetValue(snapshotCamera, captureCamera);
+      gameViewTextureField.SetValue(snapshotCamera, gameViewTexture);
+      captureCamera.targetTexture = priorCameraTexture;
+      captureCamera.enabled = false;
+      RenderTexture.active = activeTexture;
+
+      screenshotTexture = snapshotCamera.SnapshotGameView();
+      Assert.IsNotNull(screenshotTexture);
+      Assert.AreSame(activeTexture, RenderTexture.active,
+        "A successful snapshot must restore the previously active render target.");
+      Assert.AreSame(priorCameraTexture, captureCamera.targetTexture,
+        "A successful snapshot must restore the capture camera's previous target.");
+      Assert.IsFalse(captureCamera.enabled,
+        "Game-view capture must preserve the helper camera's enabled state.");
+      PropertyInfo profileProperty = postField.FieldType.GetProperty("profile");
+      Assert.IsNotNull(profileProperty);
+      generatedProfile = profileProperty.GetValue(postVolume, null) as ScriptableObject;
+      Assert.IsNotNull(generatedProfile);
+      Object.DestroyImmediate(screenshotTexture);
+      screenshotTexture = null;
+
+      navigationControlsField.SetValue(userMain, null);
+      Assert.Throws<System.NullReferenceException>(
+        () => snapshotCamera.SnapshotGameView());
+      Assert.AreSame(activeTexture, RenderTexture.active,
+        "A failed snapshot must restore the previously active render target.");
+      Assert.AreSame(priorCameraTexture, captureCamera.targetTexture,
+        "A failed snapshot must leave the capture camera's previous target intact.");
+      Assert.IsFalse(captureCamera.enabled,
+        "A failed game-view snapshot must preserve the helper camera's enabled state.");
+    }
+    finally
+    {
+      if (screenshotTexture != null) Object.DestroyImmediate(screenshotTexture);
+      RenderTexture.active = originalActiveTexture;
+      if (captureCamera != null) captureCamera.targetTexture = null;
+      if (snapshotOwner != null) Object.DestroyImmediate(snapshotOwner);
+      if (userOwner != null) Object.DestroyImmediate(userOwner);
+      if (generatedProfile != null) Object.DestroyImmediate(generatedProfile);
+      gameViewTexture.Release();
+      activeTexture.Release();
+      priorCameraTexture.Release();
+      Object.DestroyImmediate(gameViewTexture);
+      Object.DestroyImmediate(activeTexture);
+      Object.DestroyImmediate(priorCameraTexture);
+    }
+  }
+
+  [Test]
+  public void SnapshotActorRestoresRenderTargetsAfterCapture()
+  {
+    GameObject snapshotOwner = new GameObject("Actor snapshot camera test");
+    snapshotOwner.SetActive(false);
+    GameObject actorOwner = new GameObject("Actor snapshot source test");
+    actorOwner.SetActive(false);
+    RenderTexture actorTexture = new RenderTexture(4, 4, 0);
+    RenderTexture activeTexture = new RenderTexture(4, 4, 0);
+    RenderTexture priorCameraTexture = new RenderTexture(4, 4, 0);
+    RenderTexture originalActiveTexture = RenderTexture.active;
+    Camera captureCamera = null;
+    Texture2D screenshotTexture = null;
+
+    try
+    {
+      captureCamera = snapshotOwner.AddComponent<Camera>();
+      SnapshotCamera snapshotCamera = snapshotOwner.AddComponent<SnapshotCamera>();
+      UserMain userMain = snapshotOwner.AddComponent<UserMain>();
+      VoosActor actor = actorOwner.AddComponent<VoosActor>();
+
+      FieldInfo userMainField = typeof(SnapshotCamera).GetField(
+        "userMain", PrivateInstance);
+      FieldInfo postField = typeof(SnapshotCamera).GetField("post", PrivateInstance);
+      FieldInfo cameraField = typeof(SnapshotCamera).GetField(
+        "targetCamera", PrivateInstance);
+      FieldInfo actorTextureField = typeof(SnapshotCamera).GetField(
+        "actorTexture", PrivateInstance);
+      Assert.IsNotNull(userMainField);
+      Assert.IsNotNull(postField);
+      Assert.IsNotNull(cameraField);
+      Assert.IsNotNull(actorTextureField);
+
+      userMainField.SetValue(snapshotCamera, userMain);
+      postField.SetValue(snapshotCamera, snapshotOwner.AddComponent(postField.FieldType));
+      cameraField.SetValue(snapshotCamera, captureCamera);
+      actorTextureField.SetValue(snapshotCamera, actorTexture);
+      captureCamera.targetTexture = priorCameraTexture;
+      RenderTexture.active = activeTexture;
+
+      screenshotTexture = snapshotCamera.SnapshotActor(actor);
+      Assert.IsNotNull(screenshotTexture);
+      Assert.AreSame(activeTexture, RenderTexture.active,
+        "An actor snapshot must restore the previously active render target.");
+      Assert.AreSame(priorCameraTexture, captureCamera.targetTexture,
+        "An actor snapshot must restore the capture camera's previous target.");
+    }
+    finally
+    {
+      if (screenshotTexture != null) Object.DestroyImmediate(screenshotTexture);
+      RenderTexture.active = originalActiveTexture;
+      if (captureCamera != null) captureCamera.targetTexture = null;
+      if (actorOwner != null) Object.DestroyImmediate(actorOwner);
+      if (snapshotOwner != null) Object.DestroyImmediate(snapshotOwner);
+      actorTexture.Release();
+      activeTexture.Release();
+      priorCameraTexture.Release();
+      Object.DestroyImmediate(actorTexture);
+      Object.DestroyImmediate(activeTexture);
+      Object.DestroyImmediate(priorCameraTexture);
+    }
+  }
+
 }
 #endif

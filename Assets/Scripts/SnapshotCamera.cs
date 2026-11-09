@@ -35,18 +35,36 @@ public class SnapshotCamera : MonoBehaviour
     Util.FindIfNotSet(this, ref post);
     PositionCameraForActor(actor);
     RenderTexture currentRT = RenderTexture.active;
+    RenderTexture currentCameraTarget = targetCamera.targetTexture;
+    Texture2D screenshotTexture = null;
 
-    Texture2D screenshotTexture = new Texture2D(actorTexture.width, actorTexture.height);
+    try
+    {
+      targetCamera.targetTexture = actorTexture;
+      RenderTexture.active = actorTexture;
+      targetCamera.Render();
 
-    targetCamera.targetTexture = actorTexture;
-    RenderTexture.active = actorTexture;
-    targetCamera.Render();
-
-    screenshotTexture.ReadPixels(new Rect(0, 0, actorTexture.width, actorTexture.height), 0, 0);
-    screenshotTexture.Apply();
-
-    RenderTexture.active = currentRT;
-    return screenshotTexture;
+      screenshotTexture = new Texture2D(actorTexture.width, actorTexture.height);
+      screenshotTexture.ReadPixels(new Rect(0, 0, actorTexture.width, actorTexture.height), 0, 0);
+      screenshotTexture.Apply();
+      return screenshotTexture;
+    }
+    catch
+    {
+      if (screenshotTexture != null) Destroy(screenshotTexture);
+      throw;
+    }
+    finally
+    {
+      try
+      {
+        RenderTexture.active = currentRT;
+      }
+      finally
+      {
+        targetCamera.targetTexture = currentCameraTarget;
+      }
+    }
   }
 
   void PositionCameraForActor(VoosActor actor)
@@ -69,25 +87,64 @@ public class SnapshotCamera : MonoBehaviour
     Util.FindIfNotSet(this, ref userMain);
     Util.FindIfNotSet(this, ref post);
     RenderTexture currentRT = RenderTexture.active;
-    RenderTexture.active = gameViewTexture;
+    RenderTexture currentCameraTarget = targetCamera.targetTexture;
+    bool currentCameraEnabled = targetCamera.enabled;
+    Texture2D screenshotTexture = null;
+    bool blurStateCaptured = false;
+    bool blurEnabled = false;
 
-    targetCamera.CopyFrom(userMain.GetCamera());
-    targetCamera.targetTexture = gameViewTexture;
-    // IMPORTANT: For some reason, Unity forward path, with Camera.Render(),
-    // does not like alphatest surface shaders. The end effect is our terrain
-    // does not show up in thumbnails for Low Quality. Could not figure out
-    // why...but whatever, for this 1 render let's just do deferred.
-    targetCamera.renderingPath = RenderingPath.DeferredShading;
-    targetCamera.rect = new Rect(0, 0, 1, 1);
-    bool blurEnabled = SetMotionBlurEnabled(false);
-    targetCamera.Render();
-    SetMotionBlurEnabled(blurEnabled);
+    try
+    {
+      RenderTexture.active = gameViewTexture;
+      targetCamera.CopyFrom(userMain.GetCamera());
+      targetCamera.targetTexture = gameViewTexture;
+      // IMPORTANT: For some reason, Unity forward path, with Camera.Render(),
+      // does not like alphatest surface shaders. The end effect is our terrain
+      // does not show up in thumbnails for Low Quality. Could not figure out
+      // why...but whatever, for this 1 render let's just do deferred.
+      targetCamera.renderingPath = RenderingPath.DeferredShading;
+      targetCamera.rect = new Rect(0, 0, 1, 1);
+      blurEnabled = SetMotionBlurEnabled(false);
+      blurStateCaptured = true;
+      targetCamera.Render();
+      SetMotionBlurEnabled(blurEnabled);
+      blurStateCaptured = false;
 
-    Texture2D screenshotTexture = new Texture2D(gameViewTexture.width, gameViewTexture.height);
-    screenshotTexture.ReadPixels(new Rect(0, 0, gameViewTexture.width, gameViewTexture.height), 0, 0);
-    screenshotTexture.Apply();
-    RenderTexture.active = currentRT;
-    return screenshotTexture;
+      screenshotTexture = new Texture2D(gameViewTexture.width, gameViewTexture.height);
+      screenshotTexture.ReadPixels(new Rect(0, 0, gameViewTexture.width, gameViewTexture.height), 0, 0);
+      screenshotTexture.Apply();
+      return screenshotTexture;
+    }
+    catch
+    {
+      if (screenshotTexture != null) Destroy(screenshotTexture);
+      throw;
+    }
+    finally
+    {
+      try
+      {
+        if (blurStateCaptured) SetMotionBlurEnabled(blurEnabled);
+      }
+      finally
+      {
+        try
+        {
+          RenderTexture.active = currentRT;
+        }
+        finally
+        {
+          try
+          {
+            targetCamera.targetTexture = currentCameraTarget;
+          }
+          finally
+          {
+            targetCamera.enabled = currentCameraEnabled;
+          }
+        }
+      }
+    }
   }
 
   // Returns the prior enabled value.

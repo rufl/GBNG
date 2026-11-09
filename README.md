@@ -102,6 +102,9 @@ close. The Steam actor-upload dialog releases its captured thumbnail on
 replacement or close. Library category and custom terrain preview Sprites are
 released on refresh or teardown; the icon picker disposes its cached Sprites
 and owned textures when its loader is destroyed.
+SnapshotCamera restores the prior active render target for both capture paths.
+Game-view capture also restores its camera target and enabled state, plus motion
+blur if rendering fails.
 ImageLoader releases per-URL Sprite and Texture caches and clears in-flight
 requests when the service is destroyed; late Workshop callbacks are ignored.
 
