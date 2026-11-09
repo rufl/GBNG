@@ -54,30 +54,20 @@ public partial class BehaviorCards
     {
       List<AssignedBehavior> assignedCards = GetCustomCardUses();
       Dictionary<string, AssignedBehavior> usesById = new Dictionary<string, AssignedBehavior>();
+      List<string> assignedUseIds = new List<string>(assignedCards.Count);
       foreach (AssignedBehavior assigned in assignedCards)
       {
         usesById[assigned.useId] = assigned;
+        assignedUseIds.Add(assigned.useId);
       }
 
       BrainMetadata metadata = Util.FromJsonSafe<BrainMetadata>(actorEditor.GetMetadataJson());
-      List<AssignedBehavior> orderedCards = new List<AssignedBehavior>(assignedCards.Count);
-      HashSet<string> addedUseIds = new HashSet<string>();
-      if (metadata.miscPanelCardUseIds != null)
+      List<string> orderedUseIds = MergeCustomCardUseOrder(metadata.miscPanelCardUseIds, assignedUseIds);
+      List<AssignedBehavior> orderedCards = new List<AssignedBehavior>(orderedUseIds.Count);
+      foreach (string useId in orderedUseIds)
       {
-        foreach (string useId in metadata.miscPanelCardUseIds)
-        {
-          AssignedBehavior assigned;
-          if (usesById.TryGetValue(useId, out assigned) && addedUseIds.Add(useId))
-          {
-            orderedCards.Add(assigned);
-          }
-        }
-      }
-
-      // Older saves have no explicit order; preserve their behavior-use order.
-      foreach (AssignedBehavior assigned in assignedCards)
-      {
-        if (addedUseIds.Add(assigned.useId))
+        AssignedBehavior assigned;
+        if (usesById.TryGetValue(useId, out assigned))
         {
           orderedCards.Add(assigned);
         }
@@ -125,9 +115,7 @@ public partial class BehaviorCards
       {
         var assigned = actorEditor.AddBehavior(((UnassignedCard)card).GetUnassignedBehaviorItem());
         List<string> order = GetOrderedCustomCardUses().Select(use => use.useId).ToList();
-        order.Remove(assigned.useId);
-        int insertIndex = index < 0 ? order.Count : Mathf.Clamp(index, 0, order.Count);
-        order.Insert(insertIndex, assigned.useId);
+        InsertCustomCardUseId(order, assigned.useId, index);
         SaveCustomCardOrder(order);
         return new CardAssignment(assigned, this);
       }
@@ -222,6 +210,50 @@ public partial class BehaviorCards
     {
       throw new NotSupportedException("The built-in Custom panel cannot be duplicated.");
     }
+  }
+  static List<string> MergeCustomCardUseOrder(
+    IEnumerable<string> savedUseIds,
+    IEnumerable<string> assignedUseIds)
+  {
+    List<string> currentOrder = assignedUseIds == null
+      ? new List<string>()
+      : new List<string>(assignedUseIds);
+    HashSet<string> availableUseIds = new HashSet<string>();
+    foreach (string useId in currentOrder)
+    {
+      if (!string.IsNullOrEmpty(useId)) availableUseIds.Add(useId);
+    }
+
+    List<string> mergedOrder = new List<string>(currentOrder.Count);
+    HashSet<string> addedUseIds = new HashSet<string>();
+    if (savedUseIds != null)
+    {
+      foreach (string useId in savedUseIds)
+      {
+        if (!string.IsNullOrEmpty(useId) &&
+            availableUseIds.Contains(useId) &&
+            addedUseIds.Add(useId))
+        {
+          mergedOrder.Add(useId);
+        }
+      }
+    }
+
+    foreach (string useId in currentOrder)
+    {
+      if (!string.IsNullOrEmpty(useId) && addedUseIds.Add(useId))
+      {
+        mergedOrder.Add(useId);
+      }
+    }
+    return mergedOrder;
+  }
+
+  static void InsertCustomCardUseId(List<string> orderedUseIds, string useId, int index)
+  {
+    orderedUseIds.Remove(useId);
+    int insertIndex = index < 0 ? orderedUseIds.Count : Mathf.Clamp(index, 0, orderedUseIds.Count);
+    orderedUseIds.Insert(insertIndex, useId);
   }
 
   public static string CUSTOM_CATEGORY = "Custom";
