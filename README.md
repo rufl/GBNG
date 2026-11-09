@@ -100,6 +100,8 @@ destroying the textures provided by the save flow.
 Snapshot popups release generated Sprites when they close. Library category and
 custom terrain preview Sprites are released on refresh or teardown; the icon
 picker disposes its cached Sprites and owned textures when its loader is destroyed.
+ImageLoader releases per-URL Sprite and Texture caches and clears in-flight
+requests when the service is destroyed; late Workshop callbacks are ignored.
 
 Template thumbnails load once even while their menu item is inactive. Requests
 are disposed on completion, replacement, or teardown; generated image objects

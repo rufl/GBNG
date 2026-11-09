@@ -209,5 +209,68 @@ public class GameDetailThumbnailLifecycleTests
       Object.DestroyImmediate(loaderObject);
     }
   }
+  [Test]
+  public void ImageLoaderReleasesCachesAndIgnoresLateWorkshopCallbacksOnTeardown()
+  {
+    GameObject loaderObject = new GameObject("Image loader lifecycle test");
+    loaderObject.SetActive(false);
+    ImageLoader loader = loaderObject.AddComponent<ImageLoader>();
+    Texture2D texture = new Texture2D(2, 2);
+    Sprite sprite = Sprite.Create(texture, new Rect(0, 0, 2, 2), Vector2.zero);
+    try
+    {
+      FieldInfo loadedTexturesField = typeof(ImageLoader).GetField("loadedTextures", PrivateInstance);
+      FieldInfo loadedSpritesField = typeof(ImageLoader).GetField("loadedSprites", PrivateInstance);
+      FieldInfo pendingRequestsField = typeof(ImageLoader).GetField("pendingRequests", PrivateInstance);
+      Assert.IsNotNull(loadedTexturesField);
+      Assert.IsNotNull(loadedSpritesField);
+      Assert.IsNotNull(pendingRequestsField);
+      System.Collections.IDictionary loadedTextures =
+        (System.Collections.IDictionary)loadedTexturesField.GetValue(loader);
+      System.Collections.IDictionary loadedSprites =
+        (System.Collections.IDictionary)loadedSpritesField.GetValue(loader);
+      System.Collections.IDictionary pendingRequests =
+        (System.Collections.IDictionary)pendingRequestsField.GetValue(loader);
+      loadedTextures.Add("sw:test", texture);
+      loadedSprites.Add("sw:test", sprite);
+
+      System.Type pendingRequestType = typeof(ImageLoader).GetNestedType("PendingRequest", BindingFlags.NonPublic);
+      ConstructorInfo pendingRequestConstructor = pendingRequestType.GetConstructor(
+        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+        null,
+        new[] { typeof(string), typeof(Image), typeof(System.Action<string, bool>) },
+        null);
+      Assert.IsNotNull(pendingRequestConstructor);
+      pendingRequests.Add("sw:pending", pendingRequestConstructor.Invoke(
+        new object[] { "sw:pending", null, null }));
+
+      MethodInfo onDestroy = typeof(ImageLoader).GetMethod("OnDestroy", PrivateInstance);
+      Assert.IsNotNull(onDestroy);
+      onDestroy.Invoke(loader, null);
+
+      Assert.IsTrue(sprite == null, "Destroying the loader must release cached Sprites.");
+      Assert.IsTrue(texture == null, "Destroying the loader must release cached image textures.");
+      Assert.AreEqual(0, loadedSprites.Count);
+      Assert.AreEqual(0, loadedTextures.Count);
+      Assert.AreEqual(0, pendingRequests.Count, "Destroying the loader must release in-flight requests.");
+
+      MethodInfo onWorkshopFetchComplete = typeof(ImageLoader).GetMethod(
+        "OnWorkshopFetchComplete",
+        PrivateInstance);
+      Assert.IsNotNull(onWorkshopFetchComplete);
+      onWorkshopFetchComplete.Invoke(loader, new object[] {
+        "sw:pending",
+        Util.Maybe<string>.CreateEmpty()
+      });
+      Assert.AreEqual(0, loadedSprites.Count, "Late callbacks must not repopulate destroyed caches.");
+      Assert.AreEqual(0, loadedTextures.Count, "Late callbacks must not repopulate destroyed caches.");
+    }
+    finally
+    {
+      if (sprite != null) Object.DestroyImmediate(sprite);
+      if (texture != null) Object.DestroyImmediate(texture);
+      Object.DestroyImmediate(loaderObject);
+    }
+  }
 }
 #endif

@@ -33,10 +33,31 @@ public class ImageLoader : MonoBehaviour
   // in theory do by spamming the cache to cause predictable evictions).
   private Dictionary<string, Texture2D> loadedTextures = new Dictionary<string, Texture2D>();
   private Dictionary<string, Sprite> loadedSprites = new Dictionary<string, Sprite>();
+  private bool isDestroyed;
 
   private void Awake()
   {
     Util.FindIfNotSet(this, ref workshopAssetSource);
+  }
+  void OnDestroy()
+  {
+    isDestroyed = true;
+    pendingRequests.Clear();
+    foreach (Sprite sprite in loadedSprites.Values)
+    {
+      if (sprite == null) continue;
+      if (Application.isPlaying) Destroy(sprite);
+      else DestroyImmediate(sprite);
+    }
+    loadedSprites.Clear();
+
+    foreach (Texture2D texture in loadedTextures.Values)
+    {
+      if (texture == null) continue;
+      if (Application.isPlaying) Destroy(texture);
+      else DestroyImmediate(texture);
+    }
+    loadedTextures.Clear();
   }
 
   // Request that a URL be loaded into the given target image.
@@ -110,6 +131,8 @@ public class ImageLoader : MonoBehaviour
 
   void OnWorkshopFetchComplete(string url, Util.Maybe<string> workshopResult)
   {
+    if (isDestroyed) return;
+
     PendingRequest request;
     if (!pendingRequests.TryGetValue(url, out request))
     {
