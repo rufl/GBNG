@@ -28,6 +28,8 @@ public class ToolEffectController : MonoBehaviour, UserBody.NetworkableToolEffec
 
   [SerializeField] Renderer[] renderers;
   [SerializeField] Renderer particleRenderer;
+  Material[] tintMaterialInstances;
+  Material particleMaterialInstance;
 
   public Transform originTransform;
 
@@ -44,6 +46,19 @@ public class ToolEffectController : MonoBehaviour, UserBody.NetworkableToolEffec
 
   bool toolActivate = false;
   bool toolRoutineActive = false;
+
+  void Awake()
+  {
+    tintMaterialInstances = new Material[renderers.Length];
+    for (int i = 0; i < renderers.Length; i++)
+    {
+      tintMaterialInstances[i] = Instantiate(renderers[i].sharedMaterial);
+      renderers[i].sharedMaterial = tintMaterialInstances[i];
+    }
+
+    particleMaterialInstance = Instantiate(particleRenderer.sharedMaterial);
+    particleRenderer.sharedMaterial = particleMaterialInstance;
+  }
 
   public void ToolActivate(bool on)
   {
@@ -202,11 +217,25 @@ public class ToolEffectController : MonoBehaviour, UserBody.NetworkableToolEffec
   public void SetTint(Color tint)
   {
     Color color = ArtUtil.GetHologramColor(tint);
-    foreach (Renderer renderer in renderers)
+    for (int i = 0; i < tintMaterialInstances.Length; i++)
     {
-      renderer.material.SetColor("_MainTint", color);
+      tintMaterialInstances[i].SetColor("_MainTint", color);
     }
-    particleRenderer.material.SetColor("_Color", color);
+    particleMaterialInstance.SetColor("_Color", color);
+  }
+
+  void OnDestroy()
+  {
+    if (tintMaterialInstances != null)
+    {
+      foreach (Material material in tintMaterialInstances)
+      {
+        RuntimeModelResourceSet.DestroyResource(material);
+      }
+    }
+    RuntimeModelResourceSet.DestroyResource(particleMaterialInstance);
+    tintMaterialInstances = null;
+    particleMaterialInstance = null;
   }
 
   void UserBody.NetworkableToolEffect.SetTargetPosition(Vector3 position)

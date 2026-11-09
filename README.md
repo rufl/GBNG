@@ -182,6 +182,9 @@ copies.
 GrassSpawn unregisters its material set from GrassBend and destroys its owned
 material instances when the component is torn down.
 
+Tool-effect tint materials are explicitly owned per renderer and released with
+their effect component.
+
 The full MIT/BSD notices ship with the application at
 `StreamingAssets/third_party/UnityMeshImporter-LICENSE.md`.
 

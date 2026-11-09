@@ -315,6 +315,52 @@ public class GameDetailThumbnailLifecycleTests
       }
     }
   }
+  [Test]
+  public void ToolEffectControllerReleasesTintMaterialsOnTeardown()
+  {
+    Shader shader = Shader.Find("Standard");
+    Assert.IsNotNull(shader);
+
+    GameObject effectObject = new GameObject("Tool effect material owner");
+    effectObject.SetActive(false);
+    Material[] rendererMaterials = {
+      new Material(shader),
+      new Material(shader),
+      new Material(shader)
+    };
+    Material particleMaterial = new Material(shader);
+    try
+    {
+      ToolEffectController effect = effectObject.AddComponent<ToolEffectController>();
+      FieldInfo tintMaterialsField = typeof(ToolEffectController).GetField("tintMaterialInstances", PrivateInstance);
+      FieldInfo particleMaterialField = typeof(ToolEffectController).GetField("particleMaterialInstance", PrivateInstance);
+      Assert.IsNotNull(tintMaterialsField);
+      Assert.IsNotNull(particleMaterialField);
+      tintMaterialsField.SetValue(effect, rendererMaterials);
+      particleMaterialField.SetValue(effect, particleMaterial);
+
+      MethodInfo onDestroy = typeof(ToolEffectController).GetMethod("OnDestroy", PrivateInstance);
+      Assert.IsNotNull(onDestroy);
+      onDestroy.Invoke(effect, null);
+
+      foreach (Material material in rendererMaterials)
+      {
+        Assert.IsTrue(material == null, "ToolEffectController must release every tint material.");
+      }
+      Assert.IsTrue(particleMaterial == null,
+        "ToolEffectController must release its particle renderer material.");
+    }
+    finally
+    {
+      Object.DestroyImmediate(effectObject);
+      foreach (Material material in rendererMaterials)
+      {
+        if (material != null) Object.DestroyImmediate(material);
+      }
+      if (particleMaterial != null) Object.DestroyImmediate(particleMaterial);
+    }
+  }
+
 
 
 
