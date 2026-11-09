@@ -99,6 +99,9 @@ Feedback submissions continue after the form closes; network failures are logged
 
 Failed HTTP sound downloads are reported and are not cached as audio clips.
 
+Web image search results that arrive after a search is cleared, replaced, or its
+library is destroyed are ignored; unclaimed thumbnail textures are released.
+
 The synthetic Custom behavior-card panel persists its display order per actor in
 brain metadata, separate from the behavior-use order that controls runtime execution.
 

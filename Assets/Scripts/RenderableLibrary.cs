@@ -53,7 +53,7 @@ public class RenderableLibrary : MonoBehaviour
   private string searchString = "";
   private ActorableSearchResult emptyActorTemplate;
   private Dictionary<SquareImageButtonUI, float> timers = new Dictionary<SquareImageButtonUI, float>();
-  private float lastSearchTime = 0;
+  private int searchGeneration = 0;
 
   public bool IsSearchActive()
   {
@@ -261,17 +261,22 @@ public class RenderableLibrary : MonoBehaviour
     searchString = "";
     renderableLibraryUI.searchInput.text = "";
     ClearAssets();
-    lastSearchTime = Time.realtimeSinceStartup;
     UpdateAll();
   }
 
   void ClearAssets()
   {
+    searchGeneration++;
     for (int i = 0; i < webResults.Count; i++)
     {
       webResults[i].RequestDestroy();
     }
     webResults.Clear();
+  }
+
+  void OnDestroy()
+  {
+    searchGeneration++;
   }
 
   void RemoveInternalResultAtIndex(int index)
@@ -348,16 +353,33 @@ public class RenderableLibrary : MonoBehaviour
   public void NewSearch()
   {
     ClearAssets();
-    lastSearchTime = Time.realtimeSinceStartup;
-    float currSearchTime = lastSearchTime;
+    int currentSearchGeneration = searchGeneration;
     assetSearch.Search(searchString, (searchResult) =>
     {
-      if (lastSearchTime == currSearchTime)
-      {
-        OnResult(searchResult, false);
-      }
+      OnWebSearchResult(currentSearchGeneration, searchResult);
     });
     UpdateAll();
+  }
+
+  void OnWebSearchResult(int generation, ActorableSearchResult searchResult)
+  {
+    if (generation != searchGeneration)
+    {
+      if (searchResult.renderableReference.assetType == AssetType.Image && searchResult.thumbnail != null)
+      {
+        if (Application.isPlaying)
+        {
+          Destroy(searchResult.thumbnail);
+        }
+        else
+        {
+          DestroyImmediate(searchResult.thumbnail);
+        }
+      }
+      return;
+    }
+
+    OnResult(searchResult, false);
   }
 
   private bool DoesInternalResultMatchSearch(SquareImageButtonUI result)
