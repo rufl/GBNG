@@ -1,7 +1,7 @@
 #if UNITY_EDITOR
 using System;
-using GameBuilder;
 using System.Reflection;
+using GameBuilder;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -55,6 +55,33 @@ public class TerrainNativeResourceLifecycleTests
       if (terrainObject != null) UnityEngine.Object.DestroyImmediate(terrainObject);
       if (renderMesh != null) UnityEngine.Object.DestroyImmediate(renderMesh);
       if (physicsMesh != null) UnityEngine.Object.DestroyImmediate(physicsMesh);
+    }
+  }
+
+  [Test]
+  public void ProceduralCubeReleasesItsGeneratedMeshOnTeardown()
+  {
+    GameObject owner = new GameObject("Procedural cube mesh owner test");
+    owner.SetActive(false);
+    MeshFilter filter = owner.AddComponent<MeshFilter>();
+    ProceduralCube cube = owner.AddComponent<ProceduralCube>();
+    Mesh generatedMesh = null;
+    try
+    {
+      Invoke(cube, "Awake");
+      generatedMesh = (Mesh)typeof(ProceduralCube).GetField("mesh", PrivateInstance).GetValue(cube);
+      Assert.IsNotNull(generatedMesh);
+      Assert.AreSame(generatedMesh, filter.sharedMesh);
+
+      Invoke(cube, "OnDestroy");
+
+      Assert.IsTrue(generatedMesh == null, "ProceduralCube owns and destroys its generated mesh.");
+      Assert.IsNull(filter.sharedMesh, "ProceduralCube detaches its mesh before teardown.");
+    }
+    finally
+    {
+      if (owner != null) UnityEngine.Object.DestroyImmediate(owner);
+      if (generatedMesh != null) UnityEngine.Object.DestroyImmediate(generatedMesh);
     }
   }
 

@@ -14,12 +14,11 @@
  * limitations under the License.
  */
 
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 public class ProceduralCube : MonoBehaviour
 {
+  Mesh mesh;
 
   void Awake()
   {
@@ -29,7 +28,6 @@ public class ProceduralCube : MonoBehaviour
 
   void ConstructMesh()
   {
-    Mesh mesh;
     GetComponent<MeshFilter>().mesh = mesh = new Mesh();
     mesh.name = "Procedural cube";
 
@@ -52,5 +50,13 @@ public class ProceduralCube : MonoBehaviour
     mesh.vertices = verts;
     mesh.RecalculateBounds();
     mesh.SetIndices(lines, MeshTopology.Lines, 0);
+  }
+
+  void OnDestroy()
+  {
+    MeshFilter filter = GetComponent<MeshFilter>();
+    if (filter != null && filter.sharedMesh == mesh) filter.sharedMesh = null;
+    RuntimeModelResourceSet.DestroyResource(mesh);
+    mesh = null;
   }
 }
