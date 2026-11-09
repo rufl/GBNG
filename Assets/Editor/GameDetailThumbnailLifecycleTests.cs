@@ -2194,6 +2194,112 @@ public class GameDetailThumbnailLifecycleTests
     }
   }
 
+
+
+  [Test]
+  public void TerrainStylesDiagnosticUpdatesTerrainBuffersWithoutCreatingTextures()
+  {
+    GameObject owner = new GameObject("Terrain style diagnostic smoke test");
+    owner.SetActive(false);
+    TerrainSystem terrainSystem = owner.AddComponent<TerrainSystem>();
+    TerrainManager manager = owner.AddComponent<TerrainManager>();
+    Texture2D[] texturesBefore = Resources.FindObjectsOfTypeAll<Texture2D>();
+    try
+    {
+      FieldInfo terrainV2Field = typeof(TerrainManager).GetField(
+        "terrainV2", PrivateInstance);
+      FieldInfo stylesField = typeof(TerrainSystem).GetField("styles", PrivateInstance);
+      System.Type styleType = typeof(TerrainSystem).GetNestedType(
+        "Style", BindingFlags.NonPublic);
+      Assert.IsNotNull(terrainV2Field);
+      Assert.IsNotNull(stylesField);
+      Assert.IsNotNull(styleType);
+      FieldInfo baseTextureField = styleType.GetField(
+        "base_tex", BindingFlags.Instance | BindingFlags.Public);
+      Assert.IsNotNull(baseTextureField);
+      terrainV2Field.SetValue(manager, terrainSystem);
+      manager.DoStylesTest();
+
+      System.Collections.IDictionary styles =
+        (System.Collections.IDictionary)stylesField.GetValue(terrainSystem);
+      Assert.AreEqual(200, styles.Count);
+      var pixelBuffers = new System.Collections.Generic.HashSet<Color32[]>();
+      for (int i = 0; i < styles.Count; i++)
+      {
+        Color32[] pixels = (Color32[])baseTextureField.GetValue(styles[i]);
+        Assert.IsNotNull(pixels);
+        Assert.AreEqual(terrainSystem.GetStyleTextureResolution()
+          * terrainSystem.GetStyleTextureResolution(), pixels.Length);
+        Assert.IsTrue(pixelBuffers.Add(pixels),
+          "TerrainSystem retains each style's pixel buffer; diagnostic styles must not alias.");
+        for (int pixel = 1; pixel < pixels.Length; pixel++)
+        {
+          if (!pixels[pixel].Equals(pixels[0]))
+          {
+            Assert.Fail($"Diagnostic style {i} is not a solid-color texture.");
+          }
+        }
+      }
+
+      foreach (Texture2D texture in Resources.FindObjectsOfTypeAll<Texture2D>())
+      {
+        if (texture == null) continue;
+        bool existedBefore = false;
+        foreach (Texture2D existing in texturesBefore)
+        {
+          if (object.ReferenceEquals(existing, texture))
+          {
+            existedBefore = true;
+            break;
+          }
+        }
+        Assert.IsTrue(existedBefore,
+          "Terrain style diagnostics must not allocate temporary Texture2D objects.");
+      }
+    }
+    finally
+    {
+      if (owner != null) Object.DestroyImmediate(owner);
+      foreach (Texture2D texture in Resources.FindObjectsOfTypeAll<Texture2D>())
+      {
+        if (texture == null) continue;
+        bool existedBefore = false;
+        foreach (Texture2D existing in texturesBefore)
+        {
+          if (object.ReferenceEquals(existing, texture))
+          {
+            existedBefore = true;
+            break;
+          }
+        }
+        if (!existedBefore) Object.DestroyImmediate(texture);
+      }
+    }
+  }
+
+  [Test]
+  public void TerrainStyleDiagnosticBuildsIndependentSolidPixelBuffers()
+  {
+    MethodInfo createPixels = typeof(TerrainManager).GetMethod(
+      "CreateSolidStylePixels", PrivateStatic);
+    Assert.IsNotNull(createPixels);
+
+    Color color = new Color(0.15f, 0.4f, 0.8f, 1f);
+    Color32 expected = color;
+    Color32[] first = (Color32[])createPixels.Invoke(null, new object[] { color, 3 });
+    Color32[] second = (Color32[])createPixels.Invoke(null, new object[] { color, 3 });
+
+    Assert.AreNotSame(first, second,
+      "TerrainSystem retains each style's pixel array, so styles cannot share the writable buffer.");
+    Assert.AreEqual(9, first.Length);
+    Assert.AreEqual(9, second.Length);
+    for (int i = 0; i < first.Length; i++)
+    {
+      Assert.AreEqual(expected, first[i]);
+      Assert.AreEqual(expected, second[i]);
+    }
+  }
+
   [Test]
   public void TerrainRenderingReleasesGeneratedColorAssetsOnTeardown()
   {

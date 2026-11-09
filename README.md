@@ -207,6 +207,8 @@ clears cell/edge render state when its component is destroyed.
 `TerrainManager` owns downloaded custom-style textures, releases replaced and
 retired textures after thumbnail listeners refresh, and ignores stale workshop
 downloads for styles that are no longer active.
+The `test terrain styles` diagnostic builds retained per-style pixel buffers
+directly, without allocating temporary `Texture2D` objects.
 
 Actor renderable tint and `_Running` shader state use per-renderer property
 blocks, preserving actor-specific appearance while sharing source materials.

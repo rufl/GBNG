@@ -1323,27 +1323,31 @@ public class TerrainManager : MonoBehaviour
     SetCellValue(new Cell(0, -1, 0), new CellValue(BlockShape.Full, BlockDirection.East, BlockStyle.SolidColor0));
   }
 
+  static Color32[] CreateSolidStylePixels(Color color, int texSize)
+  {
+    Color32[] pixels = new Color32[texSize * texSize];
+    Color32 color32 = color;
+    for (int i = 0; i < pixels.Length; i++)
+    {
+      pixels[i] = color32;
+    }
+    return pixels;
+  }
+
   public void DoStylesTest()
   {
     int texSize = terrainV2.GetStyleTextureResolution();
     int N = 200;
     for (int i = 0; i < N; i++)
     {
-      Texture2D texture = new Texture2D(texSize, texSize);
       var color = new Color(
             UnityEngine.Random.Range(0f, 1f),
             UnityEngine.Random.Range(0f, 1f),
             UnityEngine.Random.Range(0f, 1f)
           );
-      for (int j = 0; j < texSize; j++)
-      {
-        for (int k = 0; k < texSize; k++)
-        {
-          texture.SetPixel(j, k, color);
-        }
-      }
-      texture.Apply();
-      terrainV2.SetStyleTextures(i, texture.GetPixels32()); // color
+      // TerrainSystem retains this buffer, so each style needs its own array.
+      Color32[] pixels = CreateSolidStylePixels(color, texSize);
+      terrainV2.SetStyleTextures(i, pixels); // color
     }
     for (int z = 0; z < N; z++)
     {
