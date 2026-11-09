@@ -36,6 +36,7 @@ public class GameDetail : MonoBehaviour
   [SerializeField] GameObject downloadTextObject;
   [SerializeField] GameObject openButtonsParentObject;
   [SerializeField] Texture2D placeholderThumbnailTexture;
+  Sprite ownedThumbnailSprite;
 
   DynamicPopup popups;
   LoadingScreen loadingScreen;
@@ -140,8 +141,8 @@ public class GameDetail : MonoBehaviour
     descriptionField.text = $"<b>{workshopItem.Name}</b> - {GetWorkshopHeader(workshopItem)}\n{workshopItem.Description}";
     if (texture != null)
     {
-      thumbnailImage.sprite = Sprite.Create(
-        texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0, 0), 100F, 0, SpriteMeshType.FullRect);
+      SetOwnedThumbnailSprite(Sprite.Create(
+        texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0, 0), 100F, 0, SpriteMeshType.FullRect));
     }
     playAction = () => OnPlayTriggered(playOpts => LoadByWorkshopItem(workshopItem, playOpts));
     buildAction = () => LoadByWorkshopItem(workshopItem, new GameBuilderApplication.PlayOptions { startInBuildMode = true }, true);
@@ -154,8 +155,30 @@ public class GameDetail : MonoBehaviour
     Sprite newSprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0, 0));
     if (newSprite != null)
     {
-      thumbnailImage.sprite = newSprite;
+      SetOwnedThumbnailSprite(newSprite);
     }
+  }
+
+  void SetOwnedThumbnailSprite(Sprite sprite)
+  {
+    if (ownedThumbnailSprite == sprite) return;
+    Sprite previousSprite = ownedThumbnailSprite;
+    ownedThumbnailSprite = sprite;
+    thumbnailImage.sprite = sprite;
+    DestroyThumbnailSprite(previousSprite);
+  }
+
+  void OnDestroy()
+  {
+    DestroyThumbnailSprite(ownedThumbnailSprite);
+    ownedThumbnailSprite = null;
+  }
+
+  static void DestroyThumbnailSprite(Sprite sprite)
+  {
+    if (sprite == null) return;
+    if (Application.isPlaying) Destroy(sprite);
+    else DestroyImmediate(sprite);
   }
 
   void Update()
