@@ -8,6 +8,34 @@ public class GameDetailThumbnailLifecycleTests
 {
   static readonly BindingFlags PrivateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
 
+  static readonly BindingFlags PrivateStatic = BindingFlags.Static | BindingFlags.NonPublic;
+
+  [Test]
+  public void AssimpDiffuseDecoderDestroysTextureWhenImageBytesAreInvalid()
+  {
+    System.Type importerType = typeof(GameDetail).Assembly.GetType("AssimpModelLoader");
+    Assert.IsNotNull(importerType);
+    MethodInfo decode = importerType.GetMethod("DecodeDiffuseTexture", PrivateStatic);
+    Assert.IsNotNull(decode);
+
+    string textureName = "invalid-diffuse-texture-" + System.Guid.NewGuid().ToString("N");
+    object result = decode.Invoke(null, new object[] {
+      new byte[] { 0x47, 0x42, 0x20, 0x49, 0x6e, 0x76, 0x61, 0x6c, 0x69, 0x64 },
+      textureName
+    });
+
+    Assert.IsNull(result, "Invalid image bytes must not produce an imported texture.");
+    bool leakedTextureFound = false;
+    foreach (Texture2D texture in Resources.FindObjectsOfTypeAll<Texture2D>())
+    {
+      if (texture != null && texture.name == textureName)
+      {
+        leakedTextureFound = true;
+        break;
+      }
+    }
+    Assert.IsFalse(leakedTextureFound, "Rejected image data must not leave a live Texture2D.");
+  }
   [Test]
   public void ReplacingAndReleasingThumbnailSpritesPreservesSourceTextures()
   {

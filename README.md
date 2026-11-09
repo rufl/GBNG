@@ -166,7 +166,8 @@ disabled so it cannot overwrite the processed scene.
    `com.donghok.meshimporter` package (UnityMeshImporter and AssimpNet are MIT;
    Assimp is BSD). It imports static/skinned mesh hierarchies, diffuse
    materials, external diffuse textures, and legacy transform animation clips
-   without TriLib. Missing textures fall back to material color. Animation clips
+   without TriLib; missing or undecodable diffuse textures fall back to
+   material color. Animation clips
    loop from the first clip; mesh and sidecar files remain external and are not
    embedded in a saved project.
 

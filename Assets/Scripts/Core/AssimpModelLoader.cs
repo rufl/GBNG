@@ -201,23 +201,24 @@ internal static class AssimpModelLoader
       string texturePath = ResolveDiffuseTexturePath(source.TextureDiffuse.FilePath, modelDirectory);
       if (File.Exists(texturePath))
       {
+        Texture2D texture = null;
         try
         {
           byte[] bytes = File.ReadAllBytes(texturePath);
-          var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-          if (texture.LoadImage(bytes))
+          texture = DecodeDiffuseTexture(bytes, Path.GetFileName(texturePath));
+          if (texture != null)
           {
-            texture.name = Path.GetFileName(texturePath);
             material.SetTexture("_MainTex", texture);
+            texture = null;
           }
           else
           {
-            UnityEngine.Object.Destroy(texture);
             Debug.LogWarning($"Could not decode diffuse texture '{texturePath}'. Using the material color.");
           }
         }
         catch (Exception exception)
         {
+          if (texture != null) DestroyDiffuseTexture(texture);
           Debug.LogWarning($"Could not read diffuse texture '{texturePath}': {exception.Message}. Using the material color.");
         }
       }
@@ -228,6 +229,29 @@ internal static class AssimpModelLoader
     }
 
     return material;
+  }
+
+  private static Texture2D DecodeDiffuseTexture(byte[] bytes, string textureName)
+  {
+    Texture2D texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+    bool loaded = false;
+    try
+    {
+      texture.name = textureName;
+      loaded = texture.LoadImage(bytes);
+      return loaded ? texture : null;
+    }
+    finally
+    {
+      if (!loaded) DestroyDiffuseTexture(texture);
+    }
+  }
+
+  private static void DestroyDiffuseTexture(Texture2D texture)
+  {
+    if (texture == null) return;
+    if (Application.isPlaying) UnityEngine.Object.Destroy(texture);
+    else UnityEngine.Object.DestroyImmediate(texture);
   }
 
   private static Mesh CreateMesh(AssimpMesh source)
