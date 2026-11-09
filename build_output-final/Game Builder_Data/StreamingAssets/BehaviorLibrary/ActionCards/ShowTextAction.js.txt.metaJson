@@ -1,9 +1,0 @@
-{
-  "cardSystemCardData" : {
-    "isCard": true,
-    "title": "Show Text",
-    "description": "Shows text on the screen.",
-    "categories" : ["Action"],
-    "imageResourcePath": "BuiltinAssets/CardImages/staticText"
-  }
-}

@@ -1,9 +1,0 @@
-{
-  "cardSystemCardData" : {
-    "isCard": true,
-    "title": "Reset Game",
-    "description": "Resets the game, optionally after a delay.",
-    "categories" : ["Action"],
-    "imageResourcePath": "BuiltinAssets/CardImages/reset"
-  }
-}

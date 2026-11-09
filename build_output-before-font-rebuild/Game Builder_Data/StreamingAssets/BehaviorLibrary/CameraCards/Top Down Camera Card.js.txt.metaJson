@@ -1,9 +1,0 @@
-{
-  "cardSystemCardData" : {
-    "isCard": true,
-    "title": "Top Down Camera",
-    "description": "Top Down Camera.",
-    "categories" : ["Camera"],
-    "imageResourcePath": "BuiltinAssets/PanelIcons/camera"
-  }
-}

@@ -1,9 +1,0 @@
-{
-  "cardSystemCardData" : {
-    "isCard": true,
-    "title": "Spawn Actor",
-    "description": "Spawn a clone of another actor.",
-    "categories" : ["Action"],
-    "imageResourcePath": "BuiltinAssets/CardImages/spawn"
-  }
-}

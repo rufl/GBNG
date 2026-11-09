@@ -1,9 +1,0 @@
-{
-  "cardSystemCardData" : {
-    "isCard": true,
-    "title": "Send Random Message",
-    "description": "Send a random message to an actor.",
-    "categories" : ["Action"],
-    "imageResourcePath": "BuiltinAssets/CardImages/randomMessage"
-  }
-}

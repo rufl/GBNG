@@ -1,9 +1,0 @@
-{
-  "cardSystemCardData" : {
-    "isCard": true,
-    "title": "Heal Damage",
-    "description": "Heals an actor.",
-    "categories" : ["Action"],
-    "imageResourcePath": "BuiltinAssets/CardImages/heal"
-  }
-}

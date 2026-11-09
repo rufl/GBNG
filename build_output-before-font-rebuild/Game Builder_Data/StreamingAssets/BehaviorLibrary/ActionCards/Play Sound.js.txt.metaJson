@@ -1,9 +1,0 @@
-{
-  "cardSystemCardData" : {
-    "isCard": true,
-    "title": "Play Sound",
-    "description": "Plays a sound.",
-    "categories" : ["Action"],
-    "imageResourcePath": "BuiltinAssets/CardImages/playSound"
-  }
-}

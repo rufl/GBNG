@@ -1,9 +1,0 @@
-{
-  "cardSystemCardData" : {
-    "isCard": true,
-    "title": "Floating Health Bar",
-    "description": "Shows a health bar on top of the actor.",
-    "categories" : ["Screen"],
-    "imageResourcePath": "BuiltinAssets/CardImages/floatingHealthBar"
-  }
-}

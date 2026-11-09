@@ -1,9 +1,0 @@
-{
-  "cardSystemCardData" : {
-    "isCard": true,
-    "title": "Auto Pilot",
-    "description": "Moves according to commands received.",
-    "categories" : ["Move"],
-    "imageResourcePath": "BuiltinAssets/CardImages/autoPilot"
-  }
-}

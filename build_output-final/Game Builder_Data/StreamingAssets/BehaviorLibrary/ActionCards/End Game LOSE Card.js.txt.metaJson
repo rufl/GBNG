@@ -1,9 +1,0 @@
-{
-  "cardSystemCardData" : {
-    "isCard": true,
-    "title": "Game over!",
-    "description": "Ends the game. Shows the GAME OVER screen.",
-    "categories" : ["Action"],
-    "imageResourcePath": "BuiltinAssets/CardImages/lose"
-  }
-}

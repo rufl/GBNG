@@ -1,9 +1,0 @@
-{
-  "cardSystemCardData" : {
-    "isCard": true,
-    "title": "Debug Action",
-    "description": "This is a debug card that flashes the actor and sends a log message.",
-    "categories" : ["Action"],
-    "imageResourcePath": "BuiltinAssets/CardImages/debug"
-  }
-}

@@ -108,6 +108,55 @@ internal static class AssimpModelLoader
     }
   }
 
+  private static string ResolveDiffuseTexturePath(string textureReference, string modelDirectory)
+  {
+    string normalizedReference = (textureReference ?? string.Empty).Replace('\\', Path.DirectorySeparatorChar);
+    string texturePath = Path.IsPathRooted(normalizedReference)
+      ? normalizedReference
+      : Path.Combine(modelDirectory ?? string.Empty, normalizedReference);
+    if (File.Exists(texturePath))
+    {
+      return texturePath;
+    }
+
+    string fileName = Path.GetFileName(normalizedReference);
+    if (string.IsNullOrEmpty(fileName))
+    {
+      return texturePath;
+    }
+
+    string siblingTexturePath = Path.Combine(modelDirectory ?? string.Empty, fileName);
+    if (File.Exists(siblingTexturePath))
+    {
+      return siblingTexturePath;
+    }
+
+    if (!string.IsNullOrEmpty(modelDirectory))
+    {
+      DirectoryInfo modelDirectoryInfo = new DirectoryInfo(Path.GetFullPath(modelDirectory));
+      for (DirectoryInfo current = modelDirectoryInfo; current != null; current = current.Parent)
+      {
+        if (!string.Equals(current.Name, "Models", StringComparison.OrdinalIgnoreCase) || current.Parent == null)
+        {
+          continue;
+        }
+
+        string relativeModelDirectory = modelDirectoryInfo.FullName
+          .Substring(current.FullName.Length)
+          .TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        string parallelTexturePath = Path.Combine(
+          current.Parent.FullName, "Textures", relativeModelDirectory, fileName);
+        if (File.Exists(parallelTexturePath))
+        {
+          return parallelTexturePath;
+        }
+        break;
+      }
+    }
+
+    return texturePath;
+  }
+
   private static Material CreateMaterial(AssimpMaterial source, string modelDirectory)
   {
     Shader shader = Shader.Find("Standard");
@@ -149,17 +198,7 @@ internal static class AssimpModelLoader
 
     if (source.HasTextureDiffuse)
     {
-      string textureReference = source.TextureDiffuse.FilePath;
-      string normalizedReference = textureReference.Replace('\\', Path.DirectorySeparatorChar);
-      string texturePath = Path.IsPathRooted(normalizedReference)
-        ? normalizedReference
-        : Path.Combine(modelDirectory ?? string.Empty, normalizedReference);
-      if (!File.Exists(texturePath))
-      {
-        // FBX files often retain an absolute Windows source path; use the local sibling texture on other OSes.
-        string siblingTexturePath = Path.Combine(modelDirectory ?? string.Empty, Path.GetFileName(normalizedReference));
-        if (File.Exists(siblingTexturePath)) texturePath = siblingTexturePath;
-      }
+      string texturePath = ResolveDiffuseTexturePath(source.TextureDiffuse.FilePath, modelDirectory);
       if (File.Exists(texturePath))
       {
         try

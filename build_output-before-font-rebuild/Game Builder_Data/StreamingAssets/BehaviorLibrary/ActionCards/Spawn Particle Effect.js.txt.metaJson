@@ -1,9 +1,0 @@
-{
-  "cardSystemCardData" : {
-    "isCard": true,
-    "title": "Spawn Particle Effect",
-    "description": "Spawn a particle effect.",
-    "categories" : ["Action"],
-    "imageResourcePath": "BuiltinAssets/CardImages/spawnParticleEffect"
-  }
-}

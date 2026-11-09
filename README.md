@@ -216,7 +216,12 @@ falls back to libc's `if_nametoindex` when Mono lacks that API.
 Linux x64 builds rewrite AssimpNet's four `libdl.so` imports to `libdl.so.2`
 and bundle `libminizip.so` beside Assimp, preloading it globally to satisfy
 Assimp's `libminizip.so.1` dependency without `LD_LIBRARY_PATH`.
-A Linux Mono player smoke on Ubuntu 26.04 under WSL2/WSLg imported the repository's animated Fox FBX through Assimp and ran the asset-preparation step. It resolved the FBX's absolute Windows texture references to sibling files, producing a skinned mesh with 1,733 vertices and 19 bones, three animation clips, two diffuse textures, and a generated mesh collider; sampling the RunForward clip changed the rig pose. This covers FBX import and model preparation, not the asynchronous `AssetCache.Get` path or physical Linux GPU rendering. Cross-host IPv6 multicast remains untested.
+A Linux Mono player smoke on Ubuntu 26.04 under WSL2/WSLg imported the repository's animated Fox FBX through Assimp and ran asset preparation. It produced a skinned mesh with 1,733 vertices and 19 bones, three animation clips, two diffuse textures, and a generated mesh collider; sampling `RunForward` changed the rig pose.
+
+When an FBX texture's original path is unavailable, the importer checks the model directory and then maps `GameAssets/Models/...` to the parallel `GameAssets/Textures/...` tree. The EditMode smoke confirms that both Fox textures load from that tree.
+
+The EditMode regression suite in `Assets/Editor/AssetCacheIntegrationTests` covers `AssetCache.Get` for a local OBJ and the Assimp-backed Fox FBX. It checks deferred callbacks, concurrent-request coalescing, deferred cache hits, skinned-mesh import, and collision geometry. Physical Linux GPU rendering and cross-host multiplayer remain untested: the available tailnet peer answered reachability probes, but remote access did not permit deploying or launching a Game Builder player.
+
 The checked-in macOS V8 bundle is x86_64-only, so native Apple Silicon players
 cannot execute behavior scripts. Unity player builds reject ARM64 and universal
 macOS architectures to avoid shipping without scripts. Select the `StandaloneOSX`

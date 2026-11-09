@@ -1,9 +1,0 @@
-{
-  "cardSystemCardData" : {
-    "isCard": true,
-    "title": "Explode",
-    "description": "Creates an explosion, which causes damage and pushes objects.",
-    "categories" : ["Action"],
-    "imageResourcePath": "BuiltinAssets/CardImages/explode"
-  }
-}

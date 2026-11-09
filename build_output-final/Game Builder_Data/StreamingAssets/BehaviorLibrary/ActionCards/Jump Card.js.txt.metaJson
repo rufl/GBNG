@@ -1,9 +1,0 @@
-{
-  "cardSystemCardData" : {
-    "isCard": true,
-    "title": "Jump",
-    "description": "Jumps up.",
-    "categories" : ["Action"],
-    "imageResourcePath": "BuiltinAssets/CardImages/jump"
-  }
-}

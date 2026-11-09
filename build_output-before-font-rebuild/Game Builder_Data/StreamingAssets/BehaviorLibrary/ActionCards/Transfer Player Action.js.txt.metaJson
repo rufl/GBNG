@@ -1,9 +1,0 @@
-{
-  "cardSystemCardData" : {
-    "isCard": true,
-    "title": "Transfer Player",
-    "description": "Transfers player to another actor.",
-    "categories" : ["Action"],
-    "imageResourcePath": "BuiltinAssets/CardImages/transferPlayer"
-  }
-}

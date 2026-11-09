@@ -133,19 +133,18 @@ public class AssetCache : MonoBehaviour
         combine[i].transform = assetObject.transform.worldToLocalMatrix * s.transform.localToWorldMatrix;
         i++;
       }
-      MeshFilter mf = assetObject.AddComponent<MeshFilter>();
-      mf.mesh = new Mesh();
-      mf.mesh.CombineMeshes(combine);
+      Mesh colliderMesh = new Mesh();
+      colliderMesh.CombineMeshes(combine);
       MeshCollider mc = assetObject.AddComponent<MeshCollider>();
+      mc.sharedMesh = colliderMesh;
       mc.convex = true;
-      Destroy(mf);
 
       // Give the materials textures if they don't have them.
       MeshRenderer[] meshRenderers = assetObject.GetComponentsInChildren<MeshRenderer>();
       for (i = 0; i < meshRenderers.Length; i++)
       {
         MeshRenderer meshRenderer = meshRenderers[i];
-        BakeBaseColorIntoTexture(meshRenderer.material);
+        BakeBaseColorIntoTexture(meshRenderer.sharedMaterial);
       }
 
       // Imported local models use the default texture filtering mode.

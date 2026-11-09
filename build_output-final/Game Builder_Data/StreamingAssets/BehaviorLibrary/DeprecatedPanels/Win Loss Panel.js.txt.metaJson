@@ -1,9 +1,0 @@
-{
-  "cardSystemPanelData" : {
-    "isPanel": true,
-    "title": "Win/Loss",
-    "hue": 0.2,
-    "description": "Rules for winning/losing the game",
-    "hidden": "true"
-  }
-}

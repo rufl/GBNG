@@ -1,9 +1,0 @@
-{
-  "cardSystemCardData" : {
-    "isCard": true,
-    "title": "Revive (after death)",
-    "description": "Revives the actor, restoring to max health.",
-    "categories" : ["Action"],
-    "imageResourcePath": "BuiltinAssets/CardImages/revive"
-  }
-}

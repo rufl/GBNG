@@ -1,9 +1,0 @@
-{
-  "cardSystemCardData" : {
-    "isCard": true,
-    "title": "Board (vehicle)",
-    "description": "Boards a boardable actor (vehicle).",
-    "categories" : ["Action"],
-    "imageResourcePath": "BuiltinAssets/CardImages/board"
-  }
-}
