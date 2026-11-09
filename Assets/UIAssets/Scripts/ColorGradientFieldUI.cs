@@ -24,7 +24,6 @@ public class ColorGradientFieldUI : GradientFieldUI<Color>
   [SerializeField] UnityEngine.UI.RawImage gradientImage;
   [SerializeField] ColorEditFormUI colorEditForm;
   Texture2D gradientTexture;
-  [SerializeField] ColorEditFormUI colorEditForm;
 
   protected override void UpdateStops()
   {
@@ -38,7 +37,7 @@ public class ColorGradientFieldUI : GradientFieldUI<Color>
 
   private void RedrawTexture()
   {
-    // Create new texture.
+    // Reuse the preview texture until the layout width changes.
     int width = Mathf.CeilToInt(gradientTransform.rect.width);
     int height = 1;
     Texture2D texture = GetOrCreateGradientTexture(width);

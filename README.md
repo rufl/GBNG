@@ -102,6 +102,8 @@ close. The Steam actor-upload dialog releases its captured thumbnail on
 replacement or close. Library category and custom terrain preview Sprites are
 released on refresh or teardown; the icon picker disposes its cached Sprites
 and owned textures when its loader is destroyed.
+ColorGradientFieldUI reuses its generated preview texture at a stable width and
+releases it on resize or teardown without clearing caller-assigned textures.
 SnapshotCamera restores the prior active render target for both capture paths.
 Game-view capture also restores its camera target and enabled state, plus motion
 blur if rendering fails.
