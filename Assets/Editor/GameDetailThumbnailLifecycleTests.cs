@@ -1861,5 +1861,94 @@ public class GameDetailThumbnailLifecycleTests
     }
   }
 
+  [Test]
+  public void ActorPhysicsMaterialsAreIsolatedAndReleased()
+  {
+    MethodInfo releaseMaterials = typeof(VoosActor).GetMethod(
+      "ReleaseOwnedPhysicsMaterials", PrivateInstance);
+    FieldInfo renderableCollidersField = typeof(VoosActor).GetField(
+      "renderableColliders", PrivateInstance);
+    Assert.IsNotNull(releaseMaterials);
+    Assert.IsNotNull(renderableCollidersField);
+
+    PhysicMaterial sourceMaterial = null;
+    GameObject[] owners = new GameObject[2];
+    VoosActor[] actors = new VoosActor[2];
+    BoxCollider[] colliders = new BoxCollider[2];
+    PhysicMaterial[] ownedMaterials = new PhysicMaterial[2];
+    PhysicMaterial[] replacementMaterials = new PhysicMaterial[2];
+    try
+    {
+      sourceMaterial = new PhysicMaterial();
+      sourceMaterial.name = "Actor source physics material";
+      sourceMaterial.bounciness = 0.12f;
+      sourceMaterial.dynamicFriction = 0.37f;
+      sourceMaterial.staticFriction = 0.64f;
+      sourceMaterial.bounceCombine = PhysicMaterialCombine.Maximum;
+
+      for (int i = 0; i < actors.Length; i++)
+      {
+        owners[i] = new GameObject("Actor physics material owner " + i);
+        owners[i].SetActive(false);
+        actors[i] = owners[i].AddComponent<VoosActor>();
+        GameObject colliderObject = new GameObject("Actor collider " + i);
+        colliderObject.transform.SetParent(owners[i].transform, false);
+        colliders[i] = colliderObject.AddComponent<BoxCollider>();
+        colliders[i].sharedMaterial = sourceMaterial;
+        renderableCollidersField.SetValue(actors[i], new Collider[] { colliders[i] });
+
+        actors[i].SetBounciness(i == 0 ? 0.35f : 0.8f);
+        ownedMaterials[i] = colliders[i].sharedMaterial;
+        Assert.AreNotSame(sourceMaterial, ownedMaterials[i]);
+        Assert.That(ownedMaterials[i].bounciness,
+          Is.EqualTo(i == 0 ? 0.35f : 0.8f).Within(0.0001f));
+        Assert.AreEqual(sourceMaterial.dynamicFriction, ownedMaterials[i].dynamicFriction);
+        Assert.AreEqual(sourceMaterial.staticFriction, ownedMaterials[i].staticFriction);
+        Assert.AreEqual(sourceMaterial.bounceCombine, ownedMaterials[i].bounceCombine);
+      }
+
+      Assert.AreNotSame(ownedMaterials[0], ownedMaterials[1],
+        "Each actor must own its collider material rather than mutating the shared source.");
+      actors[0].SetBounciness(0.45f);
+      Assert.AreSame(ownedMaterials[0], colliders[0].sharedMaterial,
+        "Changing bounciness must reuse the actor's existing material copy.");
+      Assert.That(ownedMaterials[0].bounciness, Is.EqualTo(0.45f).Within(0.0001f));
+      Assert.That(sourceMaterial.bounciness, Is.EqualTo(0.12f).Within(0.0001f));
+
+      for (int i = 0; i < actors.Length; i++)
+      {
+        releaseMaterials.Invoke(actors[i], null);
+        Assert.IsTrue(ownedMaterials[i] == null,
+          "Replacing an actor renderable must destroy its previous collider material copies.");
+        Assert.IsNotNull(sourceMaterial,
+          "Releasing actor-owned copies must preserve the shared source material.");
+
+        colliders[i].sharedMaterial = sourceMaterial;
+        actors[i].UpdatePhysicsMaterial();
+        replacementMaterials[i] = colliders[i].sharedMaterial;
+        Assert.AreNotSame(sourceMaterial, replacementMaterials[i]);
+      }
+
+      for (int i = 0; i < actors.Length; i++)
+      {
+        releaseMaterials.Invoke(actors[i], null);
+        Assert.IsTrue(replacementMaterials[i] == null,
+          "Actor teardown must destroy every currently owned collider material copy.");
+      }
+      Assert.IsTrue(sourceMaterial != null);
+      Assert.That(sourceMaterial.dynamicFriction, Is.EqualTo(0.37f));
+      Assert.That(sourceMaterial.staticFriction, Is.EqualTo(0.64f));
+    }
+    finally
+    {
+      for (int i = 0; i < actors.Length; i++)
+      {
+        if (actors[i] != null) releaseMaterials.Invoke(actors[i], null);
+        if (owners[i] != null) Object.DestroyImmediate(owners[i]);
+      }
+      if (sourceMaterial != null) Object.DestroyImmediate(sourceMaterial);
+    }
+  }
+
 }
 #endif

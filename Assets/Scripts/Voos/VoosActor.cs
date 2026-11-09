@@ -613,6 +613,8 @@ public partial class VoosActor : MonoBehaviour
   Renderer[] allRenderers;
   Renderer[] tintableRenderers;
   Collider[] renderableColliders;
+  Dictionary<Collider, PhysicMaterial> ownedPhysicsMaterialByCollider;
+  List<PhysicMaterial> ownedPhysicsMaterials;
   Animation renderableAnimation;
   MaterialPropertyBlock renderableProperties;
 
@@ -1695,10 +1697,39 @@ public partial class VoosActor : MonoBehaviour
   {
     foreach (Collider collider in renderableColliders)
     {
-      collider.material.bounciness = GetBounciness();
-      // collider.material.staticFriction = staticFrictionTemp;
-      // collider.material.dynamicFriction = dynamicFrictionTemp;
+      if (ownedPhysicsMaterialByCollider == null)
+      {
+        ownedPhysicsMaterialByCollider = new Dictionary<Collider, PhysicMaterial>();
+      }
+
+      if (!ownedPhysicsMaterialByCollider.TryGetValue(collider, out PhysicMaterial ownedMaterial) ||
+        collider.sharedMaterial != ownedMaterial)
+      {
+        PhysicMaterial sourceMaterial = collider.sharedMaterial;
+        ownedMaterial = sourceMaterial != null
+          ? UnityEngine.Object.Instantiate(sourceMaterial)
+          : new PhysicMaterial();
+        collider.sharedMaterial = ownedMaterial;
+        ownedPhysicsMaterialByCollider[collider] = ownedMaterial;
+        if (ownedPhysicsMaterials == null) ownedPhysicsMaterials = new List<PhysicMaterial>();
+        ownedPhysicsMaterials.Add(ownedMaterial);
+      }
+
+      ownedMaterial.bounciness = GetBounciness();
     }
+  }
+
+  void ReleaseOwnedPhysicsMaterials()
+  {
+    if (ownedPhysicsMaterials != null)
+    {
+      foreach (PhysicMaterial material in ownedPhysicsMaterials)
+      {
+        RuntimeModelResourceSet.DestroyResource(material);
+      }
+      ownedPhysicsMaterials.Clear();
+    }
+    if (ownedPhysicsMaterialByCollider != null) ownedPhysicsMaterialByCollider.Clear();
   }
 
   public void NotifyBrainUndoRedo()
@@ -1866,6 +1897,7 @@ public partial class VoosActor : MonoBehaviour
 
     if (currentRenderable != null)
     {
+      ReleaseOwnedPhysicsMaterials();
       AssetCache.ReleaseAssetClone(currentRenderable);
       currentRenderable = null;
     }
@@ -2443,6 +2475,7 @@ public partial class VoosActor : MonoBehaviour
 
   void OnDestroy()
   {
+    ReleaseOwnedPhysicsMaterials();
     AssetCache.ReleaseAssetClone(currentRenderable);
     currentRenderable = null;
     AssetCache.ReleaseAssetClone(offstageGhostRenderable);
