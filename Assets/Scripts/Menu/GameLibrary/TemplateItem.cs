@@ -16,9 +16,6 @@
 
 using UnityEngine;
 using UnityEngine.UI;
-using System;
-using System.Collections.Generic;
-using System.IO;
 using UnityEngine.Networking;
 using UnityEngine.Events;
 
@@ -28,6 +25,9 @@ public class TemplateItem : MonoBehaviour
   [SerializeField] Image thumbnail;
 
   UnityWebRequest thumbnailWebRequest;
+  UnityWebRequestAsyncOperation thumbnailRequestOperation;
+  Texture2D thumbnailTexture;
+  Sprite thumbnailSprite;
 
   public void SetTitle(string title)
   {
@@ -36,13 +36,32 @@ public class TemplateItem : MonoBehaviour
 
   public void SetThumbnailPath(string path)
   {
+    ReleaseThumbnailRequest();
+
     // MacOSX requires file://
     if (!path.StartsWith("file://"))
     {
       path = "file://" + path;
     }
+
     thumbnailWebRequest = UnityWebRequestTexture.GetTexture(path);
-    thumbnailWebRequest.SendWebRequest();
+    try
+    {
+      thumbnailRequestOperation = thumbnailWebRequest.SendWebRequest();
+      if (thumbnailRequestOperation.isDone)
+      {
+        CompleteThumbnailRequest(thumbnailRequestOperation);
+      }
+      else
+      {
+        thumbnailRequestOperation.completed += OnThumbnailRequestCompleted;
+      }
+    }
+    catch
+    {
+      ReleaseThumbnailRequest();
+      throw;
+    }
   }
 
   public void AddClickListener(UnityAction listener)
@@ -50,12 +69,65 @@ public class TemplateItem : MonoBehaviour
     GetComponent<Button>().onClick.AddListener(listener);
   }
 
-  void Update()
+  void OnThumbnailRequestCompleted(AsyncOperation operation)
   {
-    if (thumbnailWebRequest != null && thumbnailWebRequest.isDone)
+    CompleteThumbnailRequest(operation as UnityWebRequestAsyncOperation);
+  }
+
+  void CompleteThumbnailRequest(UnityWebRequestAsyncOperation operation)
+  {
+    if (operation == null || operation != thumbnailRequestOperation) return;
+
+    UnityWebRequest request = operation.webRequest;
+    if (!object.ReferenceEquals(request, thumbnailWebRequest)) return;
+
+    operation.completed -= OnThumbnailRequestCompleted;
+    thumbnailRequestOperation = null;
+    thumbnailWebRequest = null;
+
+    Texture2D texture = null;
+    bool assigned = false;
+    try
     {
-      Texture2D texture = ((DownloadHandlerTexture)thumbnailWebRequest.downloadHandler).texture;
-      thumbnail.sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f));
+      if (request.result != UnityWebRequest.Result.Success || thumbnail == null) return;
+
+      texture = DownloadHandlerTexture.GetContent(request);
+      if (texture == null) return;
+
+      Sprite sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f));
+      if (thumbnailSprite != null) Destroy(thumbnailSprite);
+      if (thumbnailTexture != null) Destroy(thumbnailTexture);
+
+      thumbnailTexture = texture;
+      thumbnailSprite = sprite;
+      thumbnail.sprite = sprite;
+      assigned = true;
     }
+    finally
+    {
+      request.Dispose();
+      if (!assigned && texture != null) Destroy(texture);
+    }
+  }
+
+  void ReleaseThumbnailRequest()
+  {
+    UnityWebRequestAsyncOperation operation = thumbnailRequestOperation;
+    thumbnailRequestOperation = null;
+    if (operation != null) operation.completed -= OnThumbnailRequestCompleted;
+
+    UnityWebRequest request = thumbnailWebRequest;
+    thumbnailWebRequest = null;
+    if (request == null) return;
+
+    if (!request.isDone) request.Abort();
+    request.Dispose();
+  }
+
+  void OnDestroy()
+  {
+    ReleaseThumbnailRequest();
+    if (thumbnailSprite != null) Destroy(thumbnailSprite);
+    if (thumbnailTexture != null) Destroy(thumbnailTexture);
   }
 }

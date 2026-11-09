@@ -91,6 +91,10 @@ returns to the first page. The Game Library ignores subscribed-item results from
 previous opens or refreshes; actor and card Workshop menus also reject stale
 results after close, search, sort, or page changes.
 
+Template thumbnails load once even while their menu item is inactive. Requests
+are disposed on completion, replacement, or teardown; generated image objects
+are released when replaced or torn down.
+
 The synthetic Custom behavior-card panel persists its display order per actor in
 brain metadata, separate from the behavior-use order that controls runtime execution.
 
