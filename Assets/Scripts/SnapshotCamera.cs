@@ -33,13 +33,15 @@ public class SnapshotCamera : MonoBehaviour
   {
     Util.FindIfNotSet(this, ref userMain);
     Util.FindIfNotSet(this, ref post);
-    PositionCameraForActor(actor);
     RenderTexture currentRT = RenderTexture.active;
     RenderTexture currentCameraTarget = targetCamera.targetTexture;
+    Vector3 currentCameraPosition = targetCamera.transform.position;
+    Quaternion currentCameraRotation = targetCamera.transform.rotation;
     Texture2D screenshotTexture = null;
 
     try
     {
+      PositionCameraForActor(actor);
       targetCamera.targetTexture = actorTexture;
       RenderTexture.active = actorTexture;
       targetCamera.Render();
@@ -62,7 +64,15 @@ public class SnapshotCamera : MonoBehaviour
       }
       finally
       {
-        targetCamera.targetTexture = currentCameraTarget;
+        try
+        {
+          targetCamera.targetTexture = currentCameraTarget;
+        }
+        finally
+        {
+          targetCamera.transform.SetPositionAndRotation(
+            currentCameraPosition, currentCameraRotation);
+        }
       }
     }
   }

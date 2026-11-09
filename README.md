@@ -105,6 +105,7 @@ and owned textures when its loader is destroyed.
 SnapshotCamera restores the prior active render target for both capture paths.
 Game-view capture also restores its camera target and enabled state, plus motion
 blur if rendering fails.
+Actor captures restore the helper camera's prior world pose before later captures.
 ImageLoader releases per-URL Sprite and Texture caches and clears in-flight
 requests when the service is destroyed; late Workshop callbacks are ignored.
 
