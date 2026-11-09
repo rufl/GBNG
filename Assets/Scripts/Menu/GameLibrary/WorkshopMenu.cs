@@ -82,6 +82,7 @@ public class WorkshopMenu : ThumbnailMenu
   {
     itemListRequestId++;
     gettingItemList = false;
+    CancelInvoke(nameof(CreateSteamThumbnails));
     base.Close();
   }
 
