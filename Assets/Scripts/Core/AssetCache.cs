@@ -96,6 +96,18 @@ public class AssetCache : MonoBehaviour
     cacheRoot.parent = transform;
   }
 
+  private void OnDestroy()
+  {
+    foreach (ValueImpl entry in cacheByUri.Values)
+    {
+      entry.Dispose();
+    }
+    cacheByUri.Clear();
+    activeDownloadWaiters.Clear();
+    if (cacheRoot != null) RuntimeModelResourceSet.DestroyResource(cacheRoot.gameObject);
+    cacheRoot = null;
+  }
+
   public class DownloadVisitor : VoosAssetVisitor
   {
     AssetCache cache;
@@ -112,7 +124,7 @@ public class AssetCache : MonoBehaviour
         asset.GetUri(),
         $"Cannot load legacy Poly asset '{asset.assetId}': Poly is retired. Replace it with a local OBJ model."));
     }
-    private static void PrepareImportedModel(GameObject assetObject)
+    private static void PrepareImportedModel(GameObject assetObject, RuntimeModelResourceSet resources)
     {
       FitImportedModel(assetObject);
 
@@ -127,24 +139,24 @@ public class AssetCache : MonoBehaviour
         combine[i].transform = assetObject.transform.worldToLocalMatrix * meshFilters[i].transform.localToWorldMatrix;
         i++;
       }
-      foreach (var s in skinned)
+      foreach (var renderer in skinned)
       {
-        combine[i].mesh = s.sharedMesh;
-        combine[i].transform = assetObject.transform.worldToLocalMatrix * s.transform.localToWorldMatrix;
+        combine[i].mesh = renderer.sharedMesh;
+        combine[i].transform = assetObject.transform.worldToLocalMatrix * renderer.transform.localToWorldMatrix;
         i++;
       }
       Mesh colliderMesh = new Mesh();
+      resources.Add(colliderMesh);
       colliderMesh.CombineMeshes(combine);
-      MeshCollider mc = assetObject.AddComponent<MeshCollider>();
-      mc.sharedMesh = colliderMesh;
-      mc.convex = true;
+      MeshCollider meshCollider = assetObject.AddComponent<MeshCollider>();
+      meshCollider.sharedMesh = colliderMesh;
+      meshCollider.convex = true;
 
       // Give the materials textures if they don't have them.
       MeshRenderer[] meshRenderers = assetObject.GetComponentsInChildren<MeshRenderer>();
       for (i = 0; i < meshRenderers.Length; i++)
       {
-        MeshRenderer meshRenderer = meshRenderers[i];
-        BakeBaseColorIntoTexture(meshRenderer.sharedMaterial);
+        BakeBaseColorIntoTexture(meshRenderers[i].sharedMaterial, resources);
       }
 
       // Imported local models use the default texture filtering mode.
@@ -163,7 +175,7 @@ public class AssetCache : MonoBehaviour
      * Color the texture with the material's base color and set the base color to white
      * so that we can apply further tints to the base color as needed.
      */
-    static void BakeBaseColorIntoTexture(Material mat)
+    static void BakeBaseColorIntoTexture(Material mat, RuntimeModelResourceSet resources)
     {
       int baseColorFactorId = Shader.PropertyToID("_BaseColorFactor");
       if (!mat.HasProperty(baseColorFactorId))
@@ -182,6 +194,7 @@ public class AssetCache : MonoBehaviour
       if (!texture)
       {
         texture = new Texture2D(1, 1, TextureFormat.RGBA32, true, false);
+        resources.Add(texture);
         texture.SetPixel(0, 0, Color.white);
         texture.Apply();
       }
@@ -250,24 +263,29 @@ public class AssetCache : MonoBehaviour
     {
       yield return null;
       GameObject imported = null;
+      RuntimeModelResourceSet resources = null;
       try
       {
         imported = ObjModelLoader.Load(asset.absoluteFilePath);
-        PrepareImportedModel(imported);
+        resources = RuntimeModelResourceSet.Capture(imported);
+        PrepareImportedModel(imported, resources);
       }
       catch (Exception e)
       {
         Util.LogError($"Could not load local OBJ '{asset.absoluteFilePath}': {e.Message}");
+        if (resources != null) resources.ReleaseOwner();
         if (imported != null) Destroy(imported);
         imported = CreateMissingAssetPlaceholder();
+        resources = null;
       }
-      cache.CreateCacheEntry(asset.GetUri(), imported, null);
+      cache.CreateCacheEntry(asset.GetUri(), imported, null, resources);
     }
 
     private IEnumerator LoadAndCacheLocalAssimpModel(string uri, string path)
     {
       yield return null;
       GameObject imported = null;
+      RuntimeModelResourceSet resources = null;
       try
       {
         EnsureAssimpLibraryAvailable();
@@ -276,16 +294,19 @@ public class AssetCache : MonoBehaviour
         {
           throw new InvalidOperationException("The importer returned no model.");
         }
-        PrepareImportedModel(imported);
+        resources = RuntimeModelResourceSet.Capture(imported);
+        PrepareImportedModel(imported, resources);
       }
       catch (Exception e)
       {
         Util.LogError($"Could not load local model '{path}': {e.Message}");
+        if (resources != null) resources.ReleaseOwner();
         if (imported != null) Destroy(imported);
         imported = CreateMissingAssetPlaceholder();
+        resources = null;
       }
 
-      cache.CreateCacheEntry(uri, imported, null);
+      cache.CreateCacheEntry(uri, imported, null, resources);
     }
 
     [DllImport("libdl.so.2", EntryPoint = "dlopen", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
@@ -527,14 +548,20 @@ public class AssetCache : MonoBehaviour
     assetObject.transform.parent = cacheRoot;
   }
 
-  Value CreateCacheEntry(string uri, GameObject assetObject, Texture2D thumbnail)
+  Value CreateCacheEntry(
+    string uri,
+    GameObject assetObject,
+    Texture2D thumbnail,
+    RuntimeModelResourceSet ownedResources = null)
   {
     PrepareCachedAsset(uri, assetObject);
-    ValueImpl entry = new ValueImpl(assetObject, thumbnail);
+    var entry = new ValueImpl(assetObject, thumbnail, ownedResources);
 
-    if (cacheByUri.ContainsKey(uri))
+    ValueImpl oldEntry;
+    if (cacheByUri.TryGetValue(uri, out oldEntry))
     {
       Debug.LogError($"AssetCache is overriding uri {uri}. Is this a redundant download?");
+      oldEntry.Dispose();
     }
     cacheByUri[uri] = entry;
 
@@ -551,11 +578,22 @@ public class AssetCache : MonoBehaviour
     return entry;
   }
 
-  void UpdateCacheEntry(string uri, GameObject newAssetObject)
+  void UpdateCacheEntry(
+    string uri,
+    GameObject newAssetObject,
+    RuntimeModelResourceSet ownedResources = null)
   {
     PrepareCachedAsset(uri, newAssetObject);
     ValueImpl cached = cacheByUri[uri];
-    cached.UpdateAssetObject(newAssetObject);
+    cached.UpdateAssetObject(newAssetObject, ownedResources);
+  }
+
+  public static void ReleaseAssetClone(GameObject assetClone)
+  {
+    if (assetClone == null) return;
+    RuntimeModelResourceLease lease = assetClone.GetComponent<RuntimeModelResourceLease>();
+    if (lease != null) lease.Release();
+    RuntimeModelResourceSet.DestroyResource(assetClone);
   }
 
   public bool AnyAttributionsToShow()
@@ -593,25 +631,47 @@ public class AssetCache : MonoBehaviour
   {
     GameObject assetObject;
     Texture2D thumbnail;
+    RuntimeModelResourceSet ownedResources;
 
     public event System.Action onAssetChanged;
 
-    public ValueImpl(GameObject assetObject, Texture2D thumbnail)
+    public ValueImpl(
+      GameObject assetObject,
+      Texture2D thumbnail,
+      RuntimeModelResourceSet ownedResources)
     {
       this.assetObject = assetObject;
       this.thumbnail = thumbnail;
+      this.ownedResources = ownedResources;
     }
 
-    public void UpdateAssetObject(GameObject newAssetObject)
+    public void UpdateAssetObject(GameObject newAssetObject, RuntimeModelResourceSet newOwnedResources)
     {
-      GameObject.Destroy(this.assetObject);
-      this.assetObject = newAssetObject;
-      this.onAssetChanged?.Invoke();
+      GameObject oldAssetObject = assetObject;
+      RuntimeModelResourceSet oldOwnedResources = ownedResources;
+      assetObject = newAssetObject;
+      ownedResources = newOwnedResources;
+      RuntimeModelResourceSet.DestroyResource(oldAssetObject);
+      if (oldOwnedResources != null) oldOwnedResources.ReleaseOwner();
+      onAssetChanged?.Invoke();
+    }
+
+    public void Dispose()
+    {
+      GameObject oldAssetObject = assetObject;
+      RuntimeModelResourceSet oldOwnedResources = ownedResources;
+      assetObject = null;
+      ownedResources = null;
+      RuntimeModelResourceSet.DestroyResource(oldAssetObject);
+      if (oldOwnedResources != null) oldOwnedResources.ReleaseOwner();
     }
 
     public GameObject GetAssetClone()
     {
-      return GameObject.Instantiate(assetObject);
+      if (assetObject == null) return null;
+      return ownedResources != null
+        ? ownedResources.Clone(assetObject)
+        : RuntimeModelResourceLease.Clone(assetObject);
     }
 
     public Texture2D GetThumbnail()

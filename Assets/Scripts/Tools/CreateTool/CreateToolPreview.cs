@@ -47,7 +47,7 @@ public class CreateToolPreview : MonoBehaviour
   {
     if (resultRenderable != null)
     {
-      Destroy(resultRenderable);
+      AssetCache.ReleaseAssetClone(resultRenderable);
     }
 
     assetSearch.RequestRenderable(renderableReference,
@@ -55,7 +55,11 @@ public class CreateToolPreview : MonoBehaviour
       {
         if (renderableObj == null) return; // Just to be safe..
         // Can be called async - so we could be gone already.
-        if (this == null || this.gameObject == null) return;
+        if (this == null || this.gameObject == null)
+        {
+          AssetCache.ReleaseAssetClone(renderableObj);
+          return;
+        }
 
         if (isStillValid())
         {
@@ -65,13 +69,13 @@ public class CreateToolPreview : MonoBehaviour
           renderableObj.transform.localScale = scaleFunction(renderableObj);
           MakeLookLikeGhost(renderableObj);
 
-          if (resultRenderable != null) Destroy(resultRenderable);
+          if (resultRenderable != null) AssetCache.ReleaseAssetClone(resultRenderable);
           resultRenderable = renderableObj;
           renderableObj.SetActive(true);
         }
         else
         {
-          Destroy(renderableObj);
+          AssetCache.ReleaseAssetClone(renderableObj);
           Debug.Log("renderable callback out of date");
         }
       });
@@ -103,5 +107,11 @@ public class CreateToolPreview : MonoBehaviour
     {
       GameObject.Destroy(ps);
     }
+  }
+
+  void OnDestroy()
+  {
+    AssetCache.ReleaseAssetClone(resultRenderable);
+    resultRenderable = null;
   }
 }

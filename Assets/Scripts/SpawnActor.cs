@@ -81,6 +81,12 @@ public class SpawnActor : MonoBehaviour
 
   void OnRenderable(GameObject _gameobject)
   {
+    if (_gameobject == null) return;
+    if (this == null || gameObject == null)
+    {
+      AssetCache.ReleaseAssetClone(_gameobject);
+      return;
+    }
     // Always override local position so it shows up under our frame, but leave rotation and scale alone.
     _gameobject.transform.position = spawnPosition + renderableOffset;
     _gameobject.transform.rotation = renderableRotation * spawnRotation;
@@ -144,7 +150,7 @@ public class SpawnActor : MonoBehaviour
     }
 
     destructionDesired = true;
-    Destroy(previewGameobject);
+    AssetCache.ReleaseAssetClone(previewGameobject);
   }
 
   void Update()

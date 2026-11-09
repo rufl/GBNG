@@ -1850,12 +1850,13 @@ public partial class VoosActor : MonoBehaviour
     // It's possible the actor was destroyed before SetRenderable was called (it could've been async).
     if (this == null)
     {
+      AssetCache.ReleaseAssetClone(newRenderable);
       return;
     }
 
     if (currentRenderable != null)
     {
-      Destroy(currentRenderable);
+      AssetCache.ReleaseAssetClone(currentRenderable);
       currentRenderable = null;
     }
 
@@ -1907,11 +1908,11 @@ public partial class VoosActor : MonoBehaviour
   GameObject offstageGhostRenderable;
   private void UpdateOffstageGhostRenderable()
   {
-    if (offstageGhostRenderable != null) Destroy(offstageGhostRenderable);
+    if (offstageGhostRenderable != null) AssetCache.ReleaseAssetClone(offstageGhostRenderable);
 
     if (!GetIsOffstageEffective()) return;
 
-    offstageGhostRenderable = Instantiate(currentRenderable);
+    offstageGhostRenderable = RuntimeModelResourceLease.Clone(currentRenderable);
 
     Material mat = Resources.Load(OFFSTAGE_GHOST_MAT) as Material;
 
@@ -2433,6 +2434,10 @@ public partial class VoosActor : MonoBehaviour
 
   void OnDestroy()
   {
+    AssetCache.ReleaseAssetClone(currentRenderable);
+    currentRenderable = null;
+    AssetCache.ReleaseAssetClone(offstageGhostRenderable);
+    offstageGhostRenderable = null;
     this.cachedRenderable = null;
 
     if (reliablePhotonView != null)

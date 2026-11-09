@@ -118,6 +118,80 @@ public class GameDetailThumbnailLifecycleTests
     }
   }
 
+  [Test]
+  public void CachedModelResourcesOutliveMasterUntilLastCloneIsReleased()
+  {
+    System.Type resourceSetType = typeof(GameDetail).Assembly.GetType("RuntimeModelResourceSet");
+    Assert.IsNotNull(resourceSetType);
+    MethodInfo capture = resourceSetType.GetMethod("Capture", BindingFlags.Static | BindingFlags.Public);
+    MethodInfo cloneResourceSet = resourceSetType.GetMethod("Clone", BindingFlags.Instance | BindingFlags.Public);
+    MethodInfo releaseOwner = resourceSetType.GetMethod("ReleaseOwner", BindingFlags.Instance | BindingFlags.Public);
+    Assert.IsNotNull(capture);
+    Assert.IsNotNull(cloneResourceSet);
+    Assert.IsNotNull(releaseOwner);
+
+    Shader shader = Shader.Find("Standard");
+    Assert.IsNotNull(shader);
+    GameObject master = new GameObject("Cached model resource lifetime test");
+    master.SetActive(false);
+    Mesh renderMesh = new Mesh();
+    Mesh colliderMesh = new Mesh();
+    Material material = new Material(shader);
+    Texture2D texture = new Texture2D(1, 1);
+    material.SetTexture("_MainTex", texture);
+    master.AddComponent<MeshFilter>().sharedMesh = renderMesh;
+    master.AddComponent<MeshRenderer>().sharedMaterial = material;
+    master.AddComponent<MeshCollider>().sharedMesh = colliderMesh;
+    object resources = null;
+    GameObject clone = null;
+    GameObject offstageClone = null;
+    try
+    {
+      resources = capture.Invoke(null, new object[] { master });
+      clone = (GameObject)cloneResourceSet.Invoke(resources, new object[] { master });
+      Assert.IsNotNull(clone);
+      offstageClone = (GameObject)cloneResourceSet.Invoke(resources, new object[] { clone });
+      Assert.IsNotNull(offstageClone);
+      Assert.AreSame(renderMesh, offstageClone.GetComponent<MeshFilter>().sharedMesh);
+      Assert.AreSame(colliderMesh, offstageClone.GetComponent<MeshCollider>().sharedMesh);
+      Assert.AreSame(material, offstageClone.GetComponent<MeshRenderer>().sharedMaterial);
+      Assert.AreSame(renderMesh, clone.GetComponent<MeshFilter>().sharedMesh);
+      Assert.AreSame(colliderMesh, clone.GetComponent<MeshCollider>().sharedMesh);
+      Assert.AreSame(material, clone.GetComponent<MeshRenderer>().sharedMaterial);
+
+      releaseOwner.Invoke(resources, null);
+      Assert.IsTrue(renderMesh != null, "The cached master may release its ownership while a clone still uses the mesh.");
+      Assert.IsTrue(colliderMesh != null, "A clone must retain the shared collider mesh.");
+      Assert.IsTrue(material != null && texture != null, "A clone must retain its shared material and diffuse texture.");
+
+      AssetCache.ReleaseAssetClone(clone);
+      clone = null;
+      Assert.IsTrue(renderMesh != null, "The first clone must retain resources still used by the offstage clone.");
+      Assert.IsTrue(colliderMesh != null, "The offstage clone must retain its shared collider mesh.");
+      Assert.IsTrue(material != null && texture != null, "The offstage clone must retain its shared material and texture.");
+
+      AssetCache.ReleaseAssetClone(offstageClone);
+      offstageClone = null;
+      Assert.IsTrue(renderMesh == null, "The render mesh must be freed after the final clone is released.");
+      Assert.IsTrue(colliderMesh == null, "The collider mesh must be freed after the final clone is released.");
+      Assert.IsTrue(material == null && texture == null, "The material and texture must be freed after the final clone is released.");
+    }
+    finally
+    {
+      if (clone != null) AssetCache.ReleaseAssetClone(clone);
+      if (offstageClone != null) AssetCache.ReleaseAssetClone(offstageClone);
+      if (resources != null) releaseOwner.Invoke(resources, null);
+      if (master != null) UnityEngine.Object.DestroyImmediate(master);
+      if (renderMesh != null) UnityEngine.Object.DestroyImmediate(renderMesh);
+      if (colliderMesh != null) UnityEngine.Object.DestroyImmediate(colliderMesh);
+      if (material != null) UnityEngine.Object.DestroyImmediate(material);
+      if (texture != null) UnityEngine.Object.DestroyImmediate(texture);
+    }
+  }
+
+
+
+
 
   [Test]
   public void ReplacingAndReleasingThumbnailSpritesPreservesSourceTextures()

@@ -137,14 +137,14 @@ public class AssetToolbar : Toolbar
     }
     else
     {
-      Destroy(_gameobject);
+      AssetCache.ReleaseAssetClone(_gameobject);
       Debug.Log("renderable callback out of date");
     }
   }
 
   void EmptyAssetToolbarRenderable(int index)
   {
-    if (assetToolbarRenderables[index] != null) Destroy(assetToolbarRenderables[index]);
+    if (assetToolbarRenderables[index] != null) AssetCache.ReleaseAssetClone(assetToolbarRenderables[index]);
   }
 
   public ActorableSearchResult GetSelected()
@@ -154,7 +154,7 @@ public class AssetToolbar : Toolbar
 
   public void SetAssetToolbarObject(int index, GameObject newModelObject)
   {
-    if (assetToolbarRenderables[index] != null) Destroy(assetToolbarRenderables[index]);
+    if (assetToolbarRenderables[index] != null) AssetCache.ReleaseAssetClone(assetToolbarRenderables[index]);
 
     if (newModelObject != null)
     {
@@ -192,6 +192,15 @@ public class AssetToolbar : Toolbar
     foreach (ParticleSystem ps in newModelObject.GetComponentsInChildren<ParticleSystem>())
     {
       GameObject.Destroy(ps);
+    }
+  }
+
+  void OnDestroy()
+  {
+    if (assetToolbarRenderables == null) return;
+    for (int i = 0; i < assetToolbarRenderables.Length; i++)
+    {
+      AssetCache.ReleaseAssetClone(assetToolbarRenderables[i]);
     }
   }
 

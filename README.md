@@ -172,6 +172,9 @@ disabled so it cannot overwrite the processed scene.
    clip; mesh and sidecar files remain external and are not embedded in a saved
    project.
 
+Imported OBJ/FBX mesh, collider, material, and texture objects are shared with
+clones and released when the cache entry and its last clone are disposed.
+
 The full MIT/BSD notices ship with the application at
 `StreamingAssets/third_party/UnityMeshImporter-LICENSE.md`.
 
