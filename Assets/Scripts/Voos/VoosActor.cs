@@ -613,8 +613,8 @@ public partial class VoosActor : MonoBehaviour
   Renderer[] allRenderers;
   Renderer[] tintableRenderers;
   Collider[] renderableColliders;
-  Dictionary<Collider, PhysicMaterial> ownedPhysicsMaterialByCollider;
-  List<PhysicMaterial> ownedPhysicsMaterials;
+  Dictionary<Collider, PhysicsMaterial> ownedPhysicsMaterialByCollider;
+  List<PhysicsMaterial> ownedPhysicsMaterials;
   Animation renderableAnimation;
   MaterialPropertyBlock renderableProperties;
 
@@ -1699,19 +1699,19 @@ public partial class VoosActor : MonoBehaviour
     {
       if (ownedPhysicsMaterialByCollider == null)
       {
-        ownedPhysicsMaterialByCollider = new Dictionary<Collider, PhysicMaterial>();
+        ownedPhysicsMaterialByCollider = new Dictionary<Collider, PhysicsMaterial>();
       }
 
-      if (!ownedPhysicsMaterialByCollider.TryGetValue(collider, out PhysicMaterial ownedMaterial) ||
+      if (!ownedPhysicsMaterialByCollider.TryGetValue(collider, out PhysicsMaterial ownedMaterial) ||
         collider.sharedMaterial != ownedMaterial)
       {
-        PhysicMaterial sourceMaterial = collider.sharedMaterial;
+        PhysicsMaterial sourceMaterial = collider.sharedMaterial;
         ownedMaterial = sourceMaterial != null
           ? UnityEngine.Object.Instantiate(sourceMaterial)
-          : new PhysicMaterial();
+          : new PhysicsMaterial();
         collider.sharedMaterial = ownedMaterial;
         ownedPhysicsMaterialByCollider[collider] = ownedMaterial;
-        if (ownedPhysicsMaterials == null) ownedPhysicsMaterials = new List<PhysicMaterial>();
+        if (ownedPhysicsMaterials == null) ownedPhysicsMaterials = new List<PhysicsMaterial>();
         ownedPhysicsMaterials.Add(ownedMaterial);
       }
 
@@ -1723,7 +1723,7 @@ public partial class VoosActor : MonoBehaviour
   {
     if (ownedPhysicsMaterials != null)
     {
-      foreach (PhysicMaterial material in ownedPhysicsMaterials)
+      foreach (PhysicsMaterial material in ownedPhysicsMaterials)
       {
         RuntimeModelResourceSet.DestroyResource(material);
       }

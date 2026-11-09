@@ -1871,20 +1871,20 @@ public class GameDetailThumbnailLifecycleTests
     Assert.IsNotNull(releaseMaterials);
     Assert.IsNotNull(renderableCollidersField);
 
-    PhysicMaterial sourceMaterial = null;
+    PhysicsMaterial sourceMaterial = null;
     GameObject[] owners = new GameObject[2];
     VoosActor[] actors = new VoosActor[2];
     BoxCollider[] colliders = new BoxCollider[2];
-    PhysicMaterial[] ownedMaterials = new PhysicMaterial[2];
-    PhysicMaterial[] replacementMaterials = new PhysicMaterial[2];
+    PhysicsMaterial[] ownedMaterials = new PhysicsMaterial[2];
+    PhysicsMaterial[] replacementMaterials = new PhysicsMaterial[2];
     try
     {
-      sourceMaterial = new PhysicMaterial();
+      sourceMaterial = new PhysicsMaterial();
       sourceMaterial.name = "Actor source physics material";
       sourceMaterial.bounciness = 0.12f;
       sourceMaterial.dynamicFriction = 0.37f;
       sourceMaterial.staticFriction = 0.64f;
-      sourceMaterial.bounceCombine = PhysicMaterialCombine.Maximum;
+      sourceMaterial.bounceCombine = PhysicsMaterialCombine.Maximum;
 
       for (int i = 0; i < actors.Length; i++)
       {
