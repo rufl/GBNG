@@ -2038,6 +2038,162 @@ public class GameDetailThumbnailLifecycleTests
     }
   }
 
+
+  [Test]
+  public void TerrainManagerReleasesReplacedCustomStyleTextureAfterListenersRefresh()
+  {
+    GameObject owner = new GameObject("Terrain manager texture replacement test");
+    owner.SetActive(false);
+    TerrainManager manager = owner.AddComponent<TerrainManager>();
+    Texture2D previous = new Texture2D(1, 1);
+    Texture2D replacement = new Texture2D(1, 1);
+    TerrainManager.BlockStyle style = TerrainManager.BlockStyle.FirstCustomStyle;
+    try
+    {
+      FieldInfo texturesField = typeof(TerrainManager).GetField(
+        "customStyleTextures", PrivateInstance);
+      MethodInfo replace = typeof(TerrainManager).GetMethod(
+        "ReplaceCustomStyleTexture", PrivateInstance);
+      Assert.IsNotNull(texturesField);
+      Assert.IsNotNull(replace);
+      ((System.Collections.IDictionary)texturesField.GetValue(manager)).Add(style, previous);
+
+      bool listenerRefreshed = false;
+      manager.onCustomStyleTextureChange += () =>
+      {
+        Assert.AreSame(replacement, manager.GetCustomStyleTexture(style));
+        Assert.IsNotNull(previous, "Old texture must survive until thumbnail listeners refresh.");
+        listenerRefreshed = true;
+      };
+
+      replace.Invoke(manager, new object[] { style, replacement });
+
+      Assert.IsTrue(listenerRefreshed);
+      Assert.IsTrue(previous == null, "Replaced owned texture must be destroyed after notification.");
+      Assert.AreSame(replacement, manager.GetCustomStyleTexture(style));
+    }
+    finally
+    {
+      if (owner != null) Object.DestroyImmediate(owner);
+      if (previous != null) Object.DestroyImmediate(previous);
+      if (replacement != null) Object.DestroyImmediate(replacement);
+    }
+  }
+
+  [Test]
+  public void TerrainManagerReleasesTexturesForRemovedCustomStyles()
+  {
+    GameObject owner = new GameObject("Terrain manager removed style test");
+    owner.SetActive(false);
+    TerrainManager manager = owner.AddComponent<TerrainManager>();
+    Texture2D activeTexture = new Texture2D(1, 1);
+    Texture2D removedTexture = new Texture2D(1, 1);
+    TerrainManager.BlockStyle activeStyle = TerrainManager.BlockStyle.FirstCustomStyle;
+    TerrainManager.BlockStyle removedStyle =
+      (TerrainManager.BlockStyle)((int)TerrainManager.BlockStyle.FirstCustomStyle + 1);
+    try
+    {
+      FieldInfo texturesField = typeof(TerrainManager).GetField(
+        "customStyleTextures", PrivateInstance);
+      FieldInfo workshopIdsField = typeof(TerrainManager).GetField(
+        "customStyleWorkshopIds", PrivateInstance);
+      MethodInfo releaseRemoved = typeof(TerrainManager).GetMethod(
+        "ReleaseRemovedCustomStyleTextures", PrivateInstance);
+      Assert.IsNotNull(texturesField);
+      Assert.IsNotNull(workshopIdsField);
+      Assert.IsNotNull(releaseRemoved);
+
+      System.Collections.IDictionary textures =
+        (System.Collections.IDictionary)texturesField.GetValue(manager);
+      textures.Add(activeStyle, activeTexture);
+      textures.Add(removedStyle, removedTexture);
+      ((System.Collections.Generic.List<ulong>)workshopIdsField.GetValue(manager)).Add(123);
+
+      bool listenerRefreshed = false;
+      manager.onCustomStyleTextureChange += () =>
+      {
+        Assert.AreSame(activeTexture, manager.GetCustomStyleTexture(activeStyle));
+        Assert.IsNotNull(removedTexture,
+          "Removed texture must survive until thumbnail listeners refresh.");
+        listenerRefreshed = true;
+      };
+
+      releaseRemoved.Invoke(manager, null);
+
+      Assert.IsTrue(listenerRefreshed);
+      Assert.AreSame(activeTexture, manager.GetCustomStyleTexture(activeStyle));
+      Assert.IsTrue(removedTexture == null, "Removed owned texture must be destroyed.");
+    }
+    finally
+    {
+      if (owner != null) Object.DestroyImmediate(owner);
+      if (activeTexture != null) Object.DestroyImmediate(activeTexture);
+      if (removedTexture != null) Object.DestroyImmediate(removedTexture);
+    }
+  }
+
+  [Test]
+  public void TerrainManagerReleasesCustomStyleTexturesOnTeardown()
+  {
+    GameObject owner = new GameObject("Terrain manager texture teardown test");
+    owner.SetActive(false);
+    TerrainManager manager = owner.AddComponent<TerrainManager>();
+    Texture2D ownedTexture = new Texture2D(1, 1);
+    TerrainManager.BlockStyle style = TerrainManager.BlockStyle.FirstCustomStyle;
+    try
+    {
+      FieldInfo texturesField = typeof(TerrainManager).GetField(
+        "customStyleTextures", PrivateInstance);
+      MethodInfo onDestroy = typeof(TerrainManager).GetMethod("OnDestroy", PrivateInstance);
+      Assert.IsNotNull(texturesField);
+      Assert.IsNotNull(onDestroy);
+      ((System.Collections.IDictionary)texturesField.GetValue(manager)).Add(style, ownedTexture);
+
+      onDestroy.Invoke(manager, null);
+
+      Assert.IsTrue(ownedTexture == null);
+      Assert.AreEqual(0, ((System.Collections.IDictionary)texturesField.GetValue(manager)).Count);
+    }
+    finally
+    {
+      if (owner != null) Object.DestroyImmediate(owner);
+      if (ownedTexture != null) Object.DestroyImmediate(ownedTexture);
+    }
+  }
+
+  [Test]
+  public void TerrainManagerResizingCustomStyleTextureReleasesIntermediate()
+  {
+    Assert.Greater(TerrainSystem.tex_size, 1);
+    Texture2D source = new Texture2D(1, 1, TextureFormat.RGBA32, false, false);
+    Texture2D normalized = null;
+    try
+    {
+      source.SetPixel(0, 0, Color.magenta);
+      source.Apply();
+      MethodInfo resize = typeof(TerrainManager).GetMethod(
+        "ResizeCustomStyleTexture", PrivateStatic);
+      Assert.IsNotNull(resize);
+
+      normalized = (Texture2D)resize.Invoke(null, new object[] { source });
+
+      Assert.IsNotNull(normalized);
+      Assert.AreEqual(TerrainSystem.tex_size, normalized.width);
+      Assert.AreEqual(TerrainSystem.tex_size, normalized.height);
+#if TEXTURE_ADJUSTMENTS
+      Assert.AreSame(source, normalized);
+#else
+      Assert.IsTrue(source == null, "Resampling must destroy the decoded source texture.");
+      Assert.AreNotSame(source, normalized);
+#endif
+    }
+    finally
+    {
+      if (source != null) Object.DestroyImmediate(source);
+      if (normalized != null) Object.DestroyImmediate(normalized);
+    }
+  }
+
   [Test]
   public void TerrainRenderingReleasesGeneratedColorAssetsOnTeardown()
   {

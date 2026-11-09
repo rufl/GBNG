@@ -307,6 +307,14 @@ public class TerrainManager : MonoBehaviour
     Util.FindIfNotSet(this, ref workshopAssets);
     photonView = PhotonView.Get(this);
   }
+  void OnDestroy()
+  {
+    foreach (Texture2D texture in customStyleTextures.Values)
+    {
+      DestroyCustomStyleTexture(texture);
+    }
+    customStyleTextures.Clear();
+  }
 
   public int GetNumImportantChunksRemaining()
   {
@@ -1022,12 +1030,141 @@ public class TerrainManager : MonoBehaviour
     }
   }
 
+
+  bool IsCustomStyleActive(BlockStyle style)
+  {
+    int styleIndex = (int)style - (int)BlockStyle.FirstCustomStyle;
+    return styleIndex >= 0 && styleIndex < customStyleWorkshopIds.Count;
+  }
+
+  bool IsCurrentCustomStyleDownload(BlockStyle style, ulong workshopId)
+  {
+    int styleIndex = (int)style - (int)BlockStyle.FirstCustomStyle;
+    return styleIndex >= 0
+      && styleIndex < customStyleWorkshopIds.Count
+      && customStyleWorkshopIds[styleIndex] == workshopId;
+  }
+
+  void ReplaceCustomStyleTexture(BlockStyle style, Texture2D texture)
+  {
+    Texture2D previousTexture;
+    customStyleTextures.TryGetValue(style, out previousTexture);
+    customStyleTextures[style] = texture;
+
+    try
+    {
+      onCustomStyleTextureChange?.Invoke();
+    }
+    finally
+    {
+      if (previousTexture != texture)
+      {
+        DestroyCustomStyleTexture(previousTexture);
+      }
+    }
+  }
+
+  void ReleaseRemovedCustomStyleTextures()
+  {
+    List<BlockStyle> removedStyles = new List<BlockStyle>();
+    foreach (BlockStyle style in customStyleTextures.Keys)
+    {
+      if (!IsCustomStyleActive(style))
+      {
+        removedStyles.Add(style);
+      }
+    }
+
+    if (removedStyles.Count == 0) return;
+
+    try
+    {
+      onCustomStyleTextureChange?.Invoke();
+    }
+    finally
+    {
+      foreach (BlockStyle style in removedStyles)
+      {
+        if (IsCustomStyleActive(style)) continue;
+        Texture2D texture;
+        if (customStyleTextures.TryGetValue(style, out texture))
+        {
+          customStyleTextures.Remove(style);
+          DestroyCustomStyleTexture(texture);
+        }
+      }
+    }
+  }
+
+  static Texture2D ResizeCustomStyleTexture(Texture2D texture)
+  {
+    if (texture == null)
+    {
+      throw new System.ArgumentNullException(nameof(texture));
+    }
+
+#if TEXTURE_ADJUSTMENTS
+    try
+    {
+      texture.ResizePro(TerrainSystem.tex_size, TerrainSystem.tex_size, false);
+      return texture;
+    }
+    catch
+    {
+      DestroyCustomStyleTexture(texture);
+      throw;
+    }
+#else
+    if (texture.width == TerrainSystem.tex_size && texture.height == TerrainSystem.tex_size)
+    {
+      return texture;
+    }
+
+    Texture2D resized = null;
+    try
+    {
+      // Simple bilinear resample. Not great for downsampling.
+      resized = new Texture2D(TerrainSystem.tex_size, TerrainSystem.tex_size, TextureFormat.RGBA32, false, false);
+      for (int x = 0; x < resized.width; x++)
+      {
+        for (int y = 0; y < resized.width; y++)
+        {
+          float u = x * 1f / (resized.width - 1);
+          float v = y * 1f / (resized.height - 1);
+          Color sampled = texture.GetPixelBilinear(u, v);
+          resized.SetPixel(x, y, sampled);
+        }
+      }
+      resized.Apply();
+      return resized;
+    }
+    catch
+    {
+      DestroyCustomStyleTexture(resized);
+      throw;
+    }
+    finally
+    {
+      DestroyCustomStyleTexture(texture);
+    }
+#endif
+  }
+
+  static void DestroyCustomStyleTexture(Texture2D texture)
+  {
+    if (texture == null) return;
+    if (Application.isPlaying) UnityEngine.Object.Destroy(texture);
+    else UnityEngine.Object.DestroyImmediate(texture);
+  }
+
   void UpdateCustomStyleWorkshopIds()
   {
     if (customStyleWorkshopIds.Count > 256)
     {
       throw new System.Exception("We do not support more than 256 custom terrain block styles");
     }
+
+    ReleaseRemovedCustomStyleTextures();
 
     for (int i = 0; i < customStyleWorkshopIds.Count; i++)
     {
@@ -1048,44 +1185,32 @@ public class TerrainManager : MonoBehaviour
       // So always kick off a new download.
       workshopAssets.Get(workshopId, maybePath =>
       {
+        if (this == null || !IsCurrentCustomStyleDownload(style, workshopId)) return;
         if (maybePath.IsEmpty())
         {
           Util.LogError($"Failed to download custom terrain block style, workshop ID = {workshopId}");
           return;
         }
 
-        Texture2D texture = ReadCustomStyle(maybePath.Value);
-#if TEXTURE_ADJUSTMENTS
-        texture.ResizePro(TerrainSystem.tex_size, TerrainSystem.tex_size, false);
-#else
-        if (texture.width != TerrainSystem.tex_size || texture.height != TerrainSystem.tex_size)
+        Texture2D texture = null;
+        try
         {
-          // Simple bilinear resample. Not great for downsampling.
-          Texture2D old = texture;
-          texture = new Texture2D(TerrainSystem.tex_size, TerrainSystem.tex_size, TextureFormat.RGBA32, false, false);
-          for (int x = 0; x < texture.width; x++)
-          {
-            for (int y = 0; y < texture.width; y++)
-            {
-              float u = x * 1f / (texture.width - 1);
-              float v = y * 1f / (texture.height - 1);
-              Color sampled = old.GetPixelBilinear(u, v);
-              texture.SetPixel(x, y, sampled);
-            }
-          }
-          texture.Apply();
+          texture = ResizeCustomStyleTexture(ReadCustomStyle(maybePath.Value));
+          Debug.Assert(texture != null);
+
+          // Feed it to terrain system before notifying UI listeners. Listeners
+          // release sprites that reference the previous texture.
+          Color32[] pixels = texture.GetPixels32();
+          terrainV2.SetStyleTextures((int)style, pixels, pixels);
+
+          Texture2D replacement = texture;
+          texture = null;
+          ReplaceCustomStyleTexture(style, replacement);
         }
-#endif
-
-        // Remember texture for use as UI thumbnail
-        Debug.Assert(texture != null);
-        customStyleTextures[style] = texture;
-
-        // Feed it to terrain system
-        Color32[] pixels = texture.GetPixels32();
-        terrainV2.SetStyleTextures((int)style, pixels, pixels);
-
-        onCustomStyleTextureChange?.Invoke();
+        finally
+        {
+          DestroyCustomStyleTexture(texture);
+        }
 
         if (workshopDownloadCallbacks.ContainsKey(workshopId))
         {

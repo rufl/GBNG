@@ -204,6 +204,9 @@ ghosts. Create, delete, and edit preview components release their tracked ghosts
 on teardown without modifying shared source materials.
 `TerrainRendering` releases generated per-color prefab/material variants and
 clears cell/edge render state when its component is destroyed.
+`TerrainManager` owns downloaded custom-style textures, releases replaced and
+retired textures after thumbnail listeners refresh, and ignores stale workshop
+downloads for styles that are no longer active.
 
 Actor renderable tint and `_Running` shader state use per-renderer property
 blocks, preserving actor-specific appearance while sharing source materials.
