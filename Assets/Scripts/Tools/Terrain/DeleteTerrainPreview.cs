@@ -25,11 +25,22 @@ public class DeleteTerrainPreview : MonoBehaviour
 
   HashSet<GameObject> previewObjects = new HashSet<GameObject>();
 
-  void Start()
+  static readonly int MAIN_TINT_PROPERTY_ID = Shader.PropertyToID("_MainTint");
+  MaterialPropertyBlock tintProperties;
+
+  void Awake()
   {
-    previewObject.GetComponentInChildren<Renderer>().material.SetColor("_MainTint", Color.red);
+    tintProperties = new MaterialPropertyBlock();
+    SetTint(previewObject, Color.red);
   }
 
+  void SetTint(GameObject target, Color tint)
+  {
+    Renderer renderer = target.GetComponentInChildren<Renderer>();
+    renderer.GetPropertyBlock(tintProperties);
+    tintProperties.SetColor(MAIN_TINT_PROPERTY_ID, tint);
+    renderer.SetPropertyBlock(tintProperties);
+  }
 
   public void SetVisibility(bool on)
   {
@@ -41,7 +52,9 @@ public class DeleteTerrainPreview : MonoBehaviour
 
   public void AddCellToPreview(Cell cell)
   {
-    previewObjects.Add(Instantiate(previewObject, GetCellCenter(cell), Quaternion.identity));
+    GameObject preview = Instantiate(previewObject, GetCellCenter(cell), Quaternion.identity);
+    SetTint(preview, Color.red);
+    previewObjects.Add(preview);
   }
 
   public void ClearPreview()
@@ -51,5 +64,10 @@ public class DeleteTerrainPreview : MonoBehaviour
       Destroy(go);
     }
     previewObjects.Clear();
+  }
+
+  void OnDestroy()
+  {
+    ClearPreview();
   }
 }

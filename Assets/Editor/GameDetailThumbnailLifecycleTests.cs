@@ -1424,5 +1424,122 @@ public class GameDetailThumbnailLifecycleTests
       "Preview teardown must leave the shared source material intact.");
   }
 
+  [UnityTest]
+  public IEnumerator DeleteAndEditTerrainPreviewsUsePropertyBlocksAndCleanGhosts()
+  {
+    yield return new EnterPlayMode();
+
+    GameObject deleteOwner = null;
+    GameObject editOwner = null;
+    GameObject deleteTemplate = null;
+    GameObject editTemplate = null;
+    GameObject deleteGhost = null;
+    GameObject editGhost = null;
+    Material sourceMaterial = null;
+    bool deleteTintUsesPropertyBlock = false;
+    bool editTintUsesPropertyBlock = false;
+    bool ghostsReleased = false;
+    bool sourceMaterialPreserved = false;
+
+    try
+    {
+      Shader shader = Shader.Find("Sully/PreviewMaterial");
+      Assert.IsNotNull(shader);
+      sourceMaterial = new Material(shader);
+      sourceMaterial.SetColor("_MainTint", Color.green);
+      Color sourceTint = sourceMaterial.GetColor("_MainTint");
+
+      deleteTemplate = new GameObject("Delete terrain preview source");
+      deleteTemplate.AddComponent<MeshRenderer>().sharedMaterial = sourceMaterial;
+      editTemplate = new GameObject("Edit terrain preview source");
+      editTemplate.AddComponent<MeshRenderer>().sharedMaterial = sourceMaterial;
+
+      deleteOwner = new GameObject("Delete terrain preview owner");
+      deleteOwner.SetActive(false);
+      DeleteTerrainPreview deletePreview = deleteOwner.AddComponent<DeleteTerrainPreview>();
+      typeof(DeleteTerrainPreview).GetField("previewObject", PrivateInstance)
+        .SetValue(deletePreview, deleteTemplate);
+      deleteOwner.SetActive(true);
+      deletePreview.AddCellToPreview(new TerrainManager.Cell(1, 0, 0));
+
+      var deletePreviews =
+        (System.Collections.Generic.HashSet<GameObject>)typeof(DeleteTerrainPreview)
+          .GetField("previewObjects", PrivateInstance).GetValue(deletePreview);
+      foreach (GameObject previewObject in deletePreviews)
+      {
+        deleteGhost = previewObject;
+        break;
+      }
+      Renderer deleteRenderer = deleteGhost.GetComponentInChildren<Renderer>();
+      MaterialPropertyBlock deleteProperties = new MaterialPropertyBlock();
+      deleteRenderer.GetPropertyBlock(deleteProperties);
+      deleteTintUsesPropertyBlock =
+        deleteRenderer.sharedMaterial == sourceMaterial &&
+        deleteProperties.GetColor(Shader.PropertyToID("_MainTint")) == Color.red &&
+        sourceMaterial.GetColor("_MainTint") == sourceTint;
+
+      editOwner = new GameObject("Edit terrain preview owner");
+      editOwner.SetActive(false);
+      EditTerrainPreview editPreview = editOwner.AddComponent<EditTerrainPreview>();
+      typeof(EditTerrainPreview).GetField("previewObject", PrivateInstance)
+        .SetValue(editPreview, editTemplate);
+      editOwner.SetActive(true);
+
+      var candidates =
+        new System.Collections.Generic.HashSet<Util.Tuple<TerrainManager.Cell, TerrainManager.CellValue>>
+        {
+          new Util.Tuple<TerrainManager.Cell, TerrainManager.CellValue>(
+            new TerrainManager.Cell(2, 0, 0),
+            new TerrainManager.CellValue(
+              TerrainManager.BlockShape.Full,
+              TerrainManager.BlockDirection.North,
+              TerrainManager.BlockStyle.SolidColor0))
+        };
+      MethodInfo updateCells = typeof(EditTerrainPreview).GetMethod("UpdateCells", PrivateInstance);
+      Assert.IsNotNull(updateCells);
+      updateCells.Invoke(editPreview, new object[] { candidates });
+
+      var editPreviews =
+        (System.Collections.Generic.List<GameObject>)typeof(EditTerrainPreview)
+          .GetField("previewObjects", PrivateInstance).GetValue(editPreview);
+      editGhost = editPreviews[0];
+      Renderer editRenderer = editGhost.GetComponentInChildren<Renderer>();
+      MaterialPropertyBlock editProperties = new MaterialPropertyBlock();
+      editRenderer.GetPropertyBlock(editProperties);
+      editTintUsesPropertyBlock =
+        editRenderer.sharedMaterial == sourceMaterial &&
+        editProperties.GetColor(Shader.PropertyToID("_MainTint")) == Color.white &&
+        sourceMaterial.GetColor("_MainTint") == sourceTint;
+
+      Object.Destroy(deleteOwner);
+      Object.Destroy(editOwner);
+      yield return null;
+
+      ghostsReleased = deleteGhost == null && editGhost == null;
+      sourceMaterialPreserved =
+        sourceMaterial != null && sourceMaterial.GetColor("_MainTint") == sourceTint;
+    }
+    finally
+    {
+      if (deleteOwner != null) Object.DestroyImmediate(deleteOwner);
+      if (editOwner != null) Object.DestroyImmediate(editOwner);
+      if (deleteTemplate != null) Object.DestroyImmediate(deleteTemplate);
+      if (editTemplate != null) Object.DestroyImmediate(editTemplate);
+      if (deleteGhost != null) Object.DestroyImmediate(deleteGhost);
+      if (editGhost != null) Object.DestroyImmediate(editGhost);
+      if (sourceMaterial != null) Object.DestroyImmediate(sourceMaterial);
+    }
+
+    yield return new ExitPlayMode();
+    Assert.IsTrue(deleteTintUsesPropertyBlock,
+      "Delete previews must tint their renderer without cloning or changing the source material.");
+    Assert.IsTrue(editTintUsesPropertyBlock,
+      "Edit previews must tint their renderer without cloning or changing the source material.");
+    Assert.IsTrue(ghostsReleased,
+      "Delete and edit preview owners must destroy their tracked ghosts during teardown.");
+    Assert.IsTrue(sourceMaterialPreserved,
+      "Destroying terrain preview ghosts must preserve their caller-owned source material.");
+  }
+
 }
 #endif

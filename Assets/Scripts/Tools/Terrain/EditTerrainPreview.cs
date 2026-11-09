@@ -26,9 +26,21 @@ public class EditTerrainPreview : MonoBehaviour
 
   List<GameObject> previewObjects = new List<GameObject>();
 
-  void Start()
+  static readonly int MAIN_TINT_PROPERTY_ID = Shader.PropertyToID("_MainTint");
+  MaterialPropertyBlock tintProperties;
+
+  void Awake()
   {
-    previewObject.GetComponentInChildren<Renderer>().material.SetColor("_MainTint", Color.white);
+    tintProperties = new MaterialPropertyBlock();
+    SetTint(previewObject, Color.white);
+  }
+
+  void SetTint(GameObject target, Color tint)
+  {
+    Renderer renderer = target.GetComponentInChildren<Renderer>();
+    renderer.GetPropertyBlock(tintProperties);
+    tintProperties.SetColor(MAIN_TINT_PROPERTY_ID, tint);
+    renderer.SetPropertyBlock(tintProperties);
   }
 
   public void SetVisibility(bool on)
@@ -55,7 +67,9 @@ public class EditTerrainPreview : MonoBehaviour
       counter++;
       if (counter > previewObjects.Count)
       {
-        previewObjects.Add(Instantiate(previewObject, GetCellCenter(cv.first), Quaternion.identity));
+        GameObject preview = Instantiate(previewObject, GetCellCenter(cv.first), Quaternion.identity);
+        SetTint(preview, Color.white);
+        previewObjects.Add(preview);
       }
       else
       {
@@ -81,5 +95,10 @@ public class EditTerrainPreview : MonoBehaviour
       Destroy(go);
     }
     previewObjects.Clear();
+  }
+
+  void OnDestroy()
+  {
+    DestroyPreviewObjects();
   }
 }
