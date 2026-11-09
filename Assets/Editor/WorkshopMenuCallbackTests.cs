@@ -290,6 +290,92 @@ public class WorkshopMenuCallbackTests
   }
 
   [Test]
+  public void LateSubscribedWorkshopResultsAfterLibraryDestructionAreIgnored()
+  {
+    GameObject menuObject = new GameObject("GameLibraryMenu destroyed Workshop callback test");
+    menuObject.SetActive(false);
+    GameLibraryMenu menu = menuObject.AddComponent<GameLibraryMenu>();
+    MethodInfo callback = typeof(GameLibraryMenu).GetMethod(
+      "OnSubscribedWorkshopListLoaded", BindingFlags.Instance | BindingFlags.NonPublic);
+    WorkshopItemListEventArgs args = new WorkshopItemListEventArgs(
+      new WorkshopItemList(new List<WorkshopItem>(), 1));
+
+    try
+    {
+      Assert.IsNotNull(callback);
+      UnityEngine.Object.DestroyImmediate(menuObject);
+      callback.Invoke(menu, new object[] { args, 0 });
+    }
+    finally
+    {
+      if (menuObject != null)
+      {
+        UnityEngine.Object.DestroyImmediate(menuObject);
+      }
+    }
+  }
+
+  [Test]
+  public void ReopenedLibraryIgnoresStaleSubscribedWorkshopResults()
+  {
+    GameObject root = new GameObject("GameLibraryMenu stale Workshop callback test");
+    GameObject menuObject = CreateInactiveObject("Game library menu", root.transform);
+    GameLibraryMenu menu = menuObject.AddComponent<GameLibraryMenu>();
+    GameObject categoryObject = CreateInactiveObject("Workshop category", root.transform);
+    ThumbnailCategory category = categoryObject.AddComponent<ThumbnailCategory>();
+    TMPro.TextMeshProUGUI categoryName = CreateTestText("Category name", categoryObject.transform);
+    TMPro.TextMeshProUGUI placeholder = CreateTestText("Category placeholder", categoryObject.transform);
+    SetField(category, typeof(ThumbnailCategory), "nameText", categoryName);
+    SetField(category, typeof(ThumbnailCategory), "placeholderText", placeholder);
+    category.SetName(GameLibraryMenu.WORKSHOP);
+    category.SetPlaceholderText("No subscribed games");
+    categoryObject.SetActive(true);
+    SetField(category, typeof(ThumbnailCategory), "placeholderString", "No subscribed games");
+
+    GameObject dependencies = CreateInactiveObject("Dependencies", root.transform);
+    SetField(menu, typeof(GameLibraryMenu), "popups", dependencies.AddComponent<DynamicPopup>());
+    SetField(menu, typeof(GameLibraryMenu), "loadingScreen", dependencies.AddComponent<LoadingScreen>());
+    SetField(menu, typeof(GameLibraryMenu), "workshopSource", dependencies.AddComponent<WorkshopAssetSource>());
+    SetField(menu, typeof(ThumbnailMenu), "sortText", CreateTestText("Sort label", root.transform));
+    SetField(menu, typeof(ThumbnailMenu), "categories", new List<ThumbnailCategory> { category });
+
+    MethodInfo callback = typeof(GameLibraryMenu).GetMethod(
+      "OnSubscribedWorkshopListLoaded", BindingFlags.Instance | BindingFlags.NonPublic);
+    MethodInfo setCategoryLoading = typeof(ThumbnailMenu).GetMethod(
+      "SetCategoryLoading", BindingFlags.Instance | BindingFlags.NonPublic);
+    FieldInfo generationField = typeof(GameLibraryMenu).GetField(
+      "thumbnailGeneration", BindingFlags.Instance | BindingFlags.NonPublic);
+    WorkshopItemListEventArgs args = new WorkshopItemListEventArgs(
+      new WorkshopItemList(new List<WorkshopItem>(), 1));
+
+    try
+    {
+      Assert.IsNotNull(callback);
+      Assert.IsNotNull(setCategoryLoading);
+      Assert.IsNotNull(generationField);
+
+      menuObject.SetActive(true);
+      menu.Open();
+      setCategoryLoading.Invoke(menu, new object[] { GameLibraryMenu.WORKSHOP, true });
+      int staleGeneration = (int)generationField.GetValue(menu);
+
+      menu.Close();
+      menu.Open();
+      callback.Invoke(menu, new object[] { args, staleGeneration });
+
+      Assert.AreEqual("Loading ...", placeholder.text);
+
+      int currentGeneration = (int)generationField.GetValue(menu);
+      callback.Invoke(menu, new object[] { args, currentGeneration });
+      Assert.AreEqual("No subscribed games", placeholder.text);
+    }
+    finally
+    {
+      UnityEngine.Object.DestroyImmediate(root);
+    }
+  }
+
+  [Test]
   public void ActorAndCardWorkshopMenusHandleUnavailableAndEmptyResults()
   {
     PropertyInfo initializedProperty = typeof(SteamRuntime).GetProperty(

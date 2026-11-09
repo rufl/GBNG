@@ -61,6 +61,7 @@ public class GameLibraryMenu : ThumbnailMenu
 
   LocalSort localSort;
   LoadingScreen loadingScreen;
+  int thumbnailGeneration;
 
   public enum LocalSort
   {
@@ -133,7 +134,6 @@ public class GameLibraryMenu : ThumbnailMenu
   public void Refresh()
   {
     ClearThumbnails();
-    SetCategoryLoading(WORKSHOP, true);
     CreateThumbnails();
   }
 
@@ -141,6 +141,13 @@ public class GameLibraryMenu : ThumbnailMenu
   {
     sortText.text = localSort.ToString();
     base.Open();
+  }
+
+  public override void Close()
+  {
+    thumbnailGeneration++;
+    StopAllCoroutines();
+    base.Close();
   }
 
   protected override void Update()
@@ -151,13 +158,18 @@ public class GameLibraryMenu : ThumbnailMenu
 
   protected void CreateThumbnails()
   {
+    StopAllCoroutines();
+    int generation = ++thumbnailGeneration;
+#if USE_STEAMWORKS
+    SetCategoryLoading(WORKSHOP, true);
+#endif
     AddNewThumbnail();
     AddTutorialThumbnail();
-    StartCoroutine(AddSampleGameThumbnails());
-    StartCoroutine(CreateMyLibraryThumbnails());
+    StartCoroutine(AddSampleGameThumbnails(generation));
+    StartCoroutine(CreateMyLibraryThumbnails(generation));
 
 #if USE_STEAMWORKS
-      CreateSteamSubscribedThumbnails();
+      CreateSteamSubscribedThumbnails(generation);
 #endif
   }
 
@@ -203,11 +215,12 @@ public class GameLibraryMenu : ThumbnailMenu
     AddThumbnail(tutorialThumbnail);
   }
 
-  IEnumerator AddSampleGameThumbnails()
+  IEnumerator AddSampleGameThumbnails(int generation)
   {
     int sortPriorityHint = 20;
     foreach (LocalSampleGames.GameInfo gameInfo in LocalSampleGames.LOCAL_SAMPLE_GAMES)
     {
+      if (generation != thumbnailGeneration) yield break;
       MakeSampleGameThumbnail(gameInfo, sortPriorityHint--);
       yield return null;
     }
@@ -260,10 +273,11 @@ public class GameLibraryMenu : ThumbnailMenu
     });
   }
 
-  IEnumerator CreateMyLibraryThumbnails()
+  IEnumerator CreateMyLibraryThumbnails(int generation)
   {
     foreach (GameBundleLibrary.Entry entry in gameBundleLibrary.Enumerate())
     {
+      if (generation != thumbnailGeneration) yield break;
       GameThumbnail gameThumbnail = Instantiate(gameThumbnailPrefab).GetComponent<GameThumbnail>();
       GameBundle.Metadata metadata = entry.bundle.GetMetadata();
 
@@ -296,7 +310,7 @@ public class GameLibraryMenu : ThumbnailMenu
   }
 
 #if USE_STEAMWORKS
-  void CreateSteamSubscribedThumbnails()
+  void CreateSteamSubscribedThumbnails(int generation)
   {
     if (!SteamRuntime.Initialized)
     {
@@ -306,13 +320,15 @@ public class GameLibraryMenu : ThumbnailMenu
     }
     SteamWorkshopService.Instance.ResetItemSearch();
     SteamWorkshopService.Instance.Sorting = new WorkshopSortMode(EWorkshopSource.SUBSCRIBED);
-    SteamWorkshopService.Instance.GetItemList(1, OnSubscribedWorkshopListLoaded);
+    SteamWorkshopService.Instance.GetItemList(
+      1, args => OnSubscribedWorkshopListLoaded(args, generation));
   }
 
-  IEnumerator GenerateWorkshopThumbnails(List<WorkshopItem> items)
+  IEnumerator GenerateWorkshopThumbnails(List<WorkshopItem> items, int generation)
   {
     foreach (WorkshopItem item in items)
     {
+      if (generation != thumbnailGeneration) yield break;
       if (item.Tags.Contains(SteamUtil.GameBuilderTags.Asset.ToString())) continue;
       GameThumbnail gameThumbnail = Instantiate(gameThumbnailPrefab).GetComponent<GameThumbnail>();
       if (item.PreviewImageURL != null && item.PreviewImageURL.Length > 0)
@@ -336,21 +352,21 @@ public class GameLibraryMenu : ThumbnailMenu
   }
 
 
-  void OnSubscribedWorkshopListLoaded(WorkshopItemListEventArgs args)
+  void OnSubscribedWorkshopListLoaded(WorkshopItemListEventArgs args, int generation)
   {
-    SetCategoryLoading(WORKSHOP, false);
-    if (!IsOpen())
+    if (this == null || generation != thumbnailGeneration || !IsOpen())
     {
       return;
     }
 
+    SetCategoryLoading(WORKSHOP, false);
     if (args.IsError)
     {
       Debug.Log($"Sorry, encountered an error: {args.ErrorMessage}");
       return;
     }
 
-    StartCoroutine(GenerateWorkshopThumbnails(args.ItemList.Items));
+    StartCoroutine(GenerateWorkshopThumbnails(args.ItemList.Items, generation));
 
 
   }
