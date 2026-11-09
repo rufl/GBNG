@@ -203,6 +203,7 @@ recovered. This replacement reads `Gamepad.current`; it has no per-player device
 pairing or rebinding. The archived data does not establish whether the Steam
 release exposed either feature. The mappings are not byte-for-byte parity, and
 physical-controller validation remains outstanding.
+The virtual-device regression suites in `Assets/Editor/GamepadInputControlTests.cs` and `Assets/Editor/GamepadInputEdgeTests` pass 7/7 under Unity 6000.6.6f1, covering gameplay bindings, input edges, UI navigation, and Build-mode gating; they do not replace physical-controller validation.
 
 Assigned behavior labels use `getDescription()` when it returns a non-empty
 value; otherwise, the first-line `//` comment is the fallback label.
@@ -217,6 +218,8 @@ Linux x64 builds rewrite AssimpNet's four `libdl.so` imports to `libdl.so.2`
 and bundle `libminizip.so` beside Assimp, preloading it globally to satisfy
 Assimp's `libminizip.so.1` dependency without `LD_LIBRARY_PATH`.
 A Linux Mono player smoke on Ubuntu 26.04 under WSL2/WSLg imported the repository's animated Fox FBX through Assimp and ran asset preparation. It produced a skinned mesh with 1,733 vertices and 19 bones, three animation clips, two diffuse textures, and a generated mesh collider; sampling `RunForward` changed the rig pose.
+
+A fresh `StandaloneLinux64` player built with `GameBuilderMenu.Build` also started under WSLg and stayed alive for a 35-second smoke run using Mesa llvmpipe. Steam Workshop was unavailable because no Steam client was running; this did not prevent player startup.
 
 When an FBX texture's original path is unavailable, the importer checks the model directory and then maps `GameAssets/Models/...` to the parallel `GameAssets/Textures/...` tree. The EditMode smoke confirms that both Fox textures load from that tree.
 
