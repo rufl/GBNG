@@ -252,8 +252,7 @@ public class InfoTabController : AbstractTabController
     }
 #endif
 
-    Sprite _sprite = Sprite.Create(thumbnail, new Rect(0, 0, thumbnail.width, thumbnail.height), new Vector2(.5f, .5f), 100);
-    Instantiate(snapshotPopupPrefab, editMain.GetMainRect()).GetComponent<Popup>().Setup(_sprite, POPUP_DURATION);
+    Instantiate(snapshotPopupPrefab, editMain.GetMainRect()).GetComponent<Popup>().Setup(thumbnail, POPUP_DURATION);
 
     // TODO: put this back
     // creationLibrary.OnSaveActorPrefab(prefab);

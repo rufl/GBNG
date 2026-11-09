@@ -58,6 +58,25 @@ public class IconLoader : MonoBehaviour
     }
     Debug.Log("Icon manifest loaded (" + entries.Length + " icons).");
   }
+  void OnDestroy()
+  {
+    foreach (Sprite sprite in loadedSprites.Values)
+    {
+      if (sprite == null) continue;
+      Texture2D texture = sprite.texture;
+      if (Application.isPlaying)
+      {
+        Destroy(sprite);
+        if (texture != null) Destroy(texture);
+      }
+      else
+      {
+        DestroyImmediate(sprite);
+        if (texture != null) DestroyImmediate(texture);
+      }
+    }
+    loadedSprites.Clear();
+  }
 
   public void LoadIconTexture(string iconName, System.Action<string, Texture2D> onLoaded, System.Action<string> onError = null)
   {

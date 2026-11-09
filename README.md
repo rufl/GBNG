@@ -97,6 +97,9 @@ generated thumbnail Sprites on replacement or teardown while preserving the
 downloaded textures.
 SaveMenu also releases replaced and final screenshot Sprite wrappers without
 destroying the textures provided by the save flow.
+Snapshot popups release generated Sprites when they close. Library category and
+custom terrain preview Sprites are released on refresh or teardown; the icon
+picker disposes its cached Sprites and owned textures when its loader is destroyed.
 
 Template thumbnails load once even while their menu item is inactive. Requests
 are disposed on completion, replacement, or teardown; generated image objects

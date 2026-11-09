@@ -21,16 +21,23 @@ using UnityEngine;
 public class Popup : MonoBehaviour
 {
   public UnityEngine.UI.Image image;
+  readonly RuntimeSpriteOwner ownedSprite = new RuntimeSpriteOwner();
 
   void Start()
   {
     GetComponent<RectTransform>().anchoredPosition = new Vector2(-30, 30);
   }
 
-  public void Setup(Sprite sprite, float duration)
+  public void Setup(Texture2D texture, float duration)
   {
-    image.sprite = sprite;
+    SetSprite(texture);
     StartCoroutine(PopupRoutine(duration));
+  }
+
+  void SetSprite(Texture2D texture)
+  {
+    Sprite sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(.5f, .5f), 100);
+    if (sprite != null) image.sprite = ownedSprite.Replace(sprite);
   }
 
   IEnumerator PopupRoutine(float duration)
@@ -50,5 +57,6 @@ public class Popup : MonoBehaviour
   void OnDestroy()
   {
     StopAllCoroutines();
+    ownedSprite.Release();
   }
 }

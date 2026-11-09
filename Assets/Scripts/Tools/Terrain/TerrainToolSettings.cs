@@ -40,6 +40,7 @@ public class TerrainToolSettings : Sidebar
     new Dictionary<string, Util.Tuple<ProgressBlockStyleUI, WorkshopAssetSource.GetUploadProgress>>();
 
   private BlockTextureIcon[] icons = null;
+  readonly RuntimeSpriteCollection ownedCustomStyleSprites = new RuntimeSpriteCollection();
 
   DynamicPopup popups;
   WorkshopAssetSource workshopAssetSource;
@@ -177,6 +178,7 @@ public class TerrainToolSettings : Sidebar
   // TODO: put the uploaded textures here
   void UpdateBlockTextureIcons()
   {
+    ownedCustomStyleSprites.ReleaseAll();
     List<BlockTextureIcon> listToSend = new List<BlockTextureIcon>();
     for (int i = 0; i < NumTotalStyles; i++)
     {
@@ -211,7 +213,7 @@ public class TerrainToolSettings : Sidebar
 
       if (tex != null)
       {
-        sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), Vector2.zero);
+        sprite = ownedCustomStyleSprites.Track(Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), Vector2.zero));
       }
       var icon = new BlockTextureIcon
       {
@@ -554,6 +556,12 @@ public class TerrainToolSettings : Sidebar
     Util.Tuple<ProgressBlockStyleUI, WorkshopAssetSource.GetUploadProgress> tuple = importingListItems[id];
     importingListItems.Remove(id);
     Destroy(tuple.first.gameObject);
+  }
+
+  void OnDestroy()
+  {
+    if (terrainManager != null) terrainManager.onCustomStyleTextureChange -= RefreshTextureToggles;
+    ownedCustomStyleSprites.ReleaseAll();
   }
 
   void RefreshTextureToggles()

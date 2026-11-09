@@ -53,6 +53,8 @@ public class CreationLibrarySidebar : Sidebar
   private static string CATEGORY_PARTICLES = "Particles";
   private static string CATEGORY_SOUNDS = "Sounds";
   [SerializeField] List<CategoryButton> dynamicCategories;
+  readonly RuntimeSpriteCollection ownedCategorySprites = new RuntimeSpriteCollection();
+  bool categoryButtonsCreated;
   private EditMain editMain;
   private UserMain userMain;
   private AssetSearch assetSearch;
@@ -134,24 +136,29 @@ public class CreationLibrarySidebar : Sidebar
     allCategories.Add(new Util.Tuple<string, Texture2D>(CATEGORY_PARTICLES, particlesCategoryIcon));
     allCategories.Add(new Util.Tuple<string, Texture2D>(CATEGORY_SOUNDS, soundsCategoryIcon));
 
-    foreach (Util.Tuple<string, Texture2D> categoryTuple in allCategories)
+    if (!categoryButtonsCreated)
     {
-      string category = categoryTuple.first;
-      Texture2D texture = categoryTuple.second;
-      TextIconButtonUI categoryButton = Instantiate(
-        creationLibraryUI.categoryButtonPrefab, creationLibraryUI.categoriesList.transform);
-      categoryButton.text.text = category;
-      categoryButton.icon.sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0, 0));
-      categoryButton.button.onClick.AddListener(() =>
+      foreach (Util.Tuple<string, Texture2D> categoryTuple in allCategories)
       {
-        selectedCategory = category;
-        UpdateAll();
-      });
-      if (category == CATEGORY_CHALLENGE)
-      {
-        categoryButton.medallion.gameObject.SetActive(true);
+        string category = categoryTuple.first;
+        Texture2D texture = categoryTuple.second;
+        TextIconButtonUI categoryButton = Instantiate(
+          creationLibraryUI.categoryButtonPrefab, creationLibraryUI.categoriesList.transform);
+        categoryButton.text.text = category;
+        categoryButton.icon.sprite = ownedCategorySprites.Track(Sprite.Create(
+          texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0, 0)));
+        categoryButton.button.onClick.AddListener(() =>
+        {
+          selectedCategory = category;
+          UpdateAll();
+        });
+        if (category == CATEGORY_CHALLENGE)
+        {
+          categoryButton.medallion.gameObject.SetActive(true);
+        }
+        categoryButton.gameObject.SetActive(true);
       }
-      categoryButton.gameObject.SetActive(true);
+      categoryButtonsCreated = true;
     }
 
     creationLibraryUI.inCategoryBackButton.onClick.AddListener(() =>
@@ -640,6 +647,7 @@ public class CreationLibrarySidebar : Sidebar
   {
     searchGeneration++;
     CancelWebImageSearch();
+    ownedCategorySprites.ReleaseAll();
   }
 
   void RemoveInternalResultAtIndex(int index)
