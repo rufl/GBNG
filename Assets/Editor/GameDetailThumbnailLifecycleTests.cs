@@ -1541,5 +1541,80 @@ public class GameDetailThumbnailLifecycleTests
       "Destroying terrain preview ghosts must preserve their caller-owned source material.");
   }
 
+  [Test]
+  public void ActorTintAndRunStateUseIsolatedRendererPropertyBlocks()
+  {
+    Shader shader = Shader.Find("Sully/Snake");
+    Assert.IsNotNull(shader);
+    Material sourceMaterial = new Material(shader);
+    sourceMaterial.SetColor("_MainTint", new Color(0.2f, 0.4f, 0.6f, 1f));
+    sourceMaterial.SetInt("_Running", 1);
+    Color sourceTint = sourceMaterial.GetColor("_MainTint");
+    int tintProperty = Shader.PropertyToID("_MainTint");
+    int runningProperty = Shader.PropertyToID("_Running");
+
+    GameObject[] actorObjects = new GameObject[2];
+    VoosActor[] actors = new VoosActor[2];
+    MeshRenderer[] renderers = new MeshRenderer[2];
+    Color[] actorTints = { Color.red, Color.blue };
+    try
+    {
+      MethodInfo awake = typeof(VoosActor).GetMethod("Awake", PrivateInstance);
+      FieldInfo networkingField = typeof(VoosActor).GetField("actorNetworking", PrivateInstance);
+      FieldInfo currentRenderableField = typeof(VoosActor).GetField("currentRenderable", PrivateInstance);
+      FieldInfo allRenderersField = typeof(VoosActor).GetField("allRenderers", PrivateInstance);
+      FieldInfo tintableRenderersField = typeof(VoosActor).GetField("tintableRenderers", PrivateInstance);
+      Assert.IsNotNull(awake);
+      Assert.IsNotNull(networkingField);
+      Assert.IsNotNull(currentRenderableField);
+      Assert.IsNotNull(allRenderersField);
+      Assert.IsNotNull(tintableRenderersField);
+
+      for (int i = 0; i < actors.Length; i++)
+      {
+        actorObjects[i] = new GameObject("Actor renderer property block owner " + i);
+        actorObjects[i].SetActive(false);
+        ActorNetworking networking = actorObjects[i].AddComponent<ActorNetworking>();
+        actors[i] = actorObjects[i].AddComponent<VoosActor>();
+
+        GameObject renderable = new GameObject("Actor renderable " + i);
+        renderable.transform.SetParent(actorObjects[i].transform, false);
+        renderers[i] = renderable.AddComponent<MeshRenderer>();
+        renderers[i].sharedMaterial = sourceMaterial;
+
+        networkingField.SetValue(actors[i], networking);
+        currentRenderableField.SetValue(actors[i], renderable);
+        allRenderersField.SetValue(actors[i], new Renderer[] { renderers[i] });
+        tintableRenderersField.SetValue(actors[i], new Renderer[] { renderers[i] });
+        awake.Invoke(actors[i], null);
+
+        actors[i].SetTint(actorTints[i]);
+        actors[i].SetRunning(i != 0);
+      }
+
+      MaterialPropertyBlock firstProperties = new MaterialPropertyBlock();
+      MaterialPropertyBlock secondProperties = new MaterialPropertyBlock();
+      renderers[0].GetPropertyBlock(firstProperties);
+      renderers[1].GetPropertyBlock(secondProperties);
+
+      Assert.AreSame(sourceMaterial, renderers[0].sharedMaterial);
+      Assert.AreSame(sourceMaterial, renderers[1].sharedMaterial);
+      Assert.AreEqual(Color.red, firstProperties.GetColor(tintProperty));
+      Assert.AreEqual(Color.blue, secondProperties.GetColor(tintProperty));
+      Assert.AreEqual(0, firstProperties.GetInt(runningProperty));
+      Assert.AreEqual(1, secondProperties.GetInt(runningProperty));
+      Assert.AreEqual(sourceTint, sourceMaterial.GetColor("_MainTint"));
+      Assert.AreEqual(1, sourceMaterial.GetInt("_Running"));
+    }
+    finally
+    {
+      for (int i = 0; i < actorObjects.Length; i++)
+      {
+        if (actorObjects[i] != null) Object.DestroyImmediate(actorObjects[i]);
+      }
+      if (sourceMaterial != null) Object.DestroyImmediate(sourceMaterial);
+    }
+  }
+
 }
 #endif

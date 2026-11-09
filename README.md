@@ -198,6 +198,9 @@ edit ghosts. The create tool shares one component-owned material across local
 ghosts. Create, delete, and edit preview components release their tracked ghosts
 on teardown without modifying shared source materials.
 
+Actor renderable tint and `_Running` shader state use per-renderer property
+blocks, preserving actor-specific appearance while sharing source materials.
+
 GameBuilderStage destroys its per-scene skybox and ground material instances on
 teardown. It restores the previous global skybox only when RenderSettings still
 references an instance owned by that stage; caller-owned temporary skyboxes

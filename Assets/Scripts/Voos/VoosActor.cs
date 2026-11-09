@@ -614,6 +614,7 @@ public partial class VoosActor : MonoBehaviour
   Renderer[] tintableRenderers;
   Collider[] renderableColliders;
   Animation renderableAnimation;
+  MaterialPropertyBlock renderableProperties;
 
   // To solve the quirk that kinematic solids don't register collisions with
   // *eachother*. Each collider here is a component added to some object in the
@@ -712,6 +713,7 @@ public partial class VoosActor : MonoBehaviour
 
   void Awake()
   {
+    renderableProperties = new MaterialPropertyBlock();
     Util.FindIfNotSet(this, ref actorNetworking);
   }
 
@@ -1467,10 +1469,12 @@ public partial class VoosActor : MonoBehaviour
     }
     foreach (var render in allRenderers)
     {
-      if (render.material.HasProperty(Shader.PropertyToID("_Running")))
-      {
-        render.material.SetInt(Shader.PropertyToID("_Running"), running ? 1 : 0);
-      }
+      Material sharedMaterial = render.sharedMaterial;
+      if (sharedMaterial == null || !sharedMaterial.HasProperty(RUNNING_SHADER_PROPERTY_ID)) continue;
+
+      render.GetPropertyBlock(renderableProperties);
+      renderableProperties.SetInt(RUNNING_SHADER_PROPERTY_ID, running ? 1 : 0);
+      render.SetPropertyBlock(renderableProperties);
     }
     foreach (var particleSystem in currentRenderable.GetComponentsInChildren<ParticleSystem>())
     {
@@ -1659,6 +1663,7 @@ public partial class VoosActor : MonoBehaviour
     Shader.PropertyToID("_MainTint"),
     Shader.PropertyToID("_BaseColorFactor")
   };
+  static readonly int RUNNING_SHADER_PROPERTY_ID = Shader.PropertyToID("_Running");
 
   void UpdateRenderableTint()
   {
@@ -1669,13 +1674,18 @@ public partial class VoosActor : MonoBehaviour
 
     foreach (var render in tintableRenderers)
     {
+      Material sharedMaterial = render.sharedMaterial;
+      if (sharedMaterial == null) continue;
+
+      render.GetPropertyBlock(renderableProperties);
+      bool hasTintProperty = false;
       foreach (int prop in PossibleRenderableTintShaderProperties)
       {
-        if (render.material.HasProperty(prop))
-        {
-          render.material.SetColor(prop, tint);
-        }
+        if (!sharedMaterial.HasProperty(prop)) continue;
+        renderableProperties.SetColor(prop, tint);
+        hasTintProperty = true;
       }
+      if (hasTintProperty) render.SetPropertyBlock(renderableProperties);
     }
 
     GetPlayerBody()?.OnTintChanged(tint);
@@ -2025,9 +2035,8 @@ public partial class VoosActor : MonoBehaviour
     renderableColliders = this.currentRenderable.GetComponentsInChildren<Collider>();
     renderableAnimation = this.currentRenderable.GetComponent<Animation>();
 
-    // TEMP force disable instancing for now. Most of our materials get
-    // instanced anyway, due to setting tint, so TRYING to instance actually
-    // introduces HUGE CPU rendering overhead.
+    // Actor-specific property-block values are not declared as instanced shader
+    // properties, so keep GPU instancing disabled until the shaders support them.
     foreach (Renderer r in allRenderers)
     {
       if (r.sharedMaterial == null) continue;
