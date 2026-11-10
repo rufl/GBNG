@@ -253,6 +253,21 @@ public class BehaviorsTest
   }
 
   [UnityTest]
+  public IEnumerator TestBehaviorMemoryCleanupRemovesEmptyLocalMemoryContainer()
+  {
+    yield return Setup();
+
+    VoosActor actor = voosEngine.CreateActor(new Vector3(1f, 2f, 3f), Quaternion.identity, _ => { });
+    actor.SetMemoryJson(@"{""__bulm"":{""stale"":{}}}");
+    yield return null;
+    yield return null;
+
+    actor.SetMemoryJson(null);
+    Assert.AreEqual("{}", actor.GetMemoryJsonSlow(),
+      "Serialized actor memory must omit an empty behavior-local-memory container.");
+  }
+
+  [UnityTest]
   public IEnumerator TestCooldownSurvivesActorMemoryTransfer()
   {
     string originalUserDataDirName = Util.UserDataDirName;

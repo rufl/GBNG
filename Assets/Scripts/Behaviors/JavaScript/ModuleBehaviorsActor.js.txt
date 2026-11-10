@@ -282,6 +282,9 @@ class Actor {
           delete packed.__bulm[bulm];
         }
       }
+      if (Object.keys(packed.__bulm).length === 0) {
+        delete packed.__bulm;
+      }
     }
     return JSON.stringify(packed);
   }
@@ -555,7 +558,7 @@ class Actor {
         this.deleteBehaviorUseLocalMemory(useId);
       }
     }
-    if (0 === Object.keys(this.memory.__bulm)) {
+    if (0 === Object.keys(this.memory.__bulm).length) {
       delete this.memory.__bulm;
       this.memoryDirty_ = true;
     }
