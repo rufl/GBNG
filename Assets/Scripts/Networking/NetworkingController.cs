@@ -1708,6 +1708,8 @@ public class NetworkingController : Photon.PunBehaviour
     }
     else
     {
+      options.joinAddress = migrated.Address;
+      options.joinPort = (ushort)migrated.Port;
       options.directHostUsesIpv6 = migrated.AddressFamily == 6;
       options.trustedHostCertificatePem = migrated.ServerCertificatePem;
       options.directRelaySessionId = migrated.RelayPort >= 1 && migrated.RelayPort <= 65535
