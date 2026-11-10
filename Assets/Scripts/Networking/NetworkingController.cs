@@ -50,6 +50,7 @@ public class NetworkingController : Photon.PunBehaviour
   const string DirectWorkshopAssetResponseMessageName = "GB_DIRECT_WORKSHOP_ASSET_RESPONSE_V1";
   const int DirectWorkshopAssetChunkBytes = 48 * 1024;
   const int MaximumDirectWorkshopAssetBytes = 64 * 1024 * 1024;
+  const float DirectWorkshopAssetRequestTimeoutSeconds = 30f;
 #endif
   NetworkManager directNetworkManager;
   UnityTransport directTransport;
@@ -77,6 +78,10 @@ public class NetworkingController : Photon.PunBehaviour
     new Dictionary<ulong, List<System.Action<Util.Maybe<string>>>>();
   readonly Dictionary<ulong, DirectWorkshopAssetAssembler> directWorkshopAssetAssemblers =
     new Dictionary<ulong, DirectWorkshopAssetAssembler>();
+  readonly Dictionary<ulong, float> directWorkshopAssetDeadlines = new Dictionary<ulong, float>();
+  readonly List<ulong> expiredDirectWorkshopAssetIds = new List<ulong>();
+  readonly List<List<System.Action<Util.Maybe<string>>>> failedDirectWorkshopAssetCallbacks =
+    new List<List<System.Action<Util.Maybe<string>>>>();
 #endif
   string directHostShareAddress;
   string directHostShareAddressAddress;
@@ -1297,20 +1302,25 @@ public class NetworkingController : Photon.PunBehaviour
 #if !USE_STEAMWORKS
   public bool RequestDirectWorkshopAsset(ulong assetId, System.Action<Util.Maybe<string>> callback)
   {
-    if (directNetworkManager == null || directNetworkManager.IsServer || !directNetworkManager.IsConnectedClient) return false;
+    if (callback == null || directNetworkManager == null || directNetworkManager.IsServer
+      || !directNetworkManager.IsConnectedClient) return false;
     List<System.Action<Util.Maybe<string>>> callbacks;
-    if (!directWorkshopAssetCallbacks.TryGetValue(assetId, out callbacks))
+    if (directWorkshopAssetCallbacks.TryGetValue(assetId, out callbacks))
     {
-      callbacks = new List<System.Action<Util.Maybe<string>>>();
-      directWorkshopAssetCallbacks.Add(assetId, callbacks);
-      using (FastBufferWriter writer = new FastBufferWriter(sizeof(ulong), Allocator.Temp))
-      {
-        writer.WriteValueSafe(assetId);
-        directNetworkManager.CustomMessagingManager.SendNamedMessage(
-          DirectWorkshopAssetRequestMessageName, NetworkManager.ServerClientId, writer, NetworkDelivery.ReliableSequenced);
-      }
+      callbacks.Add(callback);
+      return true;
     }
+
+    callbacks = new List<System.Action<Util.Maybe<string>>>();
     callbacks.Add(callback);
+    directWorkshopAssetCallbacks.Add(assetId, callbacks);
+    directWorkshopAssetDeadlines.Add(assetId, Time.realtimeSinceStartup + DirectWorkshopAssetRequestTimeoutSeconds);
+    using (FastBufferWriter writer = new FastBufferWriter(sizeof(ulong), Allocator.Temp))
+    {
+      writer.WriteValueSafe(assetId);
+      directNetworkManager.CustomMessagingManager.SendNamedMessage(
+        DirectWorkshopAssetRequestMessageName, NetworkManager.ServerClientId, writer, NetworkDelivery.ReliableSequenced);
+    }
     return true;
   }
 
@@ -1403,7 +1413,34 @@ public class NetworkingController : Photon.PunBehaviour
     List<System.Action<Util.Maybe<string>>> callbacks;
     if (!directWorkshopAssetCallbacks.TryGetValue(assetId, out callbacks)) return;
     directWorkshopAssetCallbacks.Remove(assetId);
+    directWorkshopAssetDeadlines.Remove(assetId);
+    directWorkshopAssetAssemblers.Remove(assetId);
     foreach (System.Action<Util.Maybe<string>> callback in callbacks) callback(result);
+  }
+
+  void ExpireDirectWorkshopAssetRequests(float now)
+  {
+    if (directWorkshopAssetDeadlines.Count == 0) return;
+    foreach (KeyValuePair<ulong, float> entry in directWorkshopAssetDeadlines)
+      if (now >= entry.Value) expiredDirectWorkshopAssetIds.Add(entry.Key);
+    foreach (ulong assetId in expiredDirectWorkshopAssetIds)
+      CompleteDirectWorkshopAssetRequest(
+        assetId, Util.Maybe<string>.CreateError("The direct host did not respond before the asset request timed out."));
+    expiredDirectWorkshopAssetIds.Clear();
+  }
+
+  void FailOutstandingDirectWorkshopAssetRequests(string error)
+  {
+    if (directWorkshopAssetCallbacks.Count == 0) return;
+    foreach (List<System.Action<Util.Maybe<string>>> callbacks in directWorkshopAssetCallbacks.Values)
+      failedDirectWorkshopAssetCallbacks.Add(callbacks);
+    directWorkshopAssetCallbacks.Clear();
+    directWorkshopAssetDeadlines.Clear();
+    directWorkshopAssetAssemblers.Clear();
+    foreach (List<System.Action<Util.Maybe<string>>> callbacks in failedDirectWorkshopAssetCallbacks)
+      foreach (System.Action<Util.Maybe<string>> callback in callbacks)
+        callback(Util.Maybe<string>.CreateError(error));
+    failedDirectWorkshopAssetCallbacks.Clear();
   }
 
   sealed class DirectWorkshopAssetAssembler
@@ -1738,6 +1775,9 @@ public class NetworkingController : Photon.PunBehaviour
       && (clientId == directNetworkManager.LocalClientId || clientId == NetworkManager.ServerClientId)
       && GameBuilderApplication.CurrentGameOptions.playOptions.isMultiplayer)
     {
+#if !USE_STEAMWORKS
+      FailOutstandingDirectWorkshopAssetRequests("The direct-host connection closed before the asset was received.");
+#endif
       bool wasKicked = wasDirectlyKicked;
       directHostInitAssembler.Reset();
       directDisconnectedLocalPlayerId = PhotonNetwork.player == null ? 0 : PhotonNetwork.player.ID;
@@ -2245,6 +2285,9 @@ public class NetworkingController : Photon.PunBehaviour
         return;
     }
 #else
+#if !USE_STEAMWORKS
+    FailOutstandingDirectWorkshopAssetRequests("The direct-host connection closed before the asset was received.");
+#endif
     DirectSessionDirectory.MigrationTicket migrationTicket;
     bool preservePlayerIdentity = directMigrationReconnectPending
       && DirectSessionDirectory.TryGetMigrationTicket(out migrationTicket)
@@ -2780,6 +2823,9 @@ public class NetworkingController : Photon.PunBehaviour
 
 #if !USE_PUN
     PhotonNetwork.ExpireDirectMigrationReservations(Time.realtimeSinceStartup);
+#if !USE_STEAMWORKS
+    ExpireDirectWorkshopAssetRequests(Time.realtimeSinceStartup);
+#endif
     if (directNetworkManager != null && directNetworkManager.IsListening && directNetworkManager.IsServer)
       BroadcastDirectMigrationTicketIfChanged();
 #endif
