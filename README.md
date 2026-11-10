@@ -380,6 +380,7 @@ is omitted because it no longer compiles against the pinned Unity release.
 
 The Unity path uses Unity Netcode for GameObjects and Unity Transport; neither
 Photon PUN nor a paid Unity service is required.
+- A joining player receives the active behavior database, scene card-pack and actor-pack metadata, stage, terrain, and Sojo state before gameplay begins.
 
 - From the splash screen, open **Multiplayer** and choose **Host a game** for
   the unchanged IPv4 host mode. Choose **Host IPv6 game** for an IPv6-only host.

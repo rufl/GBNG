@@ -110,7 +110,7 @@ public class NetworkingController : Photon.PunBehaviour
   TerrainManager terrain;
   BuiltinPrefabLibrary builtinPrefabLibrary;
   SojoSystem sojoSystem;
-
+  SceneActorLibrary sceneActorLibrary;
   DynamicPopup popups;
   WorkshopAssetSource workshop;
 
@@ -435,6 +435,7 @@ public class NetworkingController : Photon.PunBehaviour
     Util.FindIfNotSet(this, ref assetCache);
     Util.FindIfNotSet(this, ref autosaves);
     Util.FindIfNotSet(this, ref sojoSystem);
+    Util.FindIfNotSet(this, ref sceneActorLibrary);
     Util.FindIfNotSet(this, ref loadingScreen);
     Util.FindIfNotSet(this, ref workshop);
 
@@ -1774,12 +1775,7 @@ public class NetworkingController : Photon.PunBehaviour
 
   byte[] CreateDirectHostInitPacket()
   {
-    NewPlayerInitPayload payload;
-    payload.version = NewPlayerInitPayload.CurrentVersion;
-    payload.behaviorDatabase = behaviorSystem.SaveDatabase();
-    payload.sojoDatabase = sojoSystem.SaveDatabase();
-    payload.terrainMeta = terrain.GetMetadata();
-    payload.stage = stage.Save();
+    NewPlayerInitPayload payload = CreateNewPlayerInitPayload();
 
     byte[] metaBytes = Util.GZip(Encoding.UTF8.GetBytes(JsonUtility.ToJson(payload)));
     byte[] voosBytes = GetVoosInitBytes();
@@ -2680,12 +2676,34 @@ public class NetworkingController : Photon.PunBehaviour
   {
     // Hmm...I wonder if we can make this a hash of all the sub-parts' versions.
     // 9 is first version with diggable ground.
-    public static int CurrentVersion = 12;
+    public static int CurrentVersion = 13;
     public int version;
     public Behaviors.Database.Jsonable behaviorDatabase;
     public GameBuilderStage.Persisted stage;
     public SojoDatabase.Saved sojoDatabase;
     public TerrainManager.Metadata terrainMeta;
+    public BehaviorSystem.SavedCardPacks cardPacks;
+    public SceneActorLibrary.SavedActorPacks actorPacks;
+  }
+
+  NewPlayerInitPayload CreateNewPlayerInitPayload()
+  {
+    return new NewPlayerInitPayload
+    {
+      version = NewPlayerInitPayload.CurrentVersion,
+      behaviorDatabase = behaviorSystem.SaveDatabase(),
+      sojoDatabase = sojoSystem.SaveDatabase(),
+      terrainMeta = terrain.GetMetadata(),
+      stage = stage.Save(),
+      cardPacks = behaviorSystem.GetCardPacks(),
+      actorPacks = sceneActorLibrary.GetActorPacks()
+    };
+  }
+
+  void LoadNewPlayerProjectLibraries(NewPlayerInitPayload payload)
+  {
+    if (payload.cardPacks != null) behaviorSystem.LoadCardPacks(payload.cardPacks);
+    if (payload.actorPacks != null) sceneActorLibrary.LoadActorPacks(payload.actorPacks);
   }
 
   public static string GetPhotonGameVersion()
@@ -2712,12 +2730,7 @@ public class NetworkingController : Photon.PunBehaviour
 
   public void LogInitPlayerPayloadStats()
   {
-    NewPlayerInitPayload payload;
-    payload.version = NewPlayerInitPayload.CurrentVersion;
-    payload.behaviorDatabase = behaviorSystem.SaveDatabase();
-    payload.sojoDatabase = sojoSystem.SaveDatabase();
-    payload.terrainMeta = terrain.GetMetadata();
-    payload.stage = stage.Save();
+    NewPlayerInitPayload payload = CreateNewPlayerInitPayload();
 
     // Garbage-happy size profiling
     LogJsonSizeStats(payload.behaviorDatabase);
@@ -2742,12 +2755,7 @@ public class NetworkingController : Photon.PunBehaviour
 
   IEnumerator InitializeNewPlayer(PhotonPlayer newPlayer)
   {
-    NewPlayerInitPayload payload;
-    payload.version = NewPlayerInitPayload.CurrentVersion;
-    payload.behaviorDatabase = behaviorSystem.SaveDatabase();
-    payload.sojoDatabase = sojoSystem.SaveDatabase();
-    payload.terrainMeta = terrain.GetMetadata();
-    payload.stage = stage.Save();
+    NewPlayerInitPayload payload = CreateNewPlayerInitPayload();
 
     string metaJson = JsonUtility.ToJson(payload);
     byte[] zippedMetaBytes = Util.GZip(Encoding.UTF8.GetBytes(metaJson));
@@ -2821,6 +2829,7 @@ public class NetworkingController : Photon.PunBehaviour
     var voosReader = new VoosBinaryReader(unzippedVoosBytes);
 
     behaviorSystem.LoadDatabaseForNetworkInit(payload.behaviorDatabase);
+    LoadNewPlayerProjectLibraries(payload);
     voosEngine.DeserializePlayerInitV2(voosReader);
     sojoSystem.LoadDatabase(payload.sojoDatabase);
     stage.Load(payload.stage);
