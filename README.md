@@ -273,6 +273,8 @@ load "C:/path/to/project.voos"
 
 The normal Save menu continues to store projects in Game Builder's local
 library.
+Queued saves signal completion only after their file-write job has completed, so save-before-exit and autosave callbacks cannot run while state capture is still pending.
+
 
 Ground materials using shaders without recognized tint properties keep their
 authored color instead of aborting scene load.

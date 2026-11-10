@@ -77,7 +77,7 @@ public class SaveLoadController : MonoBehaviour
   Queue<SaveRequest> saveJobQueue = new Queue<SaveRequest>();
   SaveRequest activeSaveRequest = null;
   JobHandle activeWriteJobHandle;
-
+  bool activeWriteStarted;
   public static bool SuppressLegacyWarning = false;
 
   void Awake()
@@ -106,15 +106,18 @@ public class SaveLoadController : MonoBehaviour
       });
     }
 
-    if (activeSaveRequest != null && activeWriteJobHandle.IsCompleted)
+    if (activeSaveRequest != null && activeWriteStarted && activeWriteJobHandle.IsCompleted)
     {
+      activeWriteJobHandle.Complete();
       activeSaveRequest.onSaveComplete?.Invoke();
       activeSaveRequest = null;
+      activeWriteStarted = false;
     }
 
     if (activeSaveRequest == null && saveJobQueue.Count > 0)
     {
       activeSaveRequest = saveJobQueue.Dequeue();
+      activeWriteStarted = false;
       StartCoroutine(SaveRoutine(activeSaveRequest.voosPath));
     }
   }
@@ -172,6 +175,7 @@ public class SaveLoadController : MonoBehaviour
       jobData.jsonContentsBytes = new NativeArray<byte>(jsonContentsBytes.Length, Allocator.TempJob);
       jobData.jsonContentsBytes.CopyFrom(jsonContentsBytes);
       activeWriteJobHandle = jobData.Schedule();
+      activeWriteStarted = true;
       JobHandle.ScheduleBatchedJobs();
       // Debug.Log($"OK scheduled save game write to {filePath}");
     }
