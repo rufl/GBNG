@@ -62,6 +62,8 @@ def main():
                         help="Host address exercised by the candidate and follower.")
     parser.add_argument("--relay", action="store_true",
                         help="Route player connections through the local UDP relay.")
+    parser.add_argument("--relay-address", default="127.0.0.1",
+                        help="IPv4 address advertised by the local UDP relay.")
     parser.add_argument("--timeout", type=float, default=360,
                         help="Maximum seconds for the candidate and follower to finish.")
     parser.add_argument("--keep-artifacts", action="store_true",
@@ -73,6 +75,8 @@ def main():
         parser.error("Player executable does not exist: {}".format(executable))
     if not DIRECTORY_SERVER.is_file():
         parser.error("Directory server does not exist: {}".format(DIRECTORY_SERVER))
+    if args.relay_address != "127.0.0.1" and not args.relay:
+        parser.error("--relay-address requires --relay")
 
     work_dir = Path(tempfile.mkdtemp(prefix="GameBuilderDirectMigration-"))
     coordination = work_dir / "coordination.txt"
@@ -80,6 +84,7 @@ def main():
     directory_port = free_port(socket.SOCK_STREAM)
     game_port = free_port(socket.SOCK_DGRAM)
     relay_port = free_port(socket.SOCK_DGRAM) if args.relay else None
+    relay_bind = "127.0.0.1" if args.relay_address == "127.0.0.1" else "0.0.0.0"
     environment = os.environ.copy()
     environment["GAMEBUILDER_SESSION_DIRECTORY"] = "http://127.0.0.1:{}".format(directory_port)
     directory = None
@@ -93,8 +98,8 @@ def main():
         ]
         if args.relay:
             directory_command.extend([
-                "--relay-bind", "127.0.0.1", "--relay-control-port", str(relay_port),
-                "--relay-public-address", "127.0.0.1",
+                "--relay-bind", relay_bind, "--relay-control-port", str(relay_port),
+                "--relay-public-address", args.relay_address,
                 "--relay-data-port-start", "0", "--relay-data-port-end", "0"
             ])
         else:
@@ -143,8 +148,9 @@ def main():
                 raise RuntimeError("{} did not emit {}.".format(role, MARKER))
 
         transport = "relay" if args.relay else "direct"
+        endpoint = args.relay_address if args.relay else args.join_address
         print("DIRECT_HOST_MIGRATION_SMOKE_PASS|transport={}|address={}|port={}|generation={}".format(
-            transport, args.join_address, game_port, candidate_pass.read_text(encoding="utf-8").strip()))
+            transport, endpoint, game_port, candidate_pass.read_text(encoding="utf-8").strip()))
     except Exception as error:
         print("DIRECT_HOST_MIGRATION_SMOKE_FAIL|{}".format(error), file=sys.stderr)
         for role, path in logs.items():
