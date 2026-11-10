@@ -374,16 +374,30 @@ public class WorkshopAssetSource : MonoBehaviour
     if (Directory.Exists(entryDir))
     {
       onComplete(Util.Maybe<string>.CreateWith(entryDir));
+      yield break;
     }
-    else
+
+    NetworkingController networking = FindObjectOfType<NetworkingController>();
+    if (networking != null && networking.RequestDirectWorkshopAsset(fileId, onComplete))
     {
-      onComplete(Util.Maybe<string>.CreateEmpty());
+      yield break;
     }
+    onComplete(Util.Maybe<string>.CreateEmpty());
   }
 
   public void Get(ulong fileId, System.Action<Util.Maybe<string>> onComplete, System.Action<float> onProgress = null)
   {
     StartCoroutine(GetRoutine(fileId, onComplete, onProgress));
+  }
+  public bool TryCreateDirectAssetArchive(ulong fileId, out byte[] archive, out string error)
+  {
+    return DirectWorkshopAssetArchive.TryCreate(Path.Combine(tempDir, fileId.ToString()), out archive, out error);
+  }
+
+  public bool TryStoreDirectAssetArchive(ulong fileId, byte[] archive, out string path, out string error)
+  {
+    path = Path.Combine(tempDir, fileId.ToString());
+    return DirectWorkshopAssetArchive.TryExtract(archive, path, out error);
   }
 
   public void Save(string dir)

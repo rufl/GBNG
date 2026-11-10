@@ -45,6 +45,12 @@ public class NetworkingController : Photon.PunBehaviour
   const string DirectPlayerReadyMessageName = "GB_DIRECT_PLAYER_READY_V1";
   const string DirectPlayerSpawnMessageName = "GB_DIRECT_PLAYER_SPAWN_V1";
   const string DirectPlayerDespawnMessageName = "GB_DIRECT_PLAYER_DESPAWN_V1";
+#if !USE_STEAMWORKS
+  const string DirectWorkshopAssetRequestMessageName = "GB_DIRECT_WORKSHOP_ASSET_REQUEST_V1";
+  const string DirectWorkshopAssetResponseMessageName = "GB_DIRECT_WORKSHOP_ASSET_RESPONSE_V1";
+  const int DirectWorkshopAssetChunkBytes = 48 * 1024;
+  const int MaximumDirectWorkshopAssetBytes = 64 * 1024 * 1024;
+#endif
   NetworkManager directNetworkManager;
   UnityTransport directTransport;
   DirectHostRpcRouter directRpcRouter;
@@ -66,6 +72,12 @@ public class NetworkingController : Photon.PunBehaviour
   readonly HashSet<ulong> directInitResponseClients = new HashSet<ulong>();
   readonly HashSet<ulong> directClientsAwaitingReconnect = new HashSet<ulong>();
   readonly DirectHostInitChunkAssembler directHostInitAssembler = new DirectHostInitChunkAssembler();
+#if !USE_STEAMWORKS
+  readonly Dictionary<ulong, List<System.Action<Util.Maybe<string>>>> directWorkshopAssetCallbacks =
+    new Dictionary<ulong, List<System.Action<Util.Maybe<string>>>>();
+  readonly Dictionary<ulong, DirectWorkshopAssetAssembler> directWorkshopAssetAssemblers =
+    new Dictionary<ulong, DirectWorkshopAssetAssembler>();
+#endif
   string directHostShareAddress;
   string directHostShareAddressAddress;
   ushort directHostShareAddressPort;
@@ -918,6 +930,10 @@ public class NetworkingController : Photon.PunBehaviour
       directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerDespawnMessageName);
       directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerIdentityMessageName);
       directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerInitRequestMessageName);
+#if !USE_STEAMWORKS
+      directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectWorkshopAssetRequestMessageName);
+      directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectWorkshopAssetResponseMessageName);
+#endif
     }
     directNetworkManager.CustomMessagingManager.RegisterNamedMessageHandler(
       DirectPlayerAssignmentMessageName, OnDirectPlayerAssignment);
@@ -930,6 +946,10 @@ public class NetworkingController : Photon.PunBehaviour
     directNetworkManager.CustomMessagingManager.RegisterNamedMessageHandler(DirectPlayerDespawnMessageName, OnDirectPlayerDespawn);
     directNetworkManager.CustomMessagingManager.RegisterNamedMessageHandler(DirectPlayerIdentityMessageName, OnDirectPlayerIdentityMessage);
     directNetworkManager.CustomMessagingManager.RegisterNamedMessageHandler(DirectPlayerInitRequestMessageName, OnDirectPlayerInitRequest);
+#if !USE_STEAMWORKS
+    directNetworkManager.CustomMessagingManager.RegisterNamedMessageHandler(DirectWorkshopAssetRequestMessageName, OnDirectWorkshopAssetRequest);
+    directNetworkManager.CustomMessagingManager.RegisterNamedMessageHandler(DirectWorkshopAssetResponseMessageName, OnDirectWorkshopAssetResponse);
+#endif
     registeredDirectPlayerHandlers = true;
   }
 
@@ -1274,6 +1294,148 @@ public class NetworkingController : Photon.PunBehaviour
       directNetworkManager.DisconnectClient(senderClientId);
     }
   }
+#if !USE_STEAMWORKS
+  public bool RequestDirectWorkshopAsset(ulong assetId, System.Action<Util.Maybe<string>> callback)
+  {
+    if (directNetworkManager == null || directNetworkManager.IsServer || !directNetworkManager.IsConnectedClient) return false;
+    List<System.Action<Util.Maybe<string>>> callbacks;
+    if (!directWorkshopAssetCallbacks.TryGetValue(assetId, out callbacks))
+    {
+      callbacks = new List<System.Action<Util.Maybe<string>>>();
+      directWorkshopAssetCallbacks.Add(assetId, callbacks);
+      using (FastBufferWriter writer = new FastBufferWriter(sizeof(ulong), Allocator.Temp))
+      {
+        writer.WriteValueSafe(assetId);
+        directNetworkManager.CustomMessagingManager.SendNamedMessage(
+          DirectWorkshopAssetRequestMessageName, NetworkManager.ServerClientId, writer, NetworkDelivery.ReliableSequenced);
+      }
+    }
+    callbacks.Add(callback);
+    return true;
+  }
+
+  void OnDirectWorkshopAssetRequest(ulong senderClientId, FastBufferReader reader)
+  {
+    if (directNetworkManager == null || !directNetworkManager.IsServer
+      || senderClientId == directNetworkManager.LocalClientId) return;
+    try
+    {
+      reader.ReadValueSafe(out ulong assetId);
+      int playerId = PhotonNetwork.GetDirectPlayerId(senderClientId);
+      if (playerId <= 1 || !PhotonNetwork.HasDirectPlayerIdentity(playerId)) return;
+      byte[] archive;
+      string error;
+      bool found = workshop.TryCreateDirectAssetArchive(assetId, out archive, out error);
+      SendDirectWorkshopAssetResponse(senderClientId, assetId, found ? archive : null);
+      if (!found) Util.LogWarning($"Could not send direct workshop asset {assetId}: {error}");
+    }
+    catch (Exception exception)
+    {
+      Util.LogError($"Invalid direct workshop asset request from {senderClientId}: {exception.Message}");
+    }
+  }
+
+  void SendDirectWorkshopAssetResponse(ulong clientId, ulong assetId, byte[] archive)
+  {
+    bool found = archive != null && archive.Length > 0 && archive.Length <= MaximumDirectWorkshopAssetBytes;
+    int chunkCount = found ? (archive.Length + DirectWorkshopAssetChunkBytes - 1) / DirectWorkshopAssetChunkBytes : 1;
+    for (int chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++)
+    {
+      int chunkLength = found ? Math.Min(DirectWorkshopAssetChunkBytes, archive.Length - chunkIndex * DirectWorkshopAssetChunkBytes) : 0;
+      using (FastBufferWriter writer = new FastBufferWriter(sizeof(ulong) + 5 * sizeof(int) + chunkLength, Allocator.Temp))
+      {
+        writer.WriteValueSafe(assetId);
+        writer.WriteValueSafe(found ? 1 : 0);
+        writer.WriteValueSafe(found ? archive.Length : 0);
+        writer.WriteValueSafe(chunkIndex);
+        writer.WriteValueSafe(chunkCount);
+        writer.WriteValueSafe(chunkLength);
+        if (chunkLength > 0) writer.WriteBytesSafe(archive, chunkLength, chunkIndex * DirectWorkshopAssetChunkBytes);
+        directNetworkManager.CustomMessagingManager.SendNamedMessage(
+          DirectWorkshopAssetResponseMessageName, clientId, writer, NetworkDelivery.ReliableFragmentedSequenced);
+      }
+    }
+  }
+
+  void OnDirectWorkshopAssetResponse(ulong senderClientId, FastBufferReader reader)
+  {
+    if (directNetworkManager == null || directNetworkManager.IsServer || senderClientId != NetworkManager.ServerClientId) return;
+    ulong assetId = 0;
+    try
+    {
+      reader.ReadValueSafe(out assetId);
+      reader.ReadValueSafe(out int status);
+      reader.ReadValueSafe(out int totalLength);
+      reader.ReadValueSafe(out int chunkIndex);
+      reader.ReadValueSafe(out int chunkCount);
+      reader.ReadValueSafe(out int chunkLength);
+      if (status == 0)
+      {
+        CompleteDirectWorkshopAssetRequest(assetId, Util.Maybe<string>.CreateError("The host does not have this asset."));
+        return;
+      }
+      DirectWorkshopAssetAssembler assembler;
+      if (!directWorkshopAssetAssemblers.TryGetValue(assetId, out assembler))
+      {
+        assembler = new DirectWorkshopAssetAssembler();
+        directWorkshopAssetAssemblers.Add(assetId, assembler);
+      }
+      byte[] archive = assembler.Append(totalLength, chunkIndex, chunkCount, chunkLength, reader);
+      if (archive == null) return;
+      directWorkshopAssetAssemblers.Remove(assetId);
+      string path;
+      string error;
+      if (workshop.TryStoreDirectAssetArchive(assetId, archive, out path, out error))
+        CompleteDirectWorkshopAssetRequest(assetId, Util.Maybe<string>.CreateWith(path));
+      else
+        CompleteDirectWorkshopAssetRequest(assetId, Util.Maybe<string>.CreateError(error));
+    }
+    catch (Exception exception)
+    {
+      directWorkshopAssetAssemblers.Remove(assetId);
+      CompleteDirectWorkshopAssetRequest(assetId, Util.Maybe<string>.CreateError("The host sent an invalid asset archive."));
+      Util.LogError($"Invalid direct workshop asset response: {exception.Message}");
+    }
+  }
+
+  void CompleteDirectWorkshopAssetRequest(ulong assetId, Util.Maybe<string> result)
+  {
+    List<System.Action<Util.Maybe<string>>> callbacks;
+    if (!directWorkshopAssetCallbacks.TryGetValue(assetId, out callbacks)) return;
+    directWorkshopAssetCallbacks.Remove(assetId);
+    foreach (System.Action<Util.Maybe<string>> callback in callbacks) callback(result);
+  }
+
+  sealed class DirectWorkshopAssetAssembler
+  {
+    byte[] archive;
+    int expectedChunkCount;
+    int nextChunkIndex;
+
+    public byte[] Append(int totalLength, int chunkIndex, int chunkCount, int chunkLength, FastBufferReader reader)
+    {
+      int expectedCount = (totalLength + DirectWorkshopAssetChunkBytes - 1) / DirectWorkshopAssetChunkBytes;
+      if (totalLength <= 0 || totalLength > MaximumDirectWorkshopAssetBytes || chunkCount != expectedCount
+        || chunkIndex != nextChunkIndex || chunkIndex < 0 || chunkIndex >= chunkCount
+        || chunkLength != Math.Min(DirectWorkshopAssetChunkBytes, totalLength - chunkIndex * DirectWorkshopAssetChunkBytes)
+        || reader.Length - reader.Position != chunkLength) throw new InvalidDataException("Invalid direct workshop asset chunk.");
+      if (archive == null)
+      {
+        archive = new byte[totalLength];
+        expectedChunkCount = chunkCount;
+      }
+      if (archive.Length != totalLength || expectedChunkCount != chunkCount) throw new InvalidDataException("Inconsistent direct workshop asset chunks.");
+      reader.ReadBytesSafe(ref archive, chunkLength, chunkIndex * DirectWorkshopAssetChunkBytes);
+      nextChunkIndex++;
+      if (nextChunkIndex != expectedChunkCount) return null;
+      byte[] completed = archive;
+      archive = null;
+      nextChunkIndex = 0;
+      expectedChunkCount = 0;
+      return completed;
+    }
+  }
+#endif
 
   IEnumerator RequestDirectHostInitRoutine()
   {
@@ -2111,6 +2273,10 @@ public class NetworkingController : Photon.PunBehaviour
         directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerDespawnMessageName);
         directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerIdentityMessageName);
         directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectPlayerInitRequestMessageName);
+#if !USE_STEAMWORKS
+        directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectWorkshopAssetRequestMessageName);
+        directNetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(DirectWorkshopAssetResponseMessageName);
+#endif
         registeredDirectPlayerHandlers = false;
       }
       if (directNetworkManager.IsListening && !keepDirectConnection)
