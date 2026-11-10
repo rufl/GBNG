@@ -29,6 +29,7 @@ steamworks_sdk_142/sdk/tools/ContentBuilder/temp-app-build-output
 steamworks_sdk_142/sdk/tools/ContentBuilder/Frameworks
 
 # Python
+__pycache__/
 */*.pyc
 
 # APIv2 docs output dir
