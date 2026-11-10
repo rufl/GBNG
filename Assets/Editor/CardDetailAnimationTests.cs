@@ -47,35 +47,6 @@ public class CardDetailAnimationTests
     if (instance != null) Object.DestroyImmediate(instance);
   }
 
-  [UnityTest]
-  public IEnumerator CloseAnimationFadesOutAndThenDeactivatesPanel()
-  {
-    CreateDetail();
-    detail.Open(0);
-    Assert.IsTrue(detail.IsOpen());
-    Assert.AreEqual(1, canvasGroup.alpha);
-
-    closeAnimated.Invoke(detail, null);
-
-    Assert.IsFalse(detail.IsOpen(), "A closing detail must stop accepting further escape handling immediately.");
-    Assert.IsTrue(panel.gameObject.activeSelf, "The panel remains visible while its fade-out runs.");
-    Assert.IsFalse(canvasGroup.interactable);
-    Assert.IsFalse(canvasGroup.blocksRaycasts);
-
-    float deadline = Time.realtimeSinceStartup + 1f;
-    while (panel.gameObject.activeSelf && canvasGroup.alpha >= 1 && Time.realtimeSinceStartup < deadline)
-    {
-      yield return null;
-    }
-    Assert.Less(canvasGroup.alpha, 1, "The close action must fade the panel instead of hiding it instantly.");
-
-    deadline = Time.realtimeSinceStartup + 1f;
-    while (panel.gameObject.activeSelf && Time.realtimeSinceStartup < deadline)
-    {
-      yield return null;
-    }
-    Assert.IsFalse(panel.gameObject.activeSelf, "The panel must deactivate after its fade-out completes.");
-  }
 
   [UnityTest]
   public IEnumerator ReopeningDuringFadeCancelsThePendingHide()

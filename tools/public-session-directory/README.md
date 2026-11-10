@@ -98,6 +98,10 @@ endpoint.
 5. Start/update the stack with `docker compose up -d --build`. Set `GAMEBUILDER_SESSION_DIRECTORY=https://<DIRECTORY_DOMAIN>` for every host and client, or pass `--session-directory=https://<DIRECTORY_DOMAIN>` to the game.
 6. Check `docker compose ps`, `docker compose logs -f directory`, and `https://<DIRECTORY_DOMAIN>/health`. The health endpoint checks the HTTP process only; it does not probe UDP firewall or forwarding rules.
 
+The Python and Caddy container images are pinned to immutable multi-architecture
+digests. Refresh those digests deliberately with a tested stack update; do not
+replace them with floating tags in deployment configuration.
+
 ### Optional dual-stack Docker deployment
 
 The default IPv4 Compose deployment remains unchanged. For a Docker host with

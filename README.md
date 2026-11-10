@@ -370,7 +370,7 @@ players contain `LICENSE.UWB.txt`, `LICENSE.CEF.txt` and `README.CEF.txt`
 beside the CEF binaries in `GameBuilder_Data/UWB`; macOS apps include the
 UWB license and CEF third-party notices in `Contents/Resources`. CEF's README
 points to `about:credits` for Chromium and other bundled third-party notices.
-UniTask 2.5.10 is embedded under `Packages/com.cysharp.unitask`, with its
+UniTask 2.5.11 is embedded under `Packages/com.cysharp.unitask`, with its
 upstream MIT license at `LICENSE`. Only the optional Editor task-tracker code
 is omitted because it no longer compiles against the pinned Unity release.
 
