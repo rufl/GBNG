@@ -2,6 +2,7 @@
 using System;
 using System.Collections;
 using System.IO;
+using System.Reflection;
 using GameBuilder;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -337,7 +338,18 @@ public sealed class DirectWorkshopAssetTransferSmoke : MonoBehaviour
   IEnumerator QuitSoon()
   {
     yield return new WaitForSecondsRealtime(0.5f);
-    Application.Quit();
+    UserMain userMain = FindObjectOfType<UserMain>();
+    MethodInfo onQuitConfirmed = typeof(UserMain).GetMethod("OnQuitConfirmed",
+      BindingFlags.Instance | BindingFlags.NonPublic);
+    if (userMain != null && onQuitConfirmed != null)
+    {
+      // Player smoke has no UI operator to confirm the normal save prompt.
+      onQuitConfirmed.Invoke(userMain, null);
+    }
+    else
+    {
+      Application.Quit();
+    }
   }
 
   void DeleteDirectory(string path)
