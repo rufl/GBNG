@@ -74,6 +74,14 @@ depot_tools (`fetch`, `gclient`, `gn`, `ninja`), the pinned V8 checkout, and
 Rosetta 2. Rosetta is required because a distributable universal bundle builds
 and runs the x86_64 regression harness as well as the native arm64 one.
 
+The manual GitHub Actions workflow
+[`validate-macos-v8.yml`](../.github/workflows/validate-macos-v8.yml) runs on
+GitHub's `macos-15` Apple-Silicon runner, checks Rosetta, fetches the pinned
+source, and runs this universal build. It uploads the tested bundle as an
+artifact; it never commits or releases that artifact. Download it only after a
+successful run, record its SHA-256 from the workflow summary, run the
+standalone Unity behavior-code smoke, then commit the reviewed bundle.
+
 From a directory outside this repository, fetch and sync the exact engine
 revision:
 

@@ -69,7 +69,6 @@ def verify_architecture(lipo: str, executable: Path, architecture: str) -> None:
 
 def xcode_build(
     architecture: str,
-    host: str,
     xcodebuild: str,
     project: Path,
     target: str,
@@ -78,8 +77,7 @@ def xcode_build(
     v8_out: Path,
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
-    run_for_architecture(
-        architecture,
+    run(
         [
             xcodebuild,
             "-project",
@@ -96,8 +94,7 @@ def xcode_build(
             "ONLY_ACTIVE_ARCH=NO",
             "CODE_SIGNING_ALLOWED=NO",
             "build",
-        ],
-        host,
+        ]
     )
 
 
@@ -112,16 +109,12 @@ def build_architecture(
     lipo: str,
 ) -> Path:
     v8_out = v8_root / "out.gn" / f"macos.{architecture}.release"
-    run_for_architecture(
-        architecture,
+    run(
         [gn, "gen", str(v8_out), f"--args={gn_args(architecture)}"],
-        host,
         cwd=v8_root,
     )
-    run_for_architecture(
-        architecture,
+    run(
         [ninja, "-C", str(v8_out), "v8_monolith"],
-        host,
         cwd=v8_root,
     )
     monolith = v8_out / "obj" / "libv8_monolith.a"
@@ -133,7 +126,6 @@ def build_architecture(
     test_output = build_root / "test"
     xcode_build(
         architecture,
-        host,
         xcodebuild,
         repo_root / "v8_in_unity" / "xcode_projects" / "v8_in_unity" / "v8_in_unity.xcodeproj",
         "v8_in_unity",
@@ -143,7 +135,6 @@ def build_architecture(
     )
     xcode_build(
         architecture,
-        host,
         xcodebuild,
         repo_root / "v8_in_unity" / "xcode_projects" / "v8_in_unity_test" / "v8_in_unity_test.xcodeproj",
         "v8_in_unity_test",

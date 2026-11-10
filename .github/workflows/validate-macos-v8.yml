@@ -1,0 +1,61 @@
+name: Validate macOS universal V8 plugin
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-universal-v8:
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify Apple Silicon and Rosetta
+        shell: bash
+        run: |
+          test "$(uname -m)" = arm64
+          /usr/bin/arch -x86_64 /usr/bin/true
+          xcodebuild -version
+
+      - name: Install GN and Ninja
+        shell: bash
+        run: |
+          command -v gn >/dev/null || brew install gn
+          command -v ninja >/dev/null || brew install ninja
+          gn --version
+          ninja --version
+
+      - name: Fetch pinned V8 source
+        shell: bash
+        env:
+          V8_REVISION: d2e0166ded485df126c765b9196f7edd1ce50f82
+        run: |
+          git clone --depth=1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$RUNNER_TEMP/depot_tools"
+          export PATH="$RUNNER_TEMP/depot_tools:$PATH"
+          echo "$RUNNER_TEMP/depot_tools" >> "$GITHUB_PATH"
+          cd "$RUNNER_TEMP"
+          fetch v8
+          cd "$RUNNER_TEMP/v8"
+          git checkout --detach "$V8_REVISION"
+          gclient sync --nohooks --revision "v8@$V8_REVISION"
+          test "$(git rev-parse HEAD)" = "$V8_REVISION"
+          echo "V8_ROOT=$RUNNER_TEMP/v8" >> "$GITHUB_ENV"
+
+      - name: Build and test universal V8 plugin
+        shell: bash
+        run: |
+          python3 tools/maintenance/build_v8_in_unity_macos.py \
+            --v8-root "$V8_ROOT" \
+            --architecture universal
+          lipo -verify_arch x86_64 arm64 Assets/Plugins/V8InUnity/v8_in_unity.bundle/Contents/MacOS/v8_in_unity
+          shasum -a 256 Assets/Plugins/V8InUnity/v8_in_unity.bundle/Contents/MacOS/v8_in_unity | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload validated universal bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: v8-in-unity-macos-universal
+          path: Assets/Plugins/V8InUnity/v8_in_unity.bundle
+          if-no-files-found: error
