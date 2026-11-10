@@ -2338,10 +2338,13 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
     Dictionary<string, string> dict = new Dictionary<string, string>();
     foreach (VoosActor actor in actorsToClone)
     {
-      dict[actor.GetName()] = GenerateUniqueId();
-      foreach (VoosActor descendant in actor.gameObject.GetComponentsInChildren<VoosActor>())
+      foreach (VoosActor descendant in actor.gameObject.GetComponentsInChildren<VoosActor>(true))
       {
-        dict[actor.GetName()] = GenerateUniqueId();
+        string originalName = descendant.GetName();
+        if (!dict.ContainsKey(originalName))
+        {
+          dict.Add(originalName, GenerateUniqueId());
+        }
       }
     }
     return dict;
