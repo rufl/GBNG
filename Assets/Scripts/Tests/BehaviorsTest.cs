@@ -215,6 +215,49 @@ public class BehaviorsTest
   }
 
   [UnityTest]
+  public IEnumerator TestScriptCloneCopiesLatestMemory()
+  {
+    yield return Setup();
+
+    VoosActor source = voosEngine.CreateActor(new Vector3(1f, 2f, 3f), Quaternion.identity, _ => { });
+    string behaviorId = NewGUID();
+    behaviorSystem.PutBehavior(behaviorId, new Behavior
+    {
+      javascript = @"
+        export function OnCloneMemoryTest(api) {
+          api.memory.cloneCounter = 42;
+          api.clone(
+            api.getActor().getName(),
+            new THREE.Vector3(10, 0, 5),
+            new THREE.Quaternion(0, 0, 0, 1));
+        }"
+    });
+    PutTestUse(new TestUse
+    {
+      behaviorUri = IdToEmbeddedBehaviorUri(behaviorId),
+      brainId = source.GetBrainName()
+    });
+
+    voosEngine.EnqueueMessage(new VoosEngine.ActorMessage { name = "CloneMemoryTest", targetActor = source.GetName() });
+    yield return null;
+    yield return null;
+    yield return null;
+    yield return null;
+
+    VoosActor clone = null;
+    foreach (VoosActor actor in voosEngine.EnumerateActors())
+    {
+      if (actor.GetCloneParent() == source.GetName())
+      {
+        clone = actor;
+        break;
+      }
+    }
+    Assert.IsNotNull(clone);
+    StringAssert.Contains(@"""cloneCounter"":42", clone.GetMemoryJsonSlow());
+  }
+
+  [UnityTest]
   public IEnumerator TestPrefabInstantiationKeepsSavedTemplateImmutable()
   {
     yield return Setup();

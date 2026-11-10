@@ -496,8 +496,6 @@ class ModuleBehaviorSystem {
       send(item.to, "SpawnAsClone", item.arg);
     }
 
-    // TODO NOTE: there's the possibility that the clone will not get recent memory changes, since memory changes are not sync'd to Unity immediately. We could force that here for the base/parent actor?
-
     return rootCloneName;
   }
 
