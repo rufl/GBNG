@@ -117,6 +117,8 @@ public static class PhotonNetwork
   static int directLocalId = 1;
   internal const int DirectViewIdBlockSize = 2048;
   internal const int MaximumDirectPlayers = short.MaxValue / DirectViewIdBlockSize + 1;
+  // Must outlive the directory's 240-second migration watch plus scene reload.
+  const float DirectMigrationReservationSeconds = 300f;
   static readonly Dictionary<int, PhotonPlayer> directPeers = new Dictionary<int, PhotonPlayer>();
   static readonly Dictionary<int, string> directPeerNames = new Dictionary<int, string>();
   static readonly Dictionary<ulong, int> directPlayerIdsByClient = new Dictionary<ulong, int>();
@@ -322,7 +324,8 @@ public static class PhotonNetwork
     foreach (string value in values)
       if (int.TryParse(value, out int playerId) && playerId > 1 && playerId <= MaximumDirectPlayers)
         directMigrationReservedPlayerIds.Add(playerId);
-    directMigrationReservationExpiry = UnityEngine.Time.realtimeSinceStartup + 120f;
+    directMigrationReservationExpiry = UnityEngine.Time.realtimeSinceStartup
+      + DirectMigrationReservationSeconds;
   }
 
   internal static void ExpireDirectMigrationReservations(float now)
