@@ -120,9 +120,12 @@ public class BehaviorSystem : MonoBehaviour
 
         case UserLibraryBehaviorUriScheme:
           {
-            throw new System.Exception("Unsupported as of 20190514");
-            string file = uri.LocalPath;
-            string absPath = Path.Combine(GetUserBehaviorsRoot(), file);
+            string file;
+            string absPath;
+            if (!TryGetUserLibraryPath(uri, out file, out absPath) || !File.Exists(absPath))
+            {
+              throw new FileNotFoundException($"User-library behavior does not exist: {uri}");
+            }
             var data = CachedLoadBehavior(absPath, file);
             data.userLibraryFile = file;
             return data;
@@ -145,8 +148,19 @@ public class BehaviorSystem : MonoBehaviour
 
   public bool IsBehaviorUriValid(string uri)
   {
-    return IsBuiltinBehaviorUri(uri)
-    || (IsEmbeddedBehaviorUri(uri) && EmbeddedBehaviorExists(GetIdOfBehaviorUri(uri)));
+    if (IsBuiltinBehaviorUri(uri)
+      || (IsEmbeddedBehaviorUri(uri) && EmbeddedBehaviorExists(GetIdOfBehaviorUri(uri))))
+    {
+      return true;
+    }
+
+    System.Uri userLibraryUri;
+    string file;
+    string absPath;
+    return System.Uri.TryCreate(uri, System.UriKind.Absolute, out userLibraryUri)
+      && userLibraryUri.Scheme == UserLibraryBehaviorUriScheme
+      && TryGetUserLibraryPath(userLibraryUri, out file, out absPath)
+      && File.Exists(absPath);
   }
 
   public bool HasBrain(string brainId)
@@ -429,10 +443,23 @@ public class BehaviorSystem : MonoBehaviour
     return Path.Combine(Util.GetUserDataDir(), "Behaviors");
   }
 
-  // Returns a list of URIs pointing to built-in and embedded behaviors.
+  IEnumerable<string> GetUserLibraryUris()
+  {
+    string root = GetUserBehaviorsRoot();
+    if (!Directory.Exists(root)) yield break;
+
+    foreach (string absPath in Directory.EnumerateFiles(root, $"*{UserBehaviorExtension}",
+      SearchOption.TopDirectoryOnly).OrderBy(Path.GetFileName))
+    {
+      yield return UserLibraryFileToUri(Path.GetFileName(absPath));
+    }
+  }
+
+  // Returns a list of URIs pointing to built-in, user-library, and embedded behaviors.
   public List<string> LoadBehaviorLibrary()
   {
     List<string> uris = new List<string>(GetCachedBuiltinBehaviors());
+    uris.AddRange(GetUserLibraryUris());
 
     foreach (var behavior in db.behaviors.GetAll())
     {
@@ -772,15 +799,50 @@ public class BehaviorSystem : MonoBehaviour
     return cloneBrainId;
   }
 
+  bool TryGetUserLibraryPath(System.Uri uri, out string file, out string absPath)
+  {
+    file = null;
+    absPath = null;
+    if (uri == null || !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment))
+    {
+      return false;
+    }
+
+    return TryGetUserLibraryPath(uri.LocalPath, out file, out absPath);
+  }
+
+  bool TryGetUserLibraryPath(string candidate, out string file, out string absPath)
+  {
+    file = null;
+    absPath = null;
+    if (candidate.IsNullOrEmpty()
+      || candidate.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+      || candidate.Contains("/") || candidate.Contains("\\"))
+    {
+      return false;
+    }
+
+    file = candidate;
+    absPath = Path.Combine(GetUserBehaviorsRoot(), file);
+    return true;
+  }
+
   public bool IsValidUserLibraryFile(string file)
   {
-    return System.IO.File.Exists(Path.Combine(GetUserBehaviorsRoot(), file));
+    string normalizedFile;
+    string absPath;
+    return TryGetUserLibraryPath(file, out normalizedFile, out absPath) && File.Exists(absPath);
   }
 
   public string UserLibraryFileToUri(string file)
   {
-    Debug.Assert(IsValidUserLibraryFile(file));
-    return $"{UserLibraryBehaviorUriScheme}:{file}";
+    string normalizedFile;
+    string absPath;
+    if (!TryGetUserLibraryPath(file, out normalizedFile, out absPath) || !File.Exists(absPath))
+    {
+      throw new ArgumentException($"Invalid user-library behavior file: {file}", nameof(file));
+    }
+    return $"{UserLibraryBehaviorUriScheme}:{Uri.EscapeDataString(normalizedFile)}";
   }
 
   const string EmbeddedBehaviorUriScheme = "embedded";
@@ -964,7 +1026,8 @@ public class BehaviorSystem : MonoBehaviour
 
   public bool IsBehaviorUri(string behaviorUri)
   {
-    return IsEmbeddedBehaviorUri(behaviorUri) || IsBuiltinBehaviorUri(behaviorUri);
+    return IsEmbeddedBehaviorUri(behaviorUri) || IsBuiltinBehaviorUri(behaviorUri)
+      || IsUserLibraryBehaviorUri(behaviorUri);
   }
 
   public static string GetIdOfBehaviorUri(string behaviorUri)
@@ -977,15 +1040,24 @@ public class BehaviorSystem : MonoBehaviour
   // This will happily overwrite.
   public void SaveToUserLibrary(string file, Behavior value)
   {
-    Directory.CreateDirectory(GetUserBehaviorsRoot());
+    string normalizedFile;
+    string absPath;
+    if (!TryGetUserLibraryPath(file, out normalizedFile, out absPath))
+    {
+      throw new ArgumentException($"Invalid user-library behavior file: {file}", nameof(file));
+    }
 
-    string absPath = Path.Combine(GetUserBehaviorsRoot(), file);
+    Directory.CreateDirectory(GetUserBehaviorsRoot());
     File.WriteAllText(absPath, value.javascript);
 
+    string metaAbsPath = absPath + ".metaJson";
     if (!value.metadataJson.IsNullOrEmpty())
     {
-      string metaAbsPath = absPath + ".metaJson";
       File.WriteAllText(metaAbsPath, value.metadataJson);
+    }
+    else if (File.Exists(metaAbsPath))
+    {
+      File.Delete(metaAbsPath);
     }
 
     // Invalidate our cache, in case.
