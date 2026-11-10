@@ -174,10 +174,12 @@ public class ActorPrefabImpl : ActorPrefab
 
   public virtual VoosActor Instantiate(VoosEngine engine, BehaviorSystem behaviorSystem, Vector3 position, Quaternion rotation, System.Action<VoosActor> setupActor)
   {
-    // TODO TODO we should make a copy of 'saved' in case Instantiate is called again..
-    if (this.saved.sojos != null)
+    // Instantiation remaps IDs below. Keep the library template immutable so
+    // each placement starts from its original brains and actor references.
+    SavedActorPrefab saved = JsonUtility.FromJson<SavedActorPrefab>(JsonUtility.ToJson(this.saved));
+    if (saved.sojos != null)
     {
-      foreach (var savedSojo in this.saved.sojos)
+      foreach (var savedSojo in saved.sojos)
       {
         if (sojos.GetSojoById(savedSojo.id) == null)
         {
@@ -188,12 +190,12 @@ public class ActorPrefabImpl : ActorPrefab
 
     // Import behaviors. For now, create entirely new brain IDs.
     var brainIdMap = new Dictionary<string, string>();
-    for (int i = 0; i < this.saved.brainDatabase.brainIds.Length; i++)
+    for (int i = 0; i < saved.brainDatabase.brainIds.Length; i++)
     {
-      string brainId = this.saved.brainDatabase.brainIds[i];
+      string brainId = saved.brainDatabase.brainIds[i];
       string newId = behaviorSystem.GenerateUniqueId();
       brainIdMap[brainId] = newId;
-      this.saved.brainDatabase.brainIds[i] = newId;
+      saved.brainDatabase.brainIds[i] = newId;
     }
 
     // Use the new brain IDs..

@@ -217,6 +217,46 @@ public class BehaviorsTest
   }
 
   [UnityTest]
+  public IEnumerator TestPrefabInstantiationKeepsSavedTemplateImmutable()
+  {
+    LogAssert.Expect(LogType.Exception, new System.Text.RegularExpressions.Regex(
+      @"UnauthorizedAccessException: Access to the path '.*GameBuilderUserData\\Games' is denied\."));
+    yield return Setup();
+
+    GameObject libraryOwner = new GameObject("Prefab serialization test");
+    libraryOwner.SetActive(false);
+    Texture2D thumbnail = new Texture2D(1, 1);
+    try
+    {
+      thumbnail.SetPixel(0, 0, Color.white);
+      thumbnail.Apply();
+      SceneActorLibrary library = libraryOwner.AddComponent<SceneActorLibrary>();
+      VoosActor source = voosEngine.CreateActor(new Vector3(1f, 2f, 3f), Quaternion.identity, _ => { });
+      SavedActorPrefab saved = JsonUtility.FromJson<SavedActorPrefab>(library.ExportToJson(source, thumbnail));
+      saved.PerformUpgrades();
+      string savedJson = JsonUtility.ToJson(saved);
+      ActorPrefab prefab = new ActorPrefabImpl(saved, null, "test/immutable", null);
+
+      VoosActor first = prefab.Instantiate(
+        voosEngine, behaviorSystem, new Vector3(10f, 0f, 0f), Quaternion.identity, _ => { });
+      VoosActor second = prefab.Instantiate(
+        voosEngine, behaviorSystem, new Vector3(20f, 0f, 0f), Quaternion.identity, _ => { });
+
+      Assert.IsNotNull(first);
+      Assert.IsNotNull(second);
+      Assert.AreNotEqual(first.GetBrainName(), second.GetBrainName(),
+        "Each prefab placement needs its own remapped brain.");
+      Assert.AreEqual(savedJson, JsonUtility.ToJson(saved),
+        "Instantiating a prefab must not remap its saved template in place.");
+    }
+    finally
+    {
+      Object.Destroy(libraryOwner);
+      Object.Destroy(thumbnail);
+    }
+  }
+
+  [UnityTest]
   public IEnumerator TestCooldownSurvivesActorMemoryTransfer()
   {
     string originalUserDataDirName = Util.UserDataDirName;

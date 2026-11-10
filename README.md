@@ -124,6 +124,10 @@ Scene actor and built-in prefab libraries cache decoded thumbnails and own those
 textures until teardown. Scene actor thumbnails replaced or deleted during the
 session remain alive until teardown because existing search results may still
 reference them. Script-driven built-in prefab spawns skip thumbnail decoding.
+Actor prefab placement deep-copies its saved template before remapping actor and
+brain IDs, so repeated placements preserve the original hierarchy, behaviors,
+and actor references.
+
 
 Terrain import progress items own and release their generated thumbnail Sprite
 and decoded image. Game bundle thumbnails are shared by `GameBundleLibrary`;
