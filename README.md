@@ -618,10 +618,11 @@ certificates; directory requests require HTTPS.
 
 The host sends an initial project snapshot (maximum 400 KiB), split into 48 KiB
 reliable chunks to stay below NGO's 64,000-byte per-message limit. The direct
-adapter forwards actor-state and transform RPCs, terrain edits, player identity
-and poses, ownership changes, and observable player state (tint, visibility,
-avatar animation, and tool-effect data). LAN/DNS/loopback smokes exercise host
-discovery, direct joins, identity, RPC targeting, map switching, and kicking.
+adapter forwards actor-state and transform RPCs, behavior messages (including
+their sender), terrain edits, player identity and poses, ownership changes, and
+observable player state (tint, visibility, avatar animation, and tool-effect
+data). LAN/DNS/loopback smokes exercise host discovery, direct joins, identity,
+RPC targeting, map switching, and kicking.
 Three independent Unity player processes on DDJARIN passed the three-player ownership-chain smoke over both LAN (`192.168.1.77`) and Tailscale (`100.86.44.23`): `PASS|owner=3|hostLocal=false|client2Kinematic=true|client3Kinematic=false`. This validates separate network paths on one machine, not cross-device reachability.
 Standalone loopback tests transfer a 400 KiB initial snapshot and a 256 KiB
 Photon RPC through live NGO/UTP managers. Client-originated `AllViaServer` RPCs

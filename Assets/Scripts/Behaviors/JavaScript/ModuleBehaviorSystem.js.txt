@@ -157,7 +157,7 @@ class ModuleBehaviorSystem {
               actor.handleMessage(deliveredMessage);
             }
             else if (shouldRemoteForward) {
-              enqueueRemoteMessage(actor.name, deliveredMessage.name, deliveredMessage.data);
+              enqueueRemoteMessage(actor.name, deliveredMessage.name, deliveredMessage.data, deliveredMessage.senderActorName);
             }
           }
         }
@@ -197,7 +197,7 @@ class ModuleBehaviorSystem {
         // The 'fromRemote' check is important - otherwise we ping-pong broadcasts back and forth :)
         if (anyRemoteActorsEffected && !options.fromRemote) {
           assert(shouldRemoteForward);
-          enqueueRemoteMessage(null, deliveredMessage.name, deliveredMessage.data);
+          enqueueRemoteMessage(null, deliveredMessage.name, deliveredMessage.data, deliveredMessage.senderActorName);
         }
 
         // If this was a ResetGame message, also send an Init message so cards can (re)initialize their
@@ -323,8 +323,7 @@ class ModuleBehaviorSystem {
     return this.getActor(name) !== undefined;
   }
 
-  // MAJOR TODO there's a bunch of logic we need to implement for remote actors, etc.
-  // For now, avoid using these directly from user code...
+  // Remote-owned recipients are forwarded through Unity with their original sender.
   sendMessage(toActorName, messageName, messageData, fromActorName) {
     assert(toActorName, 'toActorName');
     assertString(toActorName, 'toActorName');
@@ -354,8 +353,6 @@ class ModuleBehaviorSystem {
     this.messageQueue_.enqueue(msg);
   }
 
-  // MAJOR TODO there's a bunch of logic we need to implement for remote actors, etc.
-  // For now, avoid using these directly from user code...
 
   /**
    * Sends a message to all actors.

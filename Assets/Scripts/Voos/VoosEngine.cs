@@ -80,6 +80,9 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
     // this should be agreed upon for a given message name.
     public string argsJson;
 
+    // The actor that emitted the message, when it originated from a behavior.
+    public string senderActor;
+
     // This is useful so...we don't RE-broadcast to other remotes!
     public bool fromRemote;
   }
@@ -882,6 +885,7 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
     public int viewId;
     public string messageName;
     public string argsJson;
+    public string senderActor;
   }
 
   [System.Serializable]
@@ -905,7 +909,7 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
       if (msg.viewId == -1)
       {
         // Broadcast.
-        EnqueueMessage(new ActorMessage { fromRemote = true, name = msg.messageName, targetActor = null, argsJson = msg.argsJson });
+        EnqueueMessage(new ActorMessage { fromRemote = true, name = msg.messageName, targetActor = null, argsJson = msg.argsJson, senderActor = msg.senderActor });
       }
       else
       {
@@ -919,7 +923,7 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
 
         // Don't worry about if the actor is no longer owned by us. The script
         // layer will take care of that.
-        EnqueueMessage(new ActorMessage { fromRemote = true, name = msg.messageName, targetActor = target.GetName(), argsJson = msg.argsJson });
+        EnqueueMessage(new ActorMessage { fromRemote = true, name = msg.messageName, targetActor = target.GetName(), argsJson = msg.argsJson, senderActor = msg.senderActor });
       }
     }
   }
@@ -961,7 +965,8 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
           {
             viewId = -1,
             messageName = msg.name,
-            argsJson = msg.argsJson
+            argsJson = msg.argsJson,
+            senderActor = msg.senderActor
           });
 #if USE_PUN
           if (PhotonNetwork.logLevel >= PhotonLogLevel.Informational)
@@ -989,7 +994,8 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
           {
             viewId = target.GetPrimaryPhotonViewId(),
             messageName = msg.name,
-            argsJson = msg.argsJson
+            argsJson = msg.argsJson,
+            senderActor = msg.senderActor
           });
 #if USE_PUN
           if (PhotonNetwork.logLevel >= PhotonLogLevel.Informational)
