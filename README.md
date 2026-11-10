@@ -26,7 +26,7 @@ This fork keeps the implementations separate:
 * [Python 3.15.2](https://www.python.org/downloads/release/python-3152/) for code generation. `.python-version` records the selected version.
 * Unity packages: Test Framework 1.8.0, UGUI 2.6.0, and Post Processing 3.5.4. TextMesh Pro functionality is supplied by UGUI in this editor.
 * Unity 6 no longer supplies the legacy UNet serializer. `VoosBinaryWriter` and `VoosBinaryReader` now own the existing little-endian game-state format instead of depending on the unsupported HLAPI package.
-* The native V8 Unity wrapper source and regression harness are in `v8_in_unity/`; V8 engine source and fetched dependencies remain upstream. The recorded engine revision is V8 7.1.0.0 (`d2e0166ded485df126c765b9196f7edd1ce50f82`). See [`v8_in_unity/BUILDING.md`](v8_in_unity/BUILDING.md) for the pinned inputs and Windows x64 rebuild/test procedure.
+* The native V8 Unity wrapper source and regression harness are in `v8_in_unity/`; V8 engine source and fetched dependencies remain upstream. The recorded engine revision is V8 7.1.0.0 (`d2e0166ded485df126c765b9196f7edd1ce50f82`). [`v8_in_unity/BUILDING.md`](v8_in_unity/BUILDING.md) documents reproducible Windows, Linux, and macOS universal rebuild/test paths.
 * On Windows, Git Bash (included with [Git for Windows](https://gitforwindows.org/)) to run shell tools. On macOS, use Terminal.
 
 ## Project layout
@@ -347,13 +347,15 @@ When an FBX texture's original path is unavailable, the importer checks the mode
 
 The EditMode regression suite in `Assets/Editor/AssetCacheIntegrationTests` covers `AssetCache.Get` for a local OBJ and the Assimp-backed Fox FBX. It checks deferred callbacks, concurrent-request coalescing, deferred cache hits, skinned-mesh import, and collision geometry. Physical Linux GPU rendering and cross-host multiplayer remain untested: the available tailnet peer answered reachability probes, but remote access did not permit deploying or launching a Game Builder player.
 
-The checked-in macOS V8 bundle is x86_64-only, so native Apple Silicon players
-cannot execute behavior scripts. Unity player builds reject ARM64 and universal
-macOS architectures to avoid shipping without scripts. Select the `StandaloneOSX`
-target and use `Game Builder > Build macOS Intel (Rosetta)` to produce an x86_64
-app. The build restores Unity's previous architecture setting; Apple Silicon
-requires Rosetta 2 to run it. macOS CEF apps are unsigned and must be
-signed/notarized for public distribution.
+The checked-in macOS V8 bundle is x86_64-only. The macOS build guard reads its
+Mach-O slices and therefore permits ARM64 or universal player builds only after
+a matching V8 bundle has been rebuilt and validated. On Apple Silicon, use
+`tools/maintenance/build_v8_in_unity_macos.py --architecture universal` with
+the pinned V8 source, Xcode, depot_tools, and Rosetta 2; it builds and runs both
+native harnesses before installing the merged bundle. Until such an artifact
+passes its standalone Unity behavior-code smoke, select `StandaloneOSX` and
+use `Game Builder > Build macOS Intel (Rosetta)`. macOS CEF apps are unsigned
+and must be signed/notarized for public distribution.
 
 UnityWebBrowser and the CEF engine packages are pinned at 2.2.8. Windows
 players contain `LICENSE.UWB.txt`, `LICENSE.CEF.txt` and `README.CEF.txt`

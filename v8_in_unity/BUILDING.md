@@ -62,27 +62,54 @@ Validated in Ubuntu 22.04 x86_64 under WSL2: the script builds the pinned V8 mon
 
 ## macOS
 
-The checked-in V8 bundle is x86_64-only. The pinned V8 7.1 build configuration
-does not provide a native macOS arm64 toolchain, and the automated build/install
-script does not build macOS artifacts. Keep the pinned V8 revision and ABI;
-do not replace it with an unvalidated V8 release to obtain ARM64 support.
+The checked-in V8 bundle is x86_64-only. The repository now contains a
+reproducible universal-bundle build path, but no Apple Silicon artifact is
+checked in until it has passed the native and Unity-player smoke tests on that
+hardware. The Unity build guard reads the bundle's Mach-O architectures: it
+permits x86_64, arm64, or universal players only when the installed bundle
+contains the corresponding slice.
 
-For the existing bundle, build `v8_monolith` and the plugin for x86_64 with the
-same pinned V8 revision, then run the native test target before replacing the
-checked-in bundle. Example:
+Requirements: an Apple Silicon Mac, current Xcode command-line tools,
+depot_tools (`fetch`, `gclient`, `gn`, `ninja`), the pinned V8 checkout, and
+Rosetta 2. Rosetta is required because a distributable universal bundle builds
+and runs the x86_64 regression harness as well as the native arm64 one.
+
+From a directory outside this repository, fetch and sync the exact engine
+revision:
 
 ```sh
-xcodebuild -project v8_in_unity/xcode_projects/v8_in_unity/v8_in_unity.xcodeproj \
-  -target v8_in_unity -configuration Release \
-  V8_ROOT="$V8_ROOT" V8_OUT="$V8_ROOT/out.gn/x64.release" build
+fetch v8
+cd v8
+git checkout --detach d2e0166ded485df126c765b9196f7edd1ce50f82
+gclient sync --nohooks --revision v8@d2e0166ded485df126c765b9196f7edd1ce50f82
 ```
 
-Unity player builds reject macOS architectures other than x86_64 while the bundled
-V8 plugin is x86_64-only. To build a script-capable player for Apple Silicon,
-select `StandaloneOSX` and use `Game Builder > Build macOS Intel (Rosetta)`. It
-builds x86_64 and restores Unity's previous architecture setting afterward.
-Rosetta 2 is required to run it on Apple Silicon; native ARM64 remains
-unsupported. The app still needs a macOS smoke run.
+Then, from the Game Builder repository root, build both architectures, run both
+native harnesses, merge their bundle executables with `lipo`, and install the
+bundle only after every preceding step succeeds:
+
+```sh
+python3 tools/maintenance/build_v8_in_unity_macos.py --v8-root /path/to/v8 \
+  --architecture universal
+```
+
+The script checks the exact revision and V8 `7.1.0.0` header, creates separate
+`out.gn/macos.x64.release` and `out.gn/macos.arm64.release` trees, builds
+`v8_monolith`, builds the wrapper and native harness with Xcode, verifies each
+thin Mach-O slice, runs each harness under its target CPU (x86_64 through
+Rosetta), creates a universal bundle, verifies both slices, and only then
+replaces `Assets/Plugins/V8InUnity/v8_in_unity.bundle`. A failure leaves the
+installed bundle intact. Record the printed SHA-256 and run a standalone Unity
+behavior-code smoke test before committing a new macOS artifact.
+
+`--architecture arm64` validates an Apple-Silicon-only bundle and
+`--architecture x64` rebuilds the existing Intel-compatible one. Neither is
+appropriate for a public build that must support both Mac CPU families.
+
+The pinned V8 revision predates Apple Silicon. If its GN or Ninja build fails
+on current Xcode, do not replace V8 merely to obtain ARM64 support: preserve
+the failure log, keep the existing Intel bundle, and validate a separately
+reviewed V8 migration against the native and player test matrix.
 
 ## ABI and artifact validation
 

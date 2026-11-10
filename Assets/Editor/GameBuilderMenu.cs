@@ -24,8 +24,22 @@ using System.Linq;
 
 public class GameBuilderMenu : UnityEditor.Build.IPreprocessBuildWithReport
 {
+  [System.Flags]
+  enum MacOSV8Architectures
+  {
+    None = 0,
+    X64 = 1,
+    Arm64 = 2
+  }
+
+  const uint MachOX64CpuType = 0x01000007;
+  const uint MachOArm64CpuType = 0x0100000c;
+  const uint FatMachOMagic = 0xcafebabe;
+  const uint Fat64MachOMagic = 0xcafebabf;
+  const uint LittleEndianMachO64Magic = 0xcffaedfe;
+  const uint LittleEndianMachO32Magic = 0xcefaedfe;
   const string MacV8ArchitectureError =
-    "The bundled macOS V8 plugin supports x86_64 only. Use Game Builder > Build macOS Intel (Rosetta) for behavior scripts.";
+    "The bundled macOS V8 plugin does not contain the selected architecture. Rebuild it with tools/maintenance/build_v8_in_unity_macos.py, then rerun the native and player smoke tests.";
 
   public int callbackOrder { get { return int.MinValue; } }
 
@@ -39,8 +53,125 @@ public class GameBuilderMenu : UnityEditor.Build.IPreprocessBuildWithReport
 
   static bool SupportsBundledMacOSV8(BuildTarget target)
   {
-    return target != BuildTarget.StandaloneOSX ||
-      UnityEditor.OSXStandalone.UserBuildSettings.architecture == UnityEditor.Build.OSArchitecture.x64;
+    if (target != BuildTarget.StandaloneOSX) return true;
+
+    MacOSV8Architectures bundledArchitectures = GetBundledMacOSV8Architectures();
+    switch (UnityEditor.OSXStandalone.UserBuildSettings.architecture.ToString())
+    {
+      case "x64":
+        return (bundledArchitectures & MacOSV8Architectures.X64) != 0;
+      case "ARM64":
+      case "arm64":
+        return (bundledArchitectures & MacOSV8Architectures.Arm64) != 0;
+      case "Universal":
+      case "universal":
+        return (bundledArchitectures & (MacOSV8Architectures.X64 | MacOSV8Architectures.Arm64)) ==
+          (MacOSV8Architectures.X64 | MacOSV8Architectures.Arm64);
+      default:
+        return false;
+    }
+  }
+
+  static MacOSV8Architectures GetBundledMacOSV8Architectures()
+  {
+    return GetMacOSV8Architectures(Path.Combine(
+      Application.dataPath, "Plugins", "V8InUnity", "v8_in_unity.bundle",
+      "Contents", "MacOS", "v8_in_unity"));
+  }
+
+  static MacOSV8Architectures GetMacOSV8Architectures(string executablePath)
+  {
+    if (!File.Exists(executablePath)) return MacOSV8Architectures.None;
+
+    try
+    {
+      using (FileStream stream = File.OpenRead(executablePath))
+      {
+        uint magic;
+        if (!TryReadUInt32BigEndian(stream, out magic)) return MacOSV8Architectures.None;
+        if (magic == LittleEndianMachO64Magic || magic == LittleEndianMachO32Magic)
+        {
+          uint cpuType;
+          return TryReadUInt32LittleEndian(stream, out cpuType) ?
+            GetMacOSV8Architecture(cpuType) : MacOSV8Architectures.None;
+        }
+
+        int entrySize;
+        if (magic == FatMachOMagic)
+        {
+          entrySize = 20;
+        }
+        else if (magic == Fat64MachOMagic)
+        {
+          entrySize = 32;
+        }
+        else
+        {
+          return MacOSV8Architectures.None;
+        }
+
+        uint count;
+        if (!TryReadUInt32BigEndian(stream, out count)) return MacOSV8Architectures.None;
+        MacOSV8Architectures architectures = MacOSV8Architectures.None;
+        for (uint i = 0; i < count; i++)
+        {
+          uint cpuType;
+          if (!TryReadUInt32BigEndian(stream, out cpuType) ||
+            stream.Length - stream.Position < entrySize - 4)
+          {
+            return MacOSV8Architectures.None;
+          }
+          architectures |= GetMacOSV8Architecture(cpuType);
+          stream.Seek(entrySize - 4, SeekOrigin.Current);
+        }
+        return architectures;
+      }
+    }
+    catch (IOException)
+    {
+      return MacOSV8Architectures.None;
+    }
+    catch (System.UnauthorizedAccessException)
+    {
+      return MacOSV8Architectures.None;
+    }
+  }
+
+  static MacOSV8Architectures GetMacOSV8Architecture(uint cpuType)
+  {
+    if (cpuType == MachOX64CpuType) return MacOSV8Architectures.X64;
+    if (cpuType == MachOArm64CpuType) return MacOSV8Architectures.Arm64;
+    return MacOSV8Architectures.None;
+  }
+
+  static bool TryReadUInt32BigEndian(Stream stream, out uint value)
+  {
+    int first = stream.ReadByte();
+    int second = stream.ReadByte();
+    int third = stream.ReadByte();
+    int fourth = stream.ReadByte();
+    if (first < 0 || second < 0 || third < 0 || fourth < 0)
+    {
+      value = 0;
+      return false;
+    }
+    value = ((uint)first << 24) | ((uint)second << 16) | ((uint)third << 8) | (uint)fourth;
+    return true;
+  }
+
+  static bool TryReadUInt32LittleEndian(Stream stream, out uint value)
+  {
+    int first = stream.ReadByte();
+    int second = stream.ReadByte();
+    int third = stream.ReadByte();
+    int fourth = stream.ReadByte();
+    if (first < 0 || second < 0 || third < 0 || fourth < 0)
+    {
+      value = 0;
+      return false;
+    }
+    value = (uint)first | ((uint)second << 8) | ((uint)third << 16) | ((uint)fourth << 24);
+    return true;
   }
 
   [MenuItem("Game Builder/Stop %#y")]
