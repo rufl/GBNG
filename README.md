@@ -21,7 +21,7 @@ This fork keeps the implementations separate:
 
 ## Prerequisites
 
-* Unity Editor 6000.6.6f1. This fork is pinned to that editor release.
+* Unity Editor 6000.6.8f1. This fork is pinned to that editor release.
 * Unity's C# compiler (C# 9.0 language level). Unity controls the language version; use only the features supported by its compiler.
 * [Python 3.15.2](https://www.python.org/downloads/release/python-3152/) for code generation. `.python-version` records the selected version.
 * Unity packages: Test Framework 1.8.0, UGUI 2.6.0, and Post Processing 3.5.4. TextMesh Pro functionality is supplied by UGUI in this editor.
@@ -49,7 +49,7 @@ Run `bash tools/codegen/gen-all.sh` from the repository root with Python 3.15.2.
 
 ## Running in Unity Editor
 
-1. Open the repository root with Unity Editor 6000.6.6f1.
+1. Open the repository root with Unity Editor 6000.6.8f1.
 1. Open the splash screen scene: `Assets/splash.unity`.
 1. TextMesh Pro essential resources are included under `Assets/TextMesh Pro`; no manual import is required.
 1. Click Play.

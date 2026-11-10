@@ -193,6 +193,11 @@ public class NetworkingController : Photon.PunBehaviour
 #endif
   }
 
+  public bool HasReceivedInitialWorldState()
+  {
+    return receivedPlayerInitPayload;
+  }
+
   public bool IsDirectHost()
   {
 #if USE_PUN

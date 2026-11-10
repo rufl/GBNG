@@ -258,7 +258,8 @@ public sealed class DirectHostMigrationSmoke : MonoBehaviour
   {
     networking = FindObjectOfType<NetworkingController>();
     DirectSessionDirectory.MigrationTicket ticket;
-    return networking != null && networking.GetIsInMultiplayer() && !networking.IsDirectHost()
+    return networking != null && networking.GetIsInMultiplayer()
+      && networking.HasReceivedInitialWorldState() && !networking.IsDirectHost()
       && PhotonNetwork.player != null && PhotonNetwork.player.ID == expectedPlayerId
       && PhotonNetwork.HasDirectPlayerIdentity(1)
       && DirectSessionDirectory.TryGetMigrationTicket(out ticket)
