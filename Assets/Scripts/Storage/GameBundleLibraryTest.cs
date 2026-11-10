@@ -16,26 +16,53 @@
 
 #if UNITY_EDITOR
 
-using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
-using UnityEngine.TestTools;
+using System;
+using System.IO;
+using System.Reflection;
 using NUnit.Framework;
+using UnityEngine;
 using GameBuilder;
 
 public class GameBundleLibraryTest
 {
-  [UnityTest]
-  public IEnumerator TestBasicSaveLoad()
+  const BindingFlags PrivateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
+
+  [Test]
+  public void CopyBundlePreservesNestedAssets()
   {
-    TestUtil.TestScene scene = new TestUtil.TestScene("main");
-    yield return scene.LoadAndWait();
-
-    GameBundleLibrary lib = MonoBehaviour.FindObjectOfType<GameBundleLibrary>();
-    Assert.NotNull(lib);
-
-    foreach (GameBundleLibrary.Entry entry in lib.Enumerate())
+    string relativeRoot = "GameBuilderBundleCopyTest-" + Guid.NewGuid().ToString("N");
+    string absoluteRoot = Path.Combine(Util.AbstractLocation.PersistentData.GetConcretePath(), relativeRoot);
+    string sourceId = "source-" + Guid.NewGuid().ToString("N");
+    string destinationId = "destination-" + Guid.NewGuid().ToString("N");
+    GameObject owner = new GameObject("Game bundle copy test");
+    owner.SetActive(false);
+    GameBundleLibrary library = owner.AddComponent<GameBundleLibrary>();
+    FieldInfo locationField = typeof(GameBundleLibrary).GetField("location", PrivateInstance);
+    Assert.IsNotNull(locationField);
+    locationField.SetValue(library, new Util.AbstractPath
     {
+      root = Util.AbstractLocation.PersistentData,
+      relativePath = relativeRoot
+    });
+
+    try
+    {
+      string sourceDirectory = Path.Combine(absoluteRoot, sourceId);
+      string nestedAsset = Path.Combine(sourceDirectory, "assets", "items", "model.bin");
+      Directory.CreateDirectory(Path.GetDirectoryName(nestedAsset));
+      File.WriteAllText(Path.Combine(sourceDirectory, "scene.voos"), "scene");
+      File.WriteAllText(nestedAsset, "asset");
+
+      library.CopyBundle(sourceId, destinationId);
+
+      string destinationDirectory = Path.Combine(absoluteRoot, destinationId);
+      Assert.AreEqual("scene", File.ReadAllText(Path.Combine(destinationDirectory, "scene.voos")));
+      Assert.AreEqual("asset", File.ReadAllText(Path.Combine(destinationDirectory, "assets", "items", "model.bin")));
+    }
+    finally
+    {
+      UnityEngine.Object.DestroyImmediate(owner);
+      if (Directory.Exists(absoluteRoot)) Directory.Delete(absoluteRoot, true);
     }
   }
 }

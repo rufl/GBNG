@@ -306,13 +306,7 @@ namespace GameBuilder
         Directory.CreateDirectory(destDir);
       }
 
-      InvalidateBundleThumbnail(destId);
-      foreach (string srcFilePath in Directory.EnumerateFiles(srcDir))
-      {
-        string filename = Path.GetFileName(srcFilePath);
-        string destFilePath = Path.Combine(destDir, filename);
-        File.Copy(srcFilePath, destFilePath);
-      }
+      Util.CopyDirectoryRecursive(srcDir, destDir);
     }
 
     static string GenerateBundleId()
