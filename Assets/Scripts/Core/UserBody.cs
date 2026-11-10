@@ -396,27 +396,42 @@ public class UserBody : Photon.MonoBehaviour, PlayerBody.EventHandler, IPunObser
   {
     foreach (MeshRenderer tintRenderer in renderersForTint)
     {
-      if (tintMaterialByRenderer == null)
-      {
-        tintMaterialByRenderer = new Dictionary<MeshRenderer, Material>();
-      }
-
-      if (!tintMaterialByRenderer.TryGetValue(tintRenderer, out Material tintMaterial) ||
-        tintRenderer.sharedMaterial != tintMaterial)
-      {
-        tintMaterial = new Material(tintRenderer.sharedMaterial);
-        tintRenderer.sharedMaterial = tintMaterial;
-        tintMaterialByRenderer[tintRenderer] = tintMaterial;
-        if (ownedTintMaterials == null) ownedTintMaterials = new List<Material>();
-        ownedTintMaterials.Add(tintMaterial);
-      }
-
-      tintMaterial.SetColor("_MainTint", currentTint);
+      Material tintMaterial = GetOrCreateTintMaterial(tintRenderer);
+      if (tintMaterial != null) tintMaterial.SetColor("_MainTint", currentTint);
     }
     avatarMaterialControl.SetTint(currentTint);
 
     toolEffectReplicant?.SetTint(currentTint);
     createPreviewInst?.SetTint(currentTint);
+  }
+
+  Material GetOrCreateTintMaterial(MeshRenderer tintRenderer)
+  {
+    if (tintRenderer == null || tintRenderer.sharedMaterial == null) return null;
+    if (tintMaterialByRenderer == null)
+    {
+      tintMaterialByRenderer = new Dictionary<MeshRenderer, Material>();
+    }
+
+    Material tintMaterial;
+    if (tintMaterialByRenderer.TryGetValue(tintRenderer, out tintMaterial) &&
+        tintRenderer.sharedMaterial == tintMaterial)
+    {
+      return tintMaterial;
+    }
+
+    if (tintMaterial != null)
+    {
+      ownedTintMaterials.Remove(tintMaterial);
+      RuntimeModelResourceSet.DestroyResource(tintMaterial);
+    }
+
+    tintMaterial = new Material(tintRenderer.sharedMaterial);
+    tintRenderer.sharedMaterial = tintMaterial;
+    tintMaterialByRenderer[tintRenderer] = tintMaterial;
+    if (ownedTintMaterials == null) ownedTintMaterials = new List<Material>();
+    ownedTintMaterials.Add(tintMaterial);
+    return tintMaterial;
   }
 
   void IPunObservable.OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info)

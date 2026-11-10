@@ -1697,6 +1697,58 @@ public class GameDetailThumbnailLifecycleTests
     }
   }
 
+
+  [Test]
+  public void UserBodyReleasesSupersededTintMaterialImmediately()
+  {
+    Shader shader = Shader.Find("Standard");
+    Assert.IsNotNull(shader);
+    GameObject owner = new GameObject("UserBody tint replacement owner");
+    owner.SetActive(false);
+    Material sourceMaterial = new Material(shader);
+    Material replacementSourceMaterial = new Material(shader);
+    Material firstTintMaterial = null;
+    Material secondTintMaterial = null;
+
+    try
+    {
+      UserBody body = owner.AddComponent<UserBody>();
+      GameObject rendererObject = new GameObject("Tint replacement renderer");
+      rendererObject.transform.SetParent(owner.transform, false);
+      MeshRenderer renderer = rendererObject.AddComponent<MeshRenderer>();
+      renderer.sharedMaterial = sourceMaterial;
+      MethodInfo getOrCreate = typeof(UserBody).GetMethod("GetOrCreateTintMaterial", PrivateInstance);
+      MethodInfo onDestroy = typeof(UserBody).GetMethod("OnDestroy", PrivateInstance);
+      FieldInfo ownedMaterialsField = typeof(UserBody).GetField("ownedTintMaterials", PrivateInstance);
+      Assert.IsNotNull(getOrCreate);
+      Assert.IsNotNull(onDestroy);
+      Assert.IsNotNull(ownedMaterialsField);
+
+      firstTintMaterial = (Material)getOrCreate.Invoke(body, new object[] { renderer });
+      Assert.AreSame(firstTintMaterial, renderer.sharedMaterial);
+      renderer.sharedMaterial = replacementSourceMaterial;
+      secondTintMaterial = (Material)getOrCreate.Invoke(body, new object[] { renderer });
+
+      Assert.IsTrue(firstTintMaterial == null,
+        "Replacing a renderer's tint source must release its detached tint material immediately.");
+      Assert.AreSame(secondTintMaterial, renderer.sharedMaterial);
+      Assert.AreNotSame(replacementSourceMaterial, secondTintMaterial);
+      System.Collections.IList ownedMaterials =
+        (System.Collections.IList)ownedMaterialsField.GetValue(body);
+      Assert.AreEqual(1, ownedMaterials.Count, "Only the active tint material may remain owned.");
+
+      onDestroy.Invoke(body, null);
+      Assert.IsTrue(secondTintMaterial == null, "UserBody teardown must release the active tint material.");
+    }
+    finally
+    {
+      if (owner != null) Object.DestroyImmediate(owner);
+      if (sourceMaterial != null) Object.DestroyImmediate(sourceMaterial);
+      if (replacementSourceMaterial != null) Object.DestroyImmediate(replacementSourceMaterial);
+      if (firstTintMaterial != null) Object.DestroyImmediate(firstTintMaterial);
+      if (secondTintMaterial != null) Object.DestroyImmediate(secondTintMaterial);
+    }
+  }
   [Test]
   public void UserBodyTintMaterialsAreIsolatedAndReleasedAcrossAvatarModes()
   {
