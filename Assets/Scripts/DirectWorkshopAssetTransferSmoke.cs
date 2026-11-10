@@ -14,6 +14,8 @@ public sealed class DirectWorkshopAssetTransferSmoke : MonoBehaviour
   const string Marker = "DIRECT_WORKSHOP_ASSET_TRANSFER";
   const string Payload = "direct workshop asset payload";
   const string NestedPayload = "nested direct workshop asset payload";
+  const int ChunkPayloadLength = 128 * 1024;
+  const int DirectAssetChunkBytes = 48 * 1024;
 
   static bool launched;
 
@@ -98,6 +100,7 @@ public sealed class DirectWorkshopAssetTransferSmoke : MonoBehaviour
       Directory.CreateDirectory(Path.Combine(contentDirectory, "nested"));
       File.WriteAllText(Path.Combine(contentDirectory, "payload.txt"), Payload);
       File.WriteAllText(Path.Combine(contentDirectory, "nested", "payload.txt"), NestedPayload);
+      File.WriteAllBytes(Path.Combine(contentDirectory, "payload.bin"), CreateChunkPayload());
     }
     catch (Exception exception)
     {
@@ -132,8 +135,22 @@ public sealed class DirectWorkshopAssetTransferSmoke : MonoBehaviour
       yield break;
     }
 
+    int archiveLength;
     try
     {
+      byte[] archive;
+      string error;
+      if (!source.TryCreateDirectAssetArchive(assetResult.Value, out archive, out error))
+      {
+        Fail("The host could not archive its local workshop asset: " + error);
+        yield break;
+      }
+      archiveLength = archive.Length;
+      if (archiveLength <= DirectAssetChunkBytes)
+      {
+        Fail("The direct workshop asset archive did not exceed one transport chunk.");
+        yield break;
+      }
       WriteCoordinator(assetResult.Value, DirectHostTls.GetHostCredentials().CertificatePem);
     }
     catch (Exception exception)
@@ -156,7 +173,7 @@ public sealed class DirectWorkshopAssetTransferSmoke : MonoBehaviour
     }
 
     DeleteCoordinationFiles();
-    Pass("role=host");
+    Pass("role=host|archiveBytes=" + archiveLength);
   }
 
   IEnumerator RunClient()
@@ -216,7 +233,8 @@ public sealed class DirectWorkshopAssetTransferSmoke : MonoBehaviour
     {
       string assetDirectory = pathResult.Value;
       if (File.ReadAllText(Path.Combine(assetDirectory, "payload.txt")) != Payload
-        || File.ReadAllText(Path.Combine(assetDirectory, "nested", "payload.txt")) != NestedPayload)
+        || File.ReadAllText(Path.Combine(assetDirectory, "nested", "payload.txt")) != NestedPayload
+        || !HasExpectedChunkPayload(Path.Combine(assetDirectory, "payload.bin")))
       {
         Fail("The received workshop asset content did not match the host source.");
         yield break;
@@ -263,6 +281,28 @@ public sealed class DirectWorkshopAssetTransferSmoke : MonoBehaviour
     {
       return false;
     }
+  }
+
+  static byte[] CreateChunkPayload()
+  {
+    byte[] payload = new byte[ChunkPayloadLength];
+    uint state = 0x1f123bb5;
+    for (int index = 0; index < payload.Length; index++)
+    {
+      state = state * 1664525u + 1013904223u;
+      payload[index] = (byte)(state >> 24);
+    }
+    return payload;
+  }
+
+  static bool HasExpectedChunkPayload(string path)
+  {
+    byte[] actual = File.ReadAllBytes(path);
+    byte[] expected = CreateChunkPayload();
+    if (actual.Length != expected.Length) return false;
+    for (int index = 0; index < expected.Length; index++)
+      if (actual[index] != expected[index]) return false;
+    return true;
   }
 
   IEnumerator WaitFor(Func<bool> condition, string failureMessage, float timeoutSeconds)
