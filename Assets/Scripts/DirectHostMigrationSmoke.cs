@@ -11,12 +11,14 @@ public sealed class DirectHostMigrationSmoke : MonoBehaviour
   const string RoleArgumentPrefix = "--direct-host-migration-smoke=";
   const string CoordinationArgumentPrefix = "--direct-host-migration-smoke-coordination=";
   const string PortArgumentPrefix = "--direct-host-migration-smoke-port=";
+  const string JoinAddressArgumentPrefix = "--direct-host-migration-smoke-address=";
   const string Marker = "DIRECT_HOST_MIGRATION";
 
   static bool launched;
 
   string role;
   string coordinationPath;
+  string joinAddress;
   ushort port;
   bool completed;
 
@@ -41,6 +43,9 @@ public sealed class DirectHostMigrationSmoke : MonoBehaviour
       return;
     }
 
+    string requestedJoinAddress = GetArgument(JoinAddressArgumentPrefix);
+    if (string.IsNullOrWhiteSpace(requestedJoinAddress)) requestedJoinAddress = "127.0.0.1";
+
     launched = true;
     Application.runInBackground = true;
     GameObject runner = new GameObject("DirectHostMigrationSmoke");
@@ -48,8 +53,10 @@ public sealed class DirectHostMigrationSmoke : MonoBehaviour
     DirectHostMigrationSmoke smoke = runner.AddComponent<DirectHostMigrationSmoke>();
     smoke.role = requestedRole;
     smoke.coordinationPath = Path.GetFullPath(requestedCoordinationPath);
+    smoke.joinAddress = requestedJoinAddress;
     smoke.port = requestedPort;
-    Debug.Log(Marker + "_START|role=" + requestedRole + "|scene=" + SceneManager.GetActiveScene().name);
+    Debug.Log(Marker + "_START|role=" + requestedRole + "|address=" + requestedJoinAddress
+      + "|scene=" + SceneManager.GetActiveScene().name);
   }
 
   static string GetArgument(string prefix)
@@ -211,7 +218,7 @@ public sealed class DirectHostMigrationSmoke : MonoBehaviour
   {
     return new GameBuilderApplication.GameOptions
     {
-      joinAddress = "127.0.0.1",
+      joinAddress = joinAddress,
       joinPort = port,
       trustedHostCertificatePem = certificate,
       playOptions = new GameBuilderApplication.PlayOptions { isMultiplayer = true }
