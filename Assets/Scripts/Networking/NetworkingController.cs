@@ -1534,6 +1534,13 @@ public class NetworkingController : Photon.PunBehaviour
   }
 
 
+  static bool ShouldPublishDirectPlayerDeparture(bool hadIdentity)
+  {
+    // An assigned transport slot is not a gameplay player until its identity
+    // handshake completes.
+    return hadIdentity;
+  }
+
   void OnDirectClientDisconnected(ulong clientId)
   {
     if (directNetworkManager == null) return;
@@ -1544,16 +1551,20 @@ public class NetworkingController : Photon.PunBehaviour
       if (playerId <= 1) return;
       directInitResponseClients.Remove(clientId);
       PhotonPlayer disconnectedPlayer = PhotonNetwork.FindPlayer(playerId);
-      if (directRpcRouter != null)
-        directRpcRouter.NotifyServerPlayerDisconnected(disconnectedPlayer);
+      bool hadIdentity = PhotonNetwork.HasDirectPlayerIdentity(playerId);
       RemoveDirectRemotePlayer(playerId);
-      BroadcastDirectPlayerDespawn(playerId);
-      ReclaimDirectPlayerActors(playerId);
-      PlayerLeftMessage message = new PlayerLeftMessage { id = playerId, nickName = disconnectedPlayer.NickName };
-      voosEngine.BroadcastMessage("PlayerLeft", message);
-      HudNotifications cms = FindObjectOfType<HudNotifications>();
-      if (cms != null) cms.AddMessage($"'{disconnectedPlayer.NickName}' left");
-      Util.Log($"Direct player {playerId} disconnected.");
+      if (ShouldPublishDirectPlayerDeparture(hadIdentity))
+      {
+        if (directRpcRouter != null)
+          directRpcRouter.NotifyServerPlayerDisconnected(disconnectedPlayer);
+        BroadcastDirectPlayerDespawn(playerId);
+        ReclaimDirectPlayerActors(playerId);
+        PlayerLeftMessage message = new PlayerLeftMessage { id = playerId, nickName = disconnectedPlayer.NickName };
+        voosEngine.BroadcastMessage("PlayerLeft", message);
+        HudNotifications cms = FindObjectOfType<HudNotifications>();
+        if (cms != null) cms.AddMessage($"'{disconnectedPlayer.NickName}' left");
+        Util.Log($"Direct player {playerId} disconnected.");
+      }
       PhotonNetwork.ForgetDirectPeerName(playerId);
       PhotonNetwork.ReleaseDirectPlayerId(clientId);
       PhotonNetwork.SetDirectSession(directNetworkManager, GetLocalDirectPlayerName());
