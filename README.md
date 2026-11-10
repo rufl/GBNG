@@ -381,7 +381,7 @@ is omitted because it no longer compiles against the pinned Unity release.
 The Unity path uses Unity Netcode for GameObjects and Unity Transport; neither
 Photon PUN nor a paid Unity service is required.
 - A joining player receives the active behavior database, scene card-pack and actor-pack metadata, stage, terrain, and Sojo state before gameplay begins.
-- In builds without Steamworks, a missing local Workshop asset is requested from the direct host on demand. Transfers are chunked, capped at 64 MiB per asset, and path-validated before storage.
+- In builds without Steamworks, a missing local Workshop asset is requested from the direct host on demand. Transfers are chunked, capped at 64 MiB per asset, and path-validated before storage. The two-player player smoke creates an asset with a nested file on the host and verifies both files after the client fetches it.
 
 - From the splash screen, open **Multiplayer** and choose **Host a game** for
   the unchanged IPv4 host mode. Choose **Host IPv6 game** for an IPv6-only host.
