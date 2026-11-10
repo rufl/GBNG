@@ -2277,7 +2277,7 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
 
   private VoosActor CloneActorAndDescendantsForScript(VoosActor rootActor, VoosActor parentActor, Vector3 worldPosition, Quaternion worldRotation)
   {
-    // Clone the root first, then children.
+    // Clone this actor before recursively transporting every child transform.
     VoosActor rootClone = CloneSingleActorForScript(rootActor, parentActor, worldPosition, worldRotation);
 
     for (int i = 0; i < rootActor.transform.childCount; i++)
@@ -2289,7 +2289,7 @@ public partial class VoosEngine : MonoBehaviour, IPunObservable
       Vector3 childsWorldPosition = rootClone.transform.TransformPoint(child.transform.localPosition);
       Quaternion childsWorldRotation = child.transform.localRotation * rootClone.transform.rotation;
 
-      VoosActor childClone = CloneSingleActorForScript(child, rootClone, childsWorldPosition, childsWorldRotation);
+      VoosActor childClone = CloneActorAndDescendantsForScript(child, rootClone, childsWorldPosition, childsWorldRotation);
       childClone.transform.SetParent(rootClone.transform, worldPositionStays: true);
     }
 

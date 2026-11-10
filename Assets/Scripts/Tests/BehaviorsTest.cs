@@ -154,6 +154,14 @@ public class BehaviorsTest
     child.transform.SetParent(root.transform, true);
     child.SetTransformParent(root.GetName());
     child.SetSpawnTransformParent(root.GetName());
+    Vector3 grandchildLocalSpawnPosition = new Vector3(-1f, 1f, 4f);
+    Quaternion grandchildLocalSpawnRotation = Quaternion.Euler(0f, -30f, 0f);
+    Vector3 grandchildSpawnPosition = childSpawnPosition + childSpawnRotation * grandchildLocalSpawnPosition;
+    Quaternion grandchildSpawnRotation = childSpawnRotation * grandchildLocalSpawnRotation;
+    VoosActor grandchild = voosEngine.CreateActor(grandchildSpawnPosition, grandchildSpawnRotation, _ => { });
+    grandchild.transform.SetParent(child.transform, true);
+    grandchild.SetTransformParent(child.GetName());
+    grandchild.SetSpawnTransformParent(child.GetName());
 
     string behaviorId = NewGUID();
     behaviorSystem.PutBehavior(behaviorId, new Behavior
@@ -180,13 +188,16 @@ public class BehaviorsTest
 
     VoosActor rootClone = null;
     VoosActor childClone = null;
+    VoosActor grandchildClone = null;
     foreach (VoosActor actor in voosEngine.EnumerateActors())
     {
       if (actor.GetCloneParent() == root.GetName()) rootClone = actor;
       if (actor.GetCloneParent() == child.GetName()) childClone = actor;
+      if (actor.GetCloneParent() == grandchild.GetName()) grandchildClone = actor;
     }
     Assert.IsNotNull(rootClone, "Script cloning must create the requested root actor.");
     Assert.IsNotNull(childClone, "Script cloning must create the root actor's child.");
+    Assert.IsNotNull(grandchildClone, "Script cloning must create nested descendants.");
 
     Quaternion requestedRootRotation = new Quaternion(0f, 1f, 0f, 0f);
     Vector3 requestedRootPosition = new Vector3(100f, 0f, 50f);
@@ -194,10 +205,15 @@ public class BehaviorsTest
     Vector3 expectedChildSpawnPosition = requestedRootPosition +
       spawnRotationDelta * (childSpawnPosition - rootSpawnPosition);
     Quaternion expectedChildSpawnRotation = spawnRotationDelta * childSpawnRotation;
+    Vector3 expectedGrandchildSpawnPosition = requestedRootPosition +
+      spawnRotationDelta * (grandchildSpawnPosition - rootSpawnPosition);
+    Quaternion expectedGrandchildSpawnRotation = spawnRotationDelta * grandchildSpawnRotation;
     Assert.Less(Vector3.Distance(requestedRootPosition, rootClone.GetSpawnPosition()), 0.001f);
     Assert.Less(Quaternion.Angle(requestedRootRotation, rootClone.GetSpawnRotation()), 0.01f);
     Assert.Less(Vector3.Distance(expectedChildSpawnPosition, childClone.GetSpawnPosition()), 0.001f);
     Assert.Less(Quaternion.Angle(expectedChildSpawnRotation, childClone.GetSpawnRotation()), 0.01f);
+    Assert.Less(Vector3.Distance(expectedGrandchildSpawnPosition, grandchildClone.GetSpawnPosition()), 0.001f);
+    Assert.Less(Quaternion.Angle(expectedGrandchildSpawnRotation, grandchildClone.GetSpawnRotation()), 0.01f);
   }
 
   [UnityTest]
