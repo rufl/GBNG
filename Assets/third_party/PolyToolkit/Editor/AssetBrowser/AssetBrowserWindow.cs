@@ -1141,7 +1141,10 @@ public class AssetBrowserWindow : EditorWindow {
 
   private void OnDestroy() {
     PtDebug.Log("ABW: destroying.");
-    if (manager != null) manager.SetRefreshCallback(null);
+    if (manager != null) {
+      manager.Dispose();
+      manager = null;
+    }
     if (loadingTex != null) {
       DestroyImmediate(loadingTex);
       loadingTex = null;

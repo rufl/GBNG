@@ -108,6 +108,11 @@ public class AssetBrowserManager {
   private ThumbnailCache thumbnailCache = new ThumbnailCache();
 
   /// <summary>
+  /// True after the owning browser window has released this manager.
+  /// </summary>
+  private bool disposed = false;
+
+  /// <summary>
   /// Returns whether or not we are currently running a query.
   /// </summary>
   public bool IsQuerying { get { return querying; } }
@@ -198,6 +203,21 @@ public class AssetBrowserManager {
   /// <param name="refreshCallback">The callback to call, null for none.</param>
   public void SetRefreshCallback(Action refreshCallback) {
     this.refreshCallback = refreshCallback;
+  }
+
+  /// <summary>
+  /// Releases this manager's thumbnail resources and ignores pending browser results.
+  /// </summary>
+  public void Dispose() {
+    if (disposed) return;
+    disposed = true;
+    SetRefreshCallback(null);
+    ClearRequest();
+    requestToSendAfterAuth = null;
+    currentRequest = null;
+    assetResult = null;
+    assetsInUse = null;
+    thumbnailCache.Clear();
   }
 
   /// <summary>
@@ -314,6 +334,7 @@ public class AssetBrowserManager {
   /// <param name="wasInteractive">If true, this was the interactive (browser-based) sign-in flow.</param>
   /// <param name="status">The result of the sign in process.</param>
   private void OnSignInFinished(bool wasInteractive, PolyStatus status) {
+    if (disposed) return;
     if (status.ok) {
       string tok = PolyApi.AccessToken;
       PtDebug.LogFormat("ABM: Sign in success. Access token: {0}",
@@ -420,6 +441,13 @@ public class AssetBrowserManager {
   /// Callback invoked when an asset thumbnail is fetched.
   /// </summary>
   private void OnThumbnailFetched(PolyAsset asset, PolyStatus status) {
+    if (disposed) {
+      if (asset != null && asset.thumbnailTexture != null) {
+        GameObject.DestroyImmediate(asset.thumbnailTexture);
+        asset.thumbnailTexture = null;
+      }
+      return;
+    }
     if (status.ok) {
       thumbnailCache.Put(asset.name, asset.thumbnailTexture);
       // Preserve the texture so it survives round-trips to play mode and back.
