@@ -107,6 +107,8 @@ releases it on resize or teardown without clearing caller-assigned textures.
 Poly Toolkit's asset browser releases its generated loading texture and cached
 thumbnails when its editor window closes; late thumbnail fetches are destroyed.
 Imported `AssetDatabase` textures remain project-owned.
+The browser reuses its editor GUIStyles across repaints and drops their references
+when the window closes.
 SnapshotCamera restores the prior active render target for both capture paths.
 Game-view capture also restores its camera target and enabled state, plus motion
 blur if rendering fails.

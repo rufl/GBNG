@@ -92,5 +92,51 @@ public class PolyToolkitAssetBrowserLifecycleTests
       if (lateTexture != null) Object.DestroyImmediate(lateTexture);
     }
   }
+
+  [Test]
+  public void AssetBrowserReusesEditorStylesUntilWindowClose()
+  {
+    AssetBrowserWindow window = ScriptableObject.CreateInstance<AssetBrowserWindow>();
+    GUISkin skin = EditorGUIUtility.GetBuiltinSkin(EditorSkin.Inspector);
+
+    try
+    {
+      MethodInfo ensureStyles = typeof(AssetBrowserWindow).GetMethod("EnsureStyles", PrivateInstance);
+      MethodInfo onDestroy = typeof(AssetBrowserWindow).GetMethod("OnDestroy", PrivateInstance);
+      FieldInfo styleSkinField = typeof(AssetBrowserWindow).GetField("styleSkin", PrivateInstance);
+      FieldInfo titleStyleField = typeof(AssetBrowserWindow).GetField("titleStyle", PrivateInstance);
+      FieldInfo importButtonStyleField = typeof(AssetBrowserWindow).GetField("importButtonStyle", PrivateInstance);
+      FieldInfo detailsTitleStyleField = typeof(AssetBrowserWindow).GetField("detailsTitleStyle", PrivateInstance);
+      Assert.IsNotNull(ensureStyles);
+      Assert.IsNotNull(onDestroy);
+      Assert.IsNotNull(styleSkinField);
+      Assert.IsNotNull(titleStyleField);
+      Assert.IsNotNull(importButtonStyleField);
+      Assert.IsNotNull(detailsTitleStyleField);
+
+      ensureStyles.Invoke(window, new object[] { skin, skin.label });
+      GUIStyle titleStyle = (GUIStyle)titleStyleField.GetValue(window);
+      GUIStyle importButtonStyle = (GUIStyle)importButtonStyleField.GetValue(window);
+      GUIStyle detailsTitleStyle = (GUIStyle)detailsTitleStyleField.GetValue(window);
+      Assert.IsNotNull(titleStyle);
+      Assert.IsNotNull(importButtonStyle);
+      Assert.IsNotNull(detailsTitleStyle);
+
+      ensureStyles.Invoke(window, new object[] { skin, skin.label });
+      Assert.AreSame(titleStyle, titleStyleField.GetValue(window));
+      Assert.AreSame(importButtonStyle, importButtonStyleField.GetValue(window));
+      Assert.AreSame(detailsTitleStyle, detailsTitleStyleField.GetValue(window));
+
+      Assert.DoesNotThrow(() => onDestroy.Invoke(window, null));
+      Assert.IsNull(styleSkinField.GetValue(window));
+      Assert.IsNull(titleStyleField.GetValue(window));
+      Assert.IsNull(importButtonStyleField.GetValue(window));
+      Assert.IsNull(detailsTitleStyleField.GetValue(window));
+    }
+    finally
+    {
+      if (window != null) Object.DestroyImmediate(window);
+    }
+  }
 }
 #endif

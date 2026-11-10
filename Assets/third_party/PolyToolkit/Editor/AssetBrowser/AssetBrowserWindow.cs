@@ -259,6 +259,10 @@ public class AssetBrowserWindow : EditorWindow {
   /// </summary>
   private GUIStyle detailsTitleStyle;
 
+  private GUISkin styleSkin;
+  private GUIStyle titleStyle;
+  private GUIStyle importButtonStyle;
+
   /// <summary>
   /// GUI helper that keeps track of our open layouts.
   /// </summary>
@@ -318,7 +322,24 @@ public class AssetBrowserWindow : EditorWindow {
     backBarBackgroundTex = PtUtils.LoadTexture2DFromRelativePath(
       EditorGUIUtility.isProSkin ? DARK_GREY_TEX : LIGHT_GREY_TEX);
 
-    detailsTitleStyle = new GUIStyle(EditorStyles.wordWrappedLabel);
+  }
+
+  private void EnsureStyles(GUISkin skin, GUIStyle detailsTitleSourceStyle) {
+    if (styleSkin == skin && titleStyle != null && importButtonStyle != null &&
+        detailsTitleStyle != null) {
+      return;
+    }
+    styleSkin = skin;
+
+    titleStyle = new GUIStyle(skin.label);
+    titleStyle.margin = new RectOffset(TITLE_IMAGE_PADDING, TITLE_IMAGE_PADDING, TITLE_IMAGE_PADDING,
+      TITLE_IMAGE_PADDING);
+
+    importButtonStyle = new GUIStyle(skin.button);
+    importButtonStyle.fontStyle = FontStyle.Bold;
+    importButtonStyle.padding = new RectOffset(10, 10, 8, 8);
+
+    detailsTitleStyle = new GUIStyle(detailsTitleSourceStyle);
     detailsTitleStyle.fontSize = 15;
     detailsTitleStyle.fontStyle = FontStyle.Bold;
   }
@@ -335,6 +356,7 @@ public class AssetBrowserWindow : EditorWindow {
   /// Renders the window GUI (invoked by Unity).
   /// </summary>
   public void OnGUI() {
+    EnsureStyles(GUI.skin, EditorStyles.wordWrappedLabel);
     if (Application.isPlaying) {
       DrawTitleBar(/* withSignInUi */ false);
       GUILayout.Space(TOP_MARGIN_BASE);
@@ -418,9 +440,6 @@ public class AssetBrowserWindow : EditorWindow {
   private void DrawTitleBar(bool withSignInUi) {
     GUI.DrawTexture(new Rect(0, 0, position.width, TITLE_BAR_HEIGHT), Texture2D.whiteTexture);
     
-    GUIStyle titleStyle = new GUIStyle (GUI.skin.label); 
-    titleStyle.margin = new RectOffset(TITLE_IMAGE_PADDING, TITLE_IMAGE_PADDING, TITLE_IMAGE_PADDING,
-      TITLE_IMAGE_PADDING);
     if (GUILayout.Button(titleTex, titleStyle,
       GUILayout.Width(titleTex.width * TITLE_IMAGE_HEIGHT / titleTex.height),
       GUILayout.Height(TITLE_IMAGE_HEIGHT))) {
@@ -1006,10 +1025,7 @@ public class AssetBrowserWindow : EditorWindow {
     GUILayout.Space(10);
 
     guiHelper.BeginHorizontal();
-    GUIStyle buttonStyle = new GUIStyle(GUI.skin.button);
-    buttonStyle.fontStyle = FontStyle.Bold;
-    buttonStyle.padding = new RectOffset(10, 10, 8, 8);
-    bool importButtonClicked = GUILayout.Button("Import into Project", buttonStyle);
+    bool importButtonClicked = GUILayout.Button("Import into Project", importButtonStyle);
     GUILayout.FlexibleSpace();
     guiHelper.EndHorizontal();
     GUILayout.Space(5);
@@ -1149,6 +1165,11 @@ public class AssetBrowserWindow : EditorWindow {
       DestroyImmediate(loadingTex);
       loadingTex = null;
     }
+    styleSkin = null;
+    titleStyle = null;
+    importButtonStyle = null;
+    detailsTitleStyle = null;
+
   }
 
   private struct CategoryInfo {
