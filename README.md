@@ -274,7 +274,7 @@ load "C:/path/to/project.voos"
 The normal Save menu continues to store projects in Game Builder's local
 library.
 Queued saves signal completion only after their file-write job has completed, so save-before-exit and autosave callbacks cannot run while state capture is still pending.
-
+Empty or incomplete `.voos` files are rejected before a scene reload, preserving the current project and reporting the malformed save rather than failing later during world load.
 
 Ground materials using shaders without recognized tint properties keep their
 authored color instead of aborting scene load.

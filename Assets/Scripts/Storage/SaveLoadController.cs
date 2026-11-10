@@ -309,11 +309,28 @@ public class SaveLoadController : MonoBehaviour
   {
     Debug.Log($"Loading world from {filePath}..");
     string jsonContents = File.ReadAllText(filePath);
-    SaveGame save = JsonUtility.FromJson<SaveGame>(jsonContents);
+    if (string.IsNullOrWhiteSpace(jsonContents))
+    {
+      throw new InvalidDataException("The save file is empty.");
+    }
+
+    SaveGame save;
+    try
+    {
+      save = JsonUtility.FromJson<SaveGame>(jsonContents);
+    }
+    catch (System.Exception exception)
+    {
+      throw new InvalidDataException("The save file is not valid Game Builder data.", exception);
+    }
 
     if (save.version > CURRENT_SAVE_GAME_VERSION)
     {
       throw new MoreRecentVersionNumberException();
+    }
+    if (save.voosEngineState.actors == null)
+    {
+      throw new InvalidDataException("The save file is missing world data.");
     }
 
     return save;
