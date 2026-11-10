@@ -332,7 +332,9 @@ User behavior-library cards stored as `.js` files in
 `GameBuilderUserData/Behaviors` beside the standalone player appear in the Card
 Library. Selecting one imports it into the game as an embedded behavior, so
 shared games do not depend on a local file. User-library URIs accept only a
-single file name and cannot escape that directory.
+single file name and cannot escape that directory. If the player directory is
+unwritable, Game Builder stores `GameBuilderUserData` under Unity's persistent
+data directory instead; this fallback is not covered by Steam Cloud.
 
 The bundled CEF runtime increases desktop build size and requires the Mono
 scripting backend; UnityWebBrowser does not support IL2CPP. Linux x64 now has a

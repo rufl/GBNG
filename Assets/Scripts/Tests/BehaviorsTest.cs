@@ -139,8 +139,6 @@ public class BehaviorsTest
   [UnityTest]
   public IEnumerator TestClonePreservesChildSpawnTransform()
   {
-    LogAssert.Expect(LogType.Exception, new System.Text.RegularExpressions.Regex(
-      @"UnauthorizedAccessException: Access to the path '.*GameBuilderUserData\\Games' is denied\."));
     yield return Setup();
 
     Vector3 rootSpawnPosition = new Vector3(10f, 0f, 5f);
@@ -219,8 +217,6 @@ public class BehaviorsTest
   [UnityTest]
   public IEnumerator TestPrefabInstantiationKeepsSavedTemplateImmutable()
   {
-    LogAssert.Expect(LogType.Exception, new System.Text.RegularExpressions.Regex(
-      @"UnauthorizedAccessException: Access to the path '.*GameBuilderUserData\\Games' is denied\."));
     yield return Setup();
 
     GameObject libraryOwner = new GameObject("Prefab serialization test");
@@ -265,8 +261,6 @@ public class BehaviorsTest
     string userDataRoot = Util.GetUserDataDir();
     try
     {
-      LogAssert.Expect(LogType.Exception, new System.Text.RegularExpressions.Regex(
-        @"UnauthorizedAccessException: Access to the path '.*GameBuilderUserData\\Games' is denied\."));
       yield return Setup();
 
       VoosActor source = voosEngine.CreateActor(new Vector3(1, 2, 3), Quaternion.identity, _ => { });

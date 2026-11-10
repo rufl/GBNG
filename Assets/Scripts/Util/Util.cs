@@ -796,15 +796,9 @@ public static partial class Util
       case AbstractLocation.StreamingAssets:
         return Application.streamingAssetsPath;
       case AbstractLocation.UserDocuments:
-        // This will be the PARENT directory of GameBuilderUserData
-#if UNITY_EDITOR
-        return IO.Directory.GetParent(IO.Directory.GetCurrentDirectory()).FullName;
-#else
-      // Keep things in our Steam install folder (just cwd). Confirmed
-      // that uninstall from Steam does NOT delete these extra files. Also, Steam
-      // Cloud Sync is configured for "GameBuilderUserData" in this folder.
-        return IO.Directory.GetCurrentDirectory();
-#endif
+        // Prefer the Steam Cloud directory beside the player. Fall back to
+        // persistent data when the install or editor parent is not writable.
+        return GetWritableUserDocumentsPath();
       case AbstractLocation.PersistentData:
         return Application.persistentDataPath;
       default:
@@ -971,6 +965,66 @@ public static partial class Util
 
   // Make sure this is kept in sync with our Steam Cloud Sync settings. In auto-cloud directories.
   public static string UserDataDirName = "GameBuilderUserData";
+
+  static string writableUserDocumentsPath;
+
+  static string GetWritableUserDocumentsPath()
+  {
+    if (writableUserDocumentsPath != null) return writableUserDocumentsPath;
+
+#if UNITY_EDITOR
+    string currentDirectory = IO.Directory.GetCurrentDirectory();
+    IO.DirectoryInfo parentDirectory = IO.Directory.GetParent(currentDirectory);
+    string preferredPath = parentDirectory != null ? parentDirectory.FullName : currentDirectory;
+#else
+    string preferredPath = IO.Directory.GetCurrentDirectory();
+#endif
+    writableUserDocumentsPath = ResolveWritableUserDocumentsPath(
+      preferredPath, Application.persistentDataPath);
+    return writableUserDocumentsPath;
+  }
+
+  static string ResolveWritableUserDocumentsPath(string preferredPath, string fallbackPath)
+  {
+    if (TryPrepareUserDataDirectory(preferredPath)) return preferredPath;
+    if (TryPrepareUserDataDirectory(fallbackPath)) return fallbackPath;
+    throw new IO.IOException(
+      $"Could not create a writable Game Builder user-data directory in '{preferredPath}' or '{fallbackPath}'.");
+  }
+
+  static bool TryPrepareUserDataDirectory(string parentPath)
+  {
+    string userDataPath = IO.Path.Combine(parentPath, UserDataDirName);
+    string probePath = null;
+    try
+    {
+      IO.Directory.CreateDirectory(userDataPath);
+      probePath = IO.Path.Combine(userDataPath, "." + System.Guid.NewGuid().ToString("N") + ".write-probe");
+      using (new IO.FileStream(probePath, IO.FileMode.CreateNew, IO.FileAccess.Write, IO.FileShare.None)) { }
+      IO.File.Delete(probePath);
+      return true;
+    }
+    catch (System.UnauthorizedAccessException)
+    {
+      return false;
+    }
+    catch (IO.IOException)
+    {
+      return false;
+    }
+    finally
+    {
+      if (probePath != null && IO.File.Exists(probePath))
+      {
+        try
+        {
+          IO.File.Delete(probePath);
+        }
+        catch (System.UnauthorizedAccessException) { }
+        catch (IO.IOException) { }
+      }
+    }
+  }
 
   public static string GetUserDataDir()
   {
