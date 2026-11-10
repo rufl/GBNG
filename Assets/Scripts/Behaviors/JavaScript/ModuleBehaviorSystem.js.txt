@@ -468,6 +468,7 @@ class ModuleBehaviorSystem {
     }
     let rootCloneName = null;
     const toSend = [];
+    const spawnRotationDelta = initialRotation.clone().multiply(baseActor.spawnRotation.clone().inverse());
     for (let i = 0; i < result.names.length; i++) {
       const cloneName = result.names[i];
       const cloneActor = new Actor(cloneName, this);
@@ -475,13 +476,12 @@ class ModuleBehaviorSystem {
       const childBaseActor = this.getActor(result.baseActorNames[i]);
       cloneActor.setupClone(childBaseActor.brainName, tempId, childBaseActor.getMemoryJson());
 
-      // This is debatable..but generally makes sense I think. Why even bother
-      // with spawn**, since script clones are destroyed upon reset? Well, spawn
-      // position may be used as a reference point (for side-to-side behavior for
-      // example), so it still matters.
-      // TODO TODO we need to actually update the spawn positions RELATIVE to the root clone position.
-      cloneActor.spawnPosition = initialPosition;
-      cloneActor.spawnRotation = initialRotation;
+      // Clones reset to their own spawn transform. Transport each source spawn
+      // transform through the root clone's requested transform so a cloned
+      // hierarchy preserves its formation instead of collapsing onto its root.
+      cloneActor.spawnPosition = initialPosition.clone().add(
+        childBaseActor.spawnPosition.clone().sub(baseActor.spawnPosition).applyQuaternion(spawnRotationDelta));
+      cloneActor.spawnRotation = spawnRotationDelta.clone().multiply(childBaseActor.spawnRotation);
 
       this.actors_.set(cloneName, cloneActor);
 

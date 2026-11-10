@@ -385,9 +385,10 @@ class HandlerApi {
   /**
    * Create a new actor based on a source actor.
    * @param {string} sourceName The name of the actor that is being cloned
-   * @param {THREE.Vector3} initialPosition 
-   * @param {THREE.Quaternion} initialRotation 
-   * @returns {string} The name of the new actor (the clone)
+   * @param {THREE.Vector3} initialPosition
+   * @param {THREE.Quaternion} initialRotation
+   * @returns {string} The name of the new actor (the clone). Descendant spawn
+   * transforms retain their position and rotation relative to the cloned root.
    */
   clone(sourceName, initialPosition, initialRotation) {
     return this.actor_.behaviorSystem.cloneActor(sourceName, this.name, initialPosition, initialRotation);

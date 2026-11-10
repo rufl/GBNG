@@ -137,6 +137,70 @@ public class BehaviorsTest
   }
 
   [UnityTest]
+  public IEnumerator TestClonePreservesChildSpawnTransform()
+  {
+    LogAssert.Expect(LogType.Exception, new System.Text.RegularExpressions.Regex(
+      @"UnauthorizedAccessException: Access to the path '.*GameBuilderUserData\\Games' is denied\."));
+    yield return Setup();
+
+    Vector3 rootSpawnPosition = new Vector3(10f, 0f, 5f);
+    Quaternion rootSpawnRotation = Quaternion.Euler(0f, 90f, 0f);
+    Vector3 childLocalSpawnPosition = new Vector3(2f, 0f, 3f);
+    Quaternion childLocalSpawnRotation = Quaternion.Euler(0f, 45f, 0f);
+    VoosActor root = voosEngine.CreateActor(rootSpawnPosition, rootSpawnRotation, _ => { });
+    Vector3 childSpawnPosition = rootSpawnPosition + rootSpawnRotation * childLocalSpawnPosition;
+    Quaternion childSpawnRotation = rootSpawnRotation * childLocalSpawnRotation;
+    VoosActor child = voosEngine.CreateActor(childSpawnPosition, childSpawnRotation, _ => { });
+    child.transform.SetParent(root.transform, true);
+    child.SetTransformParent(root.GetName());
+    child.SetSpawnTransformParent(root.GetName());
+
+    string behaviorId = NewGUID();
+    behaviorSystem.PutBehavior(behaviorId, new Behavior
+    {
+      javascript = @"
+        export function OnCloneTest(api) {
+          api.clone(
+            api.getActor().getName(),
+            new THREE.Vector3(100, 0, 50),
+            new THREE.Quaternion(0, 1, 0, 0));
+        }"
+    });
+    PutTestUse(new TestUse
+    {
+      behaviorUri = IdToEmbeddedBehaviorUri(behaviorId),
+      brainId = root.GetBrainName()
+    });
+
+    voosEngine.EnqueueMessage(new VoosEngine.ActorMessage { name = "CloneTest", targetActor = root.GetName() });
+    yield return null;
+    yield return null;
+    yield return null;
+    yield return null;
+
+    VoosActor rootClone = null;
+    VoosActor childClone = null;
+    foreach (VoosActor actor in voosEngine.EnumerateActors())
+    {
+      if (actor.GetCloneParent() == root.GetName()) rootClone = actor;
+      if (actor.GetCloneParent() == child.GetName()) childClone = actor;
+    }
+    Assert.IsNotNull(rootClone, "Script cloning must create the requested root actor.");
+    Assert.IsNotNull(childClone, "Script cloning must create the root actor's child.");
+
+    Quaternion requestedRootRotation = new Quaternion(0f, 1f, 0f, 0f);
+    Vector3 requestedRootPosition = new Vector3(100f, 0f, 50f);
+    Quaternion spawnRotationDelta = requestedRootRotation * Quaternion.Inverse(rootSpawnRotation);
+    Vector3 expectedChildSpawnPosition = requestedRootPosition +
+      spawnRotationDelta * (childSpawnPosition - rootSpawnPosition);
+    Quaternion expectedChildSpawnRotation = spawnRotationDelta * childSpawnRotation;
+    Assert.Less(Vector3.Distance(requestedRootPosition, rootClone.GetSpawnPosition()), 0.001f);
+    Assert.Less(Quaternion.Angle(requestedRootRotation, rootClone.GetSpawnRotation()), 0.01f);
+    Assert.Less(Vector3.Distance(expectedChildSpawnPosition, childClone.GetSpawnPosition()), 0.001f);
+    Assert.Less(Quaternion.Angle(expectedChildSpawnRotation, childClone.GetSpawnRotation()), 0.01f);
+  }
+
+  [UnityTest]
   public IEnumerator TestCooldownSurvivesActorMemoryTransfer()
   {
     string originalUserDataDirName = Util.UserDataDirName;
