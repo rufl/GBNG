@@ -92,6 +92,7 @@ def xcode_build(
             f"V8_ROOT={v8_root}",
             f"V8_OUT={v8_out}",
             f"ARCHS={macos_arch_name(architecture)}",
+            f"MACOSX_DEPLOYMENT_TARGET={'11.0' if architecture == 'arm64' else '10.13'}",
             "ONLY_ACTIVE_ARCH=NO",
             "CODE_SIGNING_ALLOWED=NO",
             "build",
