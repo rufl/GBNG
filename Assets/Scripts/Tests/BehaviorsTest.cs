@@ -136,6 +136,62 @@ public class BehaviorsTest
     Assert.AreEqual(0.3, actor.GetTint().r, 1e-4);
   }
 
+  [UnityTest]
+  public IEnumerator TestCooldownSurvivesActorMemoryTransfer()
+  {
+    string originalUserDataDirName = Util.UserDataDirName;
+    Util.UserDataDirName = System.IO.Path.Combine(
+      "GAMEBUILDER", "Library", "BehaviorsTest-" + System.Guid.NewGuid().ToString("N"));
+    string userDataRoot = Util.GetUserDataDir();
+    try
+    {
+      LogAssert.Expect(LogType.Exception, new System.Text.RegularExpressions.Regex(
+        @"UnauthorizedAccessException: Access to the path '.*GameBuilderUserData\\Games' is denied\."));
+      yield return Setup();
+
+      VoosActor source = voosEngine.CreateActor(new Vector3(1, 2, 3), Quaternion.identity, _ => { });
+      string brainId = source.GetBrainName();
+      string behaviorId = behaviorSystem.GenerateUniqueId();
+      behaviorSystem.PutBehavior(behaviorId, new Behavior
+      {
+        javascript = @"
+          export function onCooldownTest() {
+            setTint(0.12, 0.34, 0.56);
+            cooldown(10);
+          }"
+      });
+      PutTestUse(new TestUse
+      {
+        behaviorUri = IdToEmbeddedBehaviorUri(behaviorId),
+        brainId = brainId
+      });
+
+      voosEngine.EnqueueMessage(new VoosEngine.ActorMessage { name = "CooldownTest", targetActor = source.GetName() });
+      yield return null;
+      yield return null;
+      Assert.AreEqual(0.12, source.GetTint().r, 1e-4);
+
+      string transferredMemory = source.GetMemoryJsonSlow();
+      VoosActor recipient = voosEngine.CreateActor(new Vector3(4, 5, 6), Quaternion.identity, _ => { });
+      recipient.SetBrainName(brainId);
+      recipient.SetMemoryJson(transferredMemory);
+      yield return null;
+      yield return null;
+
+      voosEngine.EnqueueMessage(new VoosEngine.ActorMessage { name = "CooldownTest", targetActor = recipient.GetName() });
+      yield return null;
+      yield return null;
+
+      Assert.AreEqual(1.0, recipient.GetTint().r, 1e-4,
+        "The transferred actor must retain an active behavior cooldown.");
+    }
+    finally
+    {
+      Util.UserDataDirName = originalUserDataDirName;
+      if (System.IO.Directory.Exists(userDataRoot)) System.IO.Directory.Delete(userDataRoot, true);
+    }
+  }
+
   [Test]
   public void TestBehaviorDbGarbageCollect()
   {

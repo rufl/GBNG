@@ -180,7 +180,9 @@ class Actor {
     this.name = name;
     this.tempId_ = 0;
 
-    this.handlerCooldownMap_ = new Map();
+    // Cooldowns used by remote-only handlers stay local. Owned actors store
+    // their cooldowns in persistent memory for ownership transfer.
+    this.remoteHandlerCooldownMap_ = new Map();
 
     // This will be a map of maps, for use -> messageName -> context.
     // We can have many instances of a behavior/handler on a single actor, thus the two levels.
@@ -217,6 +219,9 @@ class Actor {
     this.tempId_ = tempId;
     this.brainName = brainName;
     this.memory = unpackObj(JSON.parse(memoryJson));
+    // A clone starts with fresh cooldowns, just as it did when cooldowns were
+    // transient runtime state.
+    delete this.memory.__handlerCooldowns;
     this.memoryDirty_ = true;
     this.wasClonedByScript = true;
     this.isLocalActor = true;
@@ -291,13 +296,30 @@ class Actor {
   }
 
   getCooldownKey_(useId, messageName) {
-    // TODO can we do better?
     return `${useId}/${messageName}`;
   }
 
+  getPersistentCooldowns_(createIfMissing) {
+    let cooldowns = this.memory.__handlerCooldowns;
+    if ((cooldowns === undefined || cooldowns === null
+      || typeof cooldowns !== 'object' || Array.isArray(cooldowns))
+      && createIfMissing) {
+      cooldowns = {};
+      this.memory.__handlerCooldowns = cooldowns;
+    }
+    return cooldowns;
+  }
+
   setCooldown(useId, messageName, expireTimeSeconds) {
-    const key = this.getCooldownKey_(useId, messageName);
-    this.handlerCooldownMap_.set(key, expireTimeSeconds);
+    if (!this.isLocalActor) {
+      this.remoteHandlerCooldownMap_.set(this.getCooldownKey_(useId, messageName), expireTimeSeconds);
+      return;
+    }
+
+    const cooldownsByUse = this.getPersistentCooldowns_(true);
+    const cooldownsForUse = cooldownsByUse[useId] || (cooldownsByUse[useId] = {});
+    cooldownsForUse[messageName] = expireTimeSeconds;
+    this.memoryDirty_ = true;
   }
 
   hasHandlersFor(messageName) {
@@ -316,20 +338,26 @@ class Actor {
 
   // Here we enforce handler-cooldowns.
   isMessageBlockedByCooldown(useId, deliveredMessage) {
-    const key = this.getCooldownKey_(useId, deliveredMessage.name);
-    const cooldownEndTime = this.handlerCooldownMap_.get(key);
-    if (cooldownEndTime !== undefined) {
-      if (cooldownEndTime <= deliveredMessage.gameTime) {
-        this.handlerCooldownMap_.delete(key);
-        return false;
-      }
-      else {
-        return true;
-      }
-    }
-    else {
+    if (!this.isLocalActor) {
+      const key = this.getCooldownKey_(useId, deliveredMessage.name);
+      const cooldownEndTime = this.remoteHandlerCooldownMap_.get(key);
+      if (cooldownEndTime === undefined) return false;
+      if (cooldownEndTime > deliveredMessage.gameTime) return true;
+      this.remoteHandlerCooldownMap_.delete(key);
       return false;
     }
+
+    const cooldownsByUse = this.getPersistentCooldowns_(false);
+    const cooldownsForUse = cooldownsByUse && cooldownsByUse[useId];
+    const cooldownEndTime = cooldownsForUse && cooldownsForUse[deliveredMessage.name];
+    if (cooldownEndTime === undefined) return false;
+    if (cooldownEndTime > deliveredMessage.gameTime) return true;
+
+    delete cooldownsForUse[deliveredMessage.name];
+    if (Object.keys(cooldownsForUse).length === 0) delete cooldownsByUse[useId];
+    if (Object.keys(cooldownsByUse).length === 0) delete this.memory.__handlerCooldowns;
+    this.memoryDirty_ = true;
+    return false;
   }
 
   getHandlingContext(use, handler, isLegacy, messageName) {
@@ -423,9 +451,13 @@ class Actor {
     // reset any error states.
     this.contextMapsByUse_.clear();
 
-    // Also reset cooldowns... TODO is this serialized anywhere? For save/load
-    // and multiplayer ownership xfer?
-    this.handlerCooldownMap_.clear();
+    // Remote-only handlers retain local cooldowns. Owned actor cooldowns live
+    // in memory and must be cleared with the reset state.
+    this.remoteHandlerCooldownMap_.clear();
+    if (this.isLocalActor && this.memory.__handlerCooldowns !== undefined) {
+      delete this.memory.__handlerCooldowns;
+      this.memoryDirty_ = true;
+    }
 
     // Note that we do this even for remote actors! Doesn't hurt. In theory,
     // everyone should have the same parameters here.

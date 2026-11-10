@@ -35,6 +35,9 @@
  * that can be triggered repeatedly in a short period of time, like
  * collisions, etc, especially when the event involves doing something
  * costly like cloning an actor.
+ *
+ * <p>In multiplayer, active cooldowns move with an actor when its ownership
+ * changes. Reset Game and newly cloned actors start with no active cooldowns.
  * 
  * @example
  * export PROPS = [
