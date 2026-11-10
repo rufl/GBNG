@@ -334,15 +334,22 @@ public static class PhotonNetwork
     directMigrationReservedPlayerIds.Clear();
     directMigrationReservationExpiry = 0f;
   }
+  internal static void AppendKnownDirectPlayerIds(List<int> playerIds)
+  {
+    foreach (int playerId in directClientIdsByPlayer.Keys)
+      if (playerId > 0 && !playerIds.Contains(playerId)) playerIds.Add(playerId);
+    if (player != null && player.ID > 0 && !playerIds.Contains(player.ID))
+      playerIds.Add(player.ID);
+  }
+
 
   internal static int GetLowestDirectPlayerId()
   {
+    List<int> playerIds = new List<int>();
+    AppendKnownDirectPlayerIds(playerIds);
     int lowest = 0;
-    foreach (PhotonPlayer candidate in playerList)
-    {
-      if (candidate == null || candidate.ID <= 1) continue;
-      if (lowest == 0 || candidate.ID < lowest) lowest = candidate.ID;
-    }
+    foreach (int playerId in playerIds)
+      if (playerId > 1 && (lowest == 0 || playerId < lowest)) lowest = playerId;
     return lowest;
   }
 
@@ -488,11 +495,37 @@ public static class PhotonNetwork
       NickName = GetDirectPeerName(playerId, playerId == 1 ? "Host" : "Player" + playerId)
     };
     directPeers.Add(playerId, peer);
+    AddDirectPeerToPlayerList(peer);
     foreach (Photon.PunBehaviour behaviour in UnityEngine.Object.FindObjectsOfType<Photon.PunBehaviour>(true))
       if (!(behaviour is NetworkingController)) behaviour.OnPhotonPlayerConnected(peer);
     foreach (GlobalUnreliableData sync in UnityEngine.Object.FindObjectsOfType<GlobalUnreliableData>(true))
       sync.OnPhotonPlayerConnected(peer);
     return true;
+  }
+  static void AddDirectPeerToPlayerList(PhotonPlayer peer)
+  {
+    List<PhotonPlayer> players = new List<PhotonPlayer>(playerList);
+    players.RemoveAll(candidate => candidate == null || candidate.ID == peer.ID);
+    players.Add(peer);
+    players.Sort((left, right) => left.ID.CompareTo(right.ID));
+    playerList = players.ToArray();
+    RefreshOtherPlayers();
+  }
+
+  static void RemoveDirectPeerFromPlayerList(int playerId)
+  {
+    List<PhotonPlayer> players = new List<PhotonPlayer>(playerList);
+    players.RemoveAll(candidate => candidate == null || candidate.ID == playerId);
+    playerList = players.ToArray();
+    RefreshOtherPlayers();
+  }
+
+  static void RefreshOtherPlayers()
+  {
+    List<PhotonPlayer> others = new List<PhotonPlayer>();
+    foreach (PhotonPlayer candidate in playerList)
+      if (candidate != null && candidate.ID != player.ID) others.Add(candidate);
+    otherPlayers = others.ToArray();
   }
 
   internal static bool RemoveDirectPeer(int playerId)
@@ -503,6 +536,7 @@ public static class PhotonNetwork
     directPlayersWithIdentity.Remove(playerId);
     directPlayerIdsByClient.Remove(peer.DirectClientId);
     directClientIdsByPlayer.Remove(playerId);
+    RemoveDirectPeerFromPlayerList(playerId);
     foreach (Photon.PunBehaviour behaviour in UnityEngine.Object.FindObjectsOfType<Photon.PunBehaviour>(true))
       if (!(behaviour is NetworkingController)) behaviour.OnPhotonPlayerDisconnected(peer);
     return true;

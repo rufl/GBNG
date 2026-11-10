@@ -382,6 +382,13 @@ The Unity path uses Unity Netcode for GameObjects and Unity Transport; neither
 Photon PUN nor a paid Unity service is required.
 - A joining player receives the active behavior database, scene card-pack and actor-pack metadata, stage, terrain, and Sojo state before gameplay begins.
 - In builds without Steamworks, a missing local Workshop asset is requested from the direct host on demand. Transfers are chunked, capped at 64 MiB per asset, and path-validated before storage; an unanswered request fails after 30 seconds or immediately when the direct-host connection closes. The two-player player smoke verifies nested content plus a 128 KiB incompressible payload: its 131,210-byte archive crosses three 48 KiB transport chunks before the client validates all bytes.
+- `tools/maintenance/run_direct_host_migration_smoke.py` starts an isolated
+  loopback directory and three no-Steam player processes. It gives clients IDs
+  2 and 3, forcibly terminates the original host without unregistering it, then
+  requires player 2 to claim generation 2 and player 3 to return with ID 3:
+  `python tools/maintenance/run_direct_host_migration_smoke.py --executable "build_output/Game Builder.exe"`.
+  Its temporary directory, coordination files, and logs are removed by default.
+
 
 - From the splash screen, open **Multiplayer** and choose **Host a game** for
   the unchanged IPv4 host mode. Choose **Host IPv6 game** for an IPv6-only host.
@@ -665,6 +672,11 @@ retries while the directory reports the previous host as active; invalid-request
 (400) or expired-session (404) rejections end automatic migration. Network
 failures remain retryable. If migration is unavailable or times out, the saved
 local copy remains recoverable offline.
+A three-process no-Steam player smoke proves this recovery path end to end: it
+terminates the original host at the operating-system level after players 2 and
+3 receive their tickets; player 2 claims generation 2 and player 3 reconnects
+with ID 3.
+
 
 Direct-host mode implements the core player-hosted flow without PUN or paid
 Unity networking plugins; it does not include every PUN/cloud feature. The

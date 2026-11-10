@@ -981,6 +981,9 @@ public class NetworkingController : Photon.PunBehaviour
   {
     if (directNetworkManager == null || directNetworkManager.IsServer || !directNetworkManager.IsListening) return;
     int preferredPlayerId = PhotonNetwork.player == null ? 0 : PhotonNetwork.player.ID;
+    int migrationPlayerId = GameBuilderApplication.CurrentGameOptions.directHostMigrationPreviousPlayerId;
+    if (migrationPlayerId > 1 && migrationPlayerId <= PhotonNetwork.MaximumDirectPlayers)
+      preferredPlayerId = migrationPlayerId;
     using (FastBufferWriter writer = new FastBufferWriter(sizeof(int), Allocator.Temp))
     {
       writer.WriteValueSafe(preferredPlayerId);
@@ -988,6 +991,7 @@ public class NetworkingController : Photon.PunBehaviour
         DirectPlayerReconnectMessageName, NetworkManager.ServerClientId, writer, NetworkDelivery.ReliableSequenced);
     }
   }
+
 
   void OnDirectPlayerReconnectRequest(ulong senderClientId, FastBufferReader reader)
   {
@@ -1928,13 +1932,10 @@ public class NetworkingController : Photon.PunBehaviour
 
   static string BuildDirectMigrationReservedPlayerIds(int localPlayerId)
   {
-    HashSet<int> uniqueIds = new HashSet<int>();
-    if (PhotonNetwork.playerList != null)
-      foreach (PhotonPlayer peer in PhotonNetwork.playerList)
-        if (peer != null && peer.ID > 1 && peer.ID != localPlayerId)
-          uniqueIds.Add(peer.ID);
-    if (uniqueIds.Count == 0) return string.Empty;
-    List<int> playerIds = new List<int>(uniqueIds);
+    List<int> playerIds = new List<int>();
+    PhotonNetwork.AppendKnownDirectPlayerIds(playerIds);
+    playerIds.RemoveAll(playerId => playerId <= 1 || playerId == localPlayerId);
+    if (playerIds.Count == 0) return string.Empty;
     playerIds.Sort();
     StringBuilder result = new StringBuilder(playerIds.Count * 3);
     for (int i = 0; i < playerIds.Count; i++)
