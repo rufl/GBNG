@@ -12,6 +12,7 @@ public sealed class DirectHostMigrationSmoke : MonoBehaviour
   const string CoordinationArgumentPrefix = "--direct-host-migration-smoke-coordination=";
   const string PortArgumentPrefix = "--direct-host-migration-smoke-port=";
   const string JoinAddressArgumentPrefix = "--direct-host-migration-smoke-address=";
+  const string RelayArgument = "--direct-host-migration-smoke-relay";
   const string Marker = "DIRECT_HOST_MIGRATION";
 
   static bool launched;
@@ -19,6 +20,10 @@ public sealed class DirectHostMigrationSmoke : MonoBehaviour
   string role;
   string coordinationPath;
   string joinAddress;
+  bool useRelay;
+  string relaySessionId;
+  string relayAddress;
+  ushort relayPort;
   ushort port;
   bool completed;
 
@@ -54,6 +59,7 @@ public sealed class DirectHostMigrationSmoke : MonoBehaviour
     smoke.role = requestedRole;
     smoke.coordinationPath = Path.GetFullPath(requestedCoordinationPath);
     smoke.joinAddress = requestedJoinAddress;
+    smoke.useRelay = HasArgument(RelayArgument);
     smoke.port = requestedPort;
     Debug.Log(Marker + "_START|role=" + requestedRole + "|address=" + requestedJoinAddress
       + "|scene=" + SceneManager.GetActiveScene().name);
@@ -64,6 +70,13 @@ public sealed class DirectHostMigrationSmoke : MonoBehaviour
     foreach (string argument in Environment.GetCommandLineArgs())
       if (argument.StartsWith(prefix, StringComparison.Ordinal)) return argument.Substring(prefix.Length);
     return null;
+  }
+
+  static bool HasArgument(string value)
+  {
+    foreach (string argument in Environment.GetCommandLineArgs())
+      if (argument == value) return true;
+    return false;
   }
 
   IEnumerator Start()
@@ -89,17 +102,30 @@ public sealed class DirectHostMigrationSmoke : MonoBehaviour
 
     NetworkingController networking = null;
     DirectSessionDirectory.MigrationTicket ticket = default(DirectSessionDirectory.MigrationTicket);
+    string hostRelaySessionId = null;
+    string hostRelayToken = null;
+    string hostRelayAddress = null;
+    ushort hostRelayPort = 0;
     yield return WaitFor(() =>
     {
       networking = FindObjectOfType<NetworkingController>();
-      return networking != null && networking.IsDirectHost()
+      bool registered = networking != null && networking.IsDirectHost()
         && DirectSessionDirectory.TryGetMigrationTicket(out ticket) && ticket.Generation == 1;
-    }, "The initial host did not register a migration ticket.", 90f);
+      return registered && (!useRelay || (DirectHostUdpRelay.IsTunnelReady
+        && DirectSessionDirectory.TryGetHostRelayCredentials(
+          out hostRelaySessionId, out hostRelayToken, out hostRelayAddress, out hostRelayPort)));
+    }, useRelay
+      ? "The initial host did not register a migration ticket and relay tunnel."
+      : "The initial host did not register a migration ticket.", 90f);
     if (completed) yield break;
 
     try
     {
-      WriteCoordinator(DirectHostTls.GetHostCredentials().CertificatePem);
+      WriteCoordinator(
+        DirectHostTls.GetHostCredentials().CertificatePem,
+        hostRelaySessionId,
+        hostRelayAddress,
+        hostRelayPort);
     }
     catch (Exception exception)
     {
@@ -221,6 +247,9 @@ public sealed class DirectHostMigrationSmoke : MonoBehaviour
       joinAddress = joinAddress,
       joinPort = port,
       trustedHostCertificatePem = certificate,
+      directRelaySessionId = useRelay ? relaySessionId : null,
+      directRelayAddress = useRelay ? relayAddress : null,
+      directRelayPort = useRelay ? relayPort : (ushort)0,
       playOptions = new GameBuilderApplication.PlayOptions { isMultiplayer = true }
     };
   }
@@ -249,16 +278,33 @@ public sealed class DirectHostMigrationSmoke : MonoBehaviour
     return candidate && follower;
   }
 
-  void WriteCoordinator(string certificate)
+  void WriteCoordinator(
+    string certificate,
+    string hostRelaySessionId,
+    string hostRelayAddress,
+    ushort hostRelayPort)
   {
+    if (useRelay && (string.IsNullOrEmpty(hostRelaySessionId)
+      || string.IsNullOrWhiteSpace(hostRelayAddress) || hostRelayPort == 0))
+      throw new InvalidOperationException("The relay connection details are incomplete.");
     string directory = Path.GetDirectoryName(coordinationPath);
     if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
     string temporaryPath = coordinationPath + ".tmp";
-    File.WriteAllLines(temporaryPath, new[]
-    {
-      port.ToString(),
-      Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(certificate))
-    });
+    string[] contents = useRelay
+      ? new[]
+      {
+        port.ToString(),
+        Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(certificate)),
+        hostRelaySessionId,
+        hostRelayAddress,
+        hostRelayPort.ToString()
+      }
+      : new[]
+      {
+        port.ToString(),
+        Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(certificate))
+      };
+    File.WriteAllLines(temporaryPath, contents);
     if (File.Exists(coordinationPath)) File.Delete(coordinationPath);
     File.Move(temporaryPath, coordinationPath);
   }
@@ -266,13 +312,24 @@ public sealed class DirectHostMigrationSmoke : MonoBehaviour
   bool TryReadCoordinator(out string certificate)
   {
     certificate = null;
+    relaySessionId = null;
+    relayAddress = null;
+    relayPort = 0;
     try
     {
       string[] lines = File.ReadAllLines(coordinationPath);
-      if (lines.Length != 2 || !ushort.TryParse(lines[0], out ushort storedPort) || storedPort != port)
+      int expectedLineCount = useRelay ? 5 : 2;
+      if (lines.Length != expectedLineCount
+        || !ushort.TryParse(lines[0], out ushort storedPort) || storedPort != port)
         return false;
       certificate = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(lines[1]));
-      return DirectHostTls.IsUsablePinnedCertificate(certificate);
+      if (!DirectHostTls.IsUsablePinnedCertificate(certificate)) return false;
+      if (!useRelay) return true;
+
+      relaySessionId = lines[2];
+      relayAddress = lines[3];
+      return relaySessionId.Length == 24 && !string.IsNullOrWhiteSpace(relayAddress)
+        && ushort.TryParse(lines[4], out relayPort) && relayPort != 0;
     }
     catch (Exception)
     {

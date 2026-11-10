@@ -389,8 +389,10 @@ Photon PUN nor a paid Unity service is required.
   `python tools/maintenance/run_direct_host_migration_smoke.py --executable "build_output/Game Builder.exe"`.
   Pass `--join-address <IPv4>` to route the initial candidate and follower
   connection through a specific host interface. This proves that local route
-  with real players; it does not replace a second-machine ingress test. Its
-  temporary directory, coordination files, and logs are removed by default.
+  with real players; it does not replace a second-machine ingress test. Pass
+  `--relay` to require relay allocation and exercise the host UDP bridge through
+  the same host-loss recovery. Its temporary directory, coordination files, and
+  logs are removed by default.
 
 - From the splash screen, open **Multiplayer** and choose **Host a game** for
   the unchanged IPv4 host mode. Choose **Host IPv6 game** for an IPv6-only host.

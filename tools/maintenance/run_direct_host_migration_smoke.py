@@ -60,6 +60,8 @@ def main():
                         help="Path to a no-Steam Windows Game Builder player build.")
     parser.add_argument("--join-address", default="127.0.0.1",
                         help="Host address exercised by the candidate and follower.")
+    parser.add_argument("--relay", action="store_true",
+                        help="Route player connections through the local UDP relay.")
     parser.add_argument("--timeout", type=float, default=360,
                         help="Maximum seconds for the candidate and follower to finish.")
     parser.add_argument("--keep-artifacts", action="store_true",
@@ -77,6 +79,7 @@ def main():
     logs = {role: work_dir / (role + ".log") for role in ("host", "candidate", "follower")}
     directory_port = free_port(socket.SOCK_STREAM)
     game_port = free_port(socket.SOCK_DGRAM)
+    relay_port = free_port(socket.SOCK_DGRAM) if args.relay else None
     environment = os.environ.copy()
     environment["GAMEBUILDER_SESSION_DIRECTORY"] = "http://127.0.0.1:{}".format(directory_port)
     directory = None
@@ -84,9 +87,20 @@ def main():
     log_handles = {}
 
     try:
+        directory_command = [
+            sys.executable, str(DIRECTORY_SERVER),
+            "--bind", "127.0.0.1", "--port", str(directory_port)
+        ]
+        if args.relay:
+            directory_command.extend([
+                "--relay-bind", "127.0.0.1", "--relay-control-port", str(relay_port),
+                "--relay-public-address", "127.0.0.1",
+                "--relay-data-port-start", "0", "--relay-data-port-end", "0"
+            ])
+        else:
+            directory_command.append("--relay-disabled")
         directory = subprocess.Popen(
-            [sys.executable, str(DIRECTORY_SERVER), "--bind", "127.0.0.1", "--port", str(directory_port),
-             "--relay-disabled"],
+            directory_command,
             cwd=str(ROOT), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         health_url = "http://127.0.0.1:{}/health".format(directory_port)
         wait_for(lambda: _directory_healthy(health_url), 30, "the local session directory", {"directory": directory})
@@ -95,14 +109,14 @@ def main():
             log_handles[role] = logs[role].open("w", encoding="utf-8")
 
         players["host"] = _start_player(
-            executable, "host", coordination, game_port, args.join_address, environment, log_handles["host"])
+            executable, "host", coordination, game_port, args.join_address, args.relay, environment, log_handles["host"])
         wait_for(coordination.exists, 120, "the initial host registration", players)
         players["candidate"] = _start_player(
-            executable, "candidate", coordination, game_port, args.join_address, environment, log_handles["candidate"])
+            executable, "candidate", coordination, game_port, args.join_address, args.relay, environment, log_handles["candidate"])
         wait_for(lambda: (work_dir / "coordination.txt.candidate-ready").exists(),
                  120, "the candidate initial connection", players)
         players["follower"] = _start_player(
-            executable, "follower", coordination, game_port, args.join_address, environment, log_handles["follower"])
+            executable, "follower", coordination, game_port, args.join_address, args.relay, environment, log_handles["follower"])
         host_kill_ready = work_dir / "coordination.txt.host-kill-ready"
         wait_for(host_kill_ready.exists, 120, "both clients before host termination", players)
 
@@ -128,8 +142,9 @@ def main():
             if MARKER not in read_log(logs[role]):
                 raise RuntimeError("{} did not emit {}.".format(role, MARKER))
 
-        print("DIRECT_HOST_MIGRATION_SMOKE_PASS|address={}|port={}|generation={}".format(
-            args.join_address, game_port, candidate_pass.read_text(encoding="utf-8").strip()))
+        transport = "relay" if args.relay else "direct"
+        print("DIRECT_HOST_MIGRATION_SMOKE_PASS|transport={}|address={}|port={}|generation={}".format(
+            transport, args.join_address, game_port, candidate_pass.read_text(encoding="utf-8").strip()))
     except Exception as error:
         print("DIRECT_HOST_MIGRATION_SMOKE_FAIL|{}".format(error), file=sys.stderr)
         for role, path in logs.items():
@@ -155,14 +170,18 @@ def _directory_healthy(url):
         return False
 
 
-def _start_player(executable, role, coordination, port, join_address, environment, log):
+def _start_player(executable, role, coordination, port, join_address, use_relay, environment, log):
+    command = [
+        str(executable), "-batchmode", "-nographics",
+        "--direct-host-migration-smoke=" + role,
+        "--direct-host-migration-smoke-coordination=" + str(coordination),
+        "--direct-host-migration-smoke-port=" + str(port),
+        "--direct-host-migration-smoke-address=" + join_address
+    ]
+    if use_relay:
+        command.append("--direct-host-migration-smoke-relay")
     return subprocess.Popen(
-        [str(executable), "-batchmode", "-nographics",
-         "--direct-host-migration-smoke=" + role,
-         "--direct-host-migration-smoke-coordination=" + str(coordination),
-         "--direct-host-migration-smoke-port=" + str(port),
-         "--direct-host-migration-smoke-address=" + join_address],
-        cwd=str(executable.parent), env=environment, stdout=log, stderr=subprocess.STDOUT)
+        command, cwd=str(executable.parent), env=environment, stdout=log, stderr=subprocess.STDOUT)
 
 
 if __name__ == "__main__":

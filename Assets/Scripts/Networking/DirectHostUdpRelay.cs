@@ -230,13 +230,14 @@ public sealed class DirectHostUdpRelay : MonoBehaviour
     if (messageType != (byte)'D' || frame.Length <= HeaderSize) return;
 
     HostRoute route;
+    bool startRouteThread = false;
     lock (routesGate)
     {
       if (!routes.TryGetValue(clientId, out route))
       {
         route = CreateHostRoute(clientId);
         routes.Add(clientId, route);
-        route.Thread.Start();
+        startRouteThread = true;
       }
     }
     Interlocked.Exchange(ref route.LastActivityTicks, DateTime.UtcNow.Ticks);
@@ -247,6 +248,9 @@ public sealed class DirectHostUdpRelay : MonoBehaviour
       route.Socket.Client.SendTo(
         frame, HeaderSize, frame.Length - HeaderSize, SocketFlags.None,
         new IPEndPoint(localAddress, hostPort));
+      // SendTo binds the per-peer UDP socket. Starting Receive before that bind
+      // races on Windows and can fail with WSAEINVAL, dropping relay replies.
+      if (startRouteThread && route.Running) route.Thread.Start();
     }
     catch (ObjectDisposedException) { }
     catch (SocketException e)
