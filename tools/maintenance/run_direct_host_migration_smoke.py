@@ -110,18 +110,24 @@ def main():
         health_url = "http://127.0.0.1:{}/health".format(directory_port)
         wait_for(lambda: _directory_healthy(health_url), 30, "the local session directory", {"directory": directory})
 
+        player_work_dirs = {}
         for role in ("host", "candidate", "follower"):
+            player_work_dirs[role] = work_dir / role
+            player_work_dirs[role].mkdir()
             log_handles[role] = logs[role].open("w", encoding="utf-8")
 
         players["host"] = _start_player(
-            executable, "host", coordination, game_port, args.join_address, args.relay, environment, log_handles["host"])
+            executable, "host", coordination, game_port, args.join_address, args.relay, environment,
+            log_handles["host"], player_work_dirs["host"])
         wait_for(coordination.exists, 120, "the initial host registration", players)
         players["candidate"] = _start_player(
-            executable, "candidate", coordination, game_port, args.join_address, args.relay, environment, log_handles["candidate"])
+            executable, "candidate", coordination, game_port, args.join_address, args.relay, environment,
+            log_handles["candidate"], player_work_dirs["candidate"])
         wait_for(lambda: (work_dir / "coordination.txt.candidate-ready").exists(),
                  120, "the candidate initial connection", players)
         players["follower"] = _start_player(
-            executable, "follower", coordination, game_port, args.join_address, args.relay, environment, log_handles["follower"])
+            executable, "follower", coordination, game_port, args.join_address, args.relay, environment,
+            log_handles["follower"], player_work_dirs["follower"])
         host_kill_ready = work_dir / "coordination.txt.host-kill-ready"
         wait_for(host_kill_ready.exists, 120, "both clients before host termination", players)
 
@@ -176,7 +182,7 @@ def _directory_healthy(url):
         return False
 
 
-def _start_player(executable, role, coordination, port, join_address, use_relay, environment, log):
+def _start_player(executable, role, coordination, port, join_address, use_relay, environment, log, working_directory):
     command = [
         str(executable), "-batchmode", "-nographics",
         "--direct-host-migration-smoke=" + role,
@@ -187,7 +193,7 @@ def _start_player(executable, role, coordination, port, join_address, use_relay,
     if use_relay:
         command.append("--direct-host-migration-smoke-relay")
     return subprocess.Popen(
-        command, cwd=str(executable.parent), env=environment, stdout=log, stderr=subprocess.STDOUT)
+        command, cwd=str(working_directory), env=environment, stdout=log, stderr=subprocess.STDOUT)
 
 
 if __name__ == "__main__":
