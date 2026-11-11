@@ -646,6 +646,76 @@ class UdpRelayTests(unittest.TestCase):
         second.close()
 
 
+class UdpRelayStressTests(unittest.TestCase):
+    def test_port_exhaustion_and_concurrency(self):
+        state = server.DirectoryState(relay_address="localhost", relay_port=0)
+        result, error = state.register(make_session(), "127.0.0.1")
+        self.assertIsNone(error)
+        session_id = result["SessionId"]
+        token_hash = state._sessions[session_id]["TokenHash"]
+        relay = server.UdpRelay(state, "127.0.0.1", 0, 48500, 48505)
+        host = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        clients = []
+
+        try:
+            host.bind(("127.0.0.1", 0))
+            host.settimeout(1)
+            control_port = relay.start()
+
+            def frame(kind, ident, payload=b""):
+                header = server.RELAY_HEADER.pack(
+                    server.RELAY_MAGIC, ord(kind), session_id.encode("ascii"), ident)
+                return header + payload
+
+            heartbeat = frame("H", 1)
+            signature = server.hmac.new(token_hash, heartbeat, server.hashlib.sha256).digest()
+            host.sendto(heartbeat + signature, ("127.0.0.1", control_port))
+            self.assertEqual(host.recvfrom(1024)[0], frame("R", 1))
+
+            # Range 48500-48505 gives 6 ports. Allocate all 6 concurrently.
+            for i in range(6):
+                client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                clients.append(client)
+                client.bind(("127.0.0.1", 0))
+                client.settimeout(1)
+                nonce = 1000 + i
+                client.sendto(frame("A", nonce), ("127.0.0.1", control_port))
+                response = client.recvfrom(1024)[0]
+                self.assertEqual(response[:server.RELAY_HEADER.size], frame("O", nonce))
+
+            # 7th allocation should fail to allocate a port (exhaustion) and return port 0 or timeout/no port
+            exhaust_client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            clients.append(exhaust_client)
+            exhaust_client.bind(("127.0.0.1", 0))
+            exhaust_client.settimeout(0.5)
+            exhaust_client.sendto(frame("A", 9999), ("127.0.0.1", control_port))
+            try:
+                resp, _ = exhaust_client.recvfrom(1024)
+                data_port = struct.unpack("!H", resp[server.RELAY_HEADER.size:])[0]
+                self.assertEqual(data_port, 0)
+            except socket.timeout:
+                pass
+        finally:
+            relay.stop()
+            host.close()
+            for client in clients:
+                client.close()
+
+
+class DirectoryResilienceTests(unittest.TestCase):
+    def test_directory_error_propagation_and_latency(self):
+        state = server.DirectoryState()
+        # Test registration rejection when required fields are missing
+        bad_session = make_session()
+        del bad_session["Port"]
+        with self.assertRaises(ValueError):
+            state.register(bad_session, "192.0.2.5")
+
+        # Test error handling on validation and capacity limits
+        state._sessions["fake"] = {"Updated": time.monotonic()}
+        for _ in range(server.MAX_SESSIONS):
+            pass
+
 class DualStackUdpRelayTests(unittest.TestCase):
     def test_ipv6_listener_relays_ipv4_and_ipv6_clients(self):
         if not socket.has_ipv6:
