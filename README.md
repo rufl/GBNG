@@ -24,7 +24,7 @@ This fork keeps the implementations separate:
 * Unity Editor 6000.6.8f1. This fork is pinned to that editor release.
 * Unity's C# compiler (C# 9.0 language level). Unity controls the language version; use only the features supported by its compiler.
 * [Python 3.15.2](https://www.python.org/downloads/release/python-3152/) for code generation. `.python-version` records the selected version.
-* Unity packages: Test Framework 1.8.0, UGUI 2.6.0, and Post Processing 3.5.4. TextMesh Pro functionality is supplied by UGUI in this editor.
+* Unity packages: Netcode for GameObjects 2.14.0, Unity Transport 2.6.0, Input System 1.20.1, Test Framework 1.8.0, UGUI 2.6.0, and Post Processing 3.5.4. TextMesh Pro functionality is supplied by UGUI in this editor.
 * Unity 6 no longer supplies the legacy UNet serializer. `VoosBinaryWriter` and `VoosBinaryReader` now own the existing little-endian game-state format instead of depending on the unsupported HLAPI package.
 * The native V8 Unity wrapper source and regression harness are in `v8_in_unity/`; V8 engine source and fetched dependencies remain upstream. The recorded engine revision is V8 7.1.0.0 (`d2e0166ded485df126c765b9196f7edd1ce50f82`). [`v8_in_unity/BUILDING.md`](v8_in_unity/BUILDING.md) documents reproducible Windows, Linux, and macOS universal rebuild/test paths.
 * On Windows, Git Bash (included with [Git for Windows](https://gitforwindows.org/)) to run shell tools. On macOS, use Terminal.
