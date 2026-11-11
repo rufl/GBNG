@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Game Builder - Inventário de Assets e Licenças</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 20px; background: #0f172a; color: #f8fafc; }
+        header { border-bottom: 1px solid #334155; padding-bottom: 20px; margin-bottom: 20px; }
+        h1 { margin: 0 0 10px 0; color: #38bdf8; }
+        p { color: #94a3b8; margin: 0; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; }
+        .card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .card h3 { margin-top: 0; color: #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
+        .badge { font-size: 0.75rem; padding: 3px 8px; border-radius: 9999px; font-weight: 600; text-transform: uppercase; }
+        .apache { background: #0369a1; color: #e0f2fe; }
+        .mit { background: #15803d; color: #dcfce7; }
+        .custom { background: #b45309; color: #fef3c7; }
+        .meta { font-size: 0.875rem; color: #94a3b8; margin-bottom: 12px; }
+        .desc { font-size: 0.9rem; color: #cbd5e1; line-height: 1.5; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Game Builder (GBNG) — Inventário Visual de Assets &amp; Licenças</h1>
+        <p>Catálogo completo de bibliotecas, motores, ferramentas e componentes visuais do ecossistema migrado para Godot 4.7 &amp; .NET 9.</p>
+    </header>
+    <main class="grid">
+        <div class="card">
+            <h3>Godot Engine <span class="badge mit">MIT</span></h3>
+            <div class="meta">Versão: 4.7.2.stable.mono</div>
+            <div class="desc">Motor de jogo principal utilizado para renderização gráfica (Forward+ / Mobile), gestão de cena e ecossistema de nós.</div>
+        </div>
+        <div class="card">
+            <h3>Monaco Editor <span class="badge mit">MIT</span></h3>
+            <div class="meta">Versão: 0.14.3</div>
+            <div class="desc">Editor de código fonte baseado em web embutido no painel de comportamentos para edição em JavaScript.</div>
+        </div>
+        <div class="card">
+            <h3>Poly Toolkit / Google Poly <span class="badge apache">Apache 2.0</span></h3>
+            <div class="meta">Componente Oficial Google</div>
+            <div class="desc">Utilitário de importação de modelos 3D, animações e materiais do repositório Google Poly.</div>
+        </div>
+        <div class="card">
+            <h3>three.js <span class="badge mit">MIT</span></h3>
+            <div class="meta">Biblioteca WebGL</div>
+            <div class="desc">Suporte a renderização e visualização de shaders e modelos 3D auxiliares na UI web.</div>
+        </div>
+        <div class="card">
+            <h3>Roboto Mono &amp; UI Fonts <span class="badge apache">Apache 2.0</span></h3>
+            <div class="meta">Google Fonts</div>
+            <div class="desc">Fontes tipográficas utilizadas em toda a interface de edição e painel de código.</div>
+        </div>
+        <div class="card">
+            <h3>Skybox Shaders <span class="badge mit">MIT</span></h3>
+            <div class="meta">Shaders Ambientais</div>
+            <div class="desc">Shaders de fundo e iluminação procedural para ambientes abertos.</div>
+        </div>
+        <div class="card">
+            <h3>Exemplos e Modelos (.voos) <span class="badge apache">Apache 2.0</span></h3>
+            <div class="meta">Google / Comunidade GBNG</div>
+            <div class="desc">Cenas de exemplo (ex: sample-platformer.voos) e assets lógicos de blocos de comportamento e cartas.</div>
+        </div>
+    </main>
+</body>
+</html>
